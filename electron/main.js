@@ -11,6 +11,7 @@ function createWindow() {
     minHeight: 650,
     title: 'Sistema de Gestión de Cartera y Cobros - Administración',
     backgroundColor: '#0f172a', // Slate 900
+    show: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -18,16 +19,22 @@ function createWindow() {
     icon: path.join(__dirname, '../assets/icon.png'),
   });
 
-  // En desarrollo carga desde Metro Bundler, en producción carga los archivos compilados
-  const devUrl = 'http://localhost:8081';
+  // En desarrollo carga desde Metro Bundler (IPv4), en producción carga los archivos compilados
+  const devUrl = 'http://127.0.0.1:8081';
   const prodPath = path.join(__dirname, '../dist/index.html');
 
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
     const tryLoad = () => {
-      mainWindow.loadURL(devUrl).catch(() => {
-        console.log('Esperando a que Metro Bundler termine de inicializar...');
-        setTimeout(tryLoad, 1500);
-      });
+      mainWindow.loadURL(devUrl)
+        .then(() => {
+          console.log('✅ Ventana de escritorio conectada con éxito.');
+          mainWindow.show();
+          mainWindow.focus();
+        })
+        .catch(() => {
+          console.log('Esperando a que Metro Bundler termine de inicializar...');
+          setTimeout(tryLoad, 1500);
+        });
     };
     tryLoad();
   } else {
