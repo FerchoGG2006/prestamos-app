@@ -27,9 +27,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "desktop": "concurrently -k \"npx expo start --web --port 8081\" \"wait-on tcp:8081 && electron electron/main.js\"",
+    "desktop": "concurrently \"npx expo start --web --port 8081\" \"wait-on tcp:127.0.0.1:8081 && electron electron/main.js\"",
     "electron:dev": "electron electron/main.js"
   },
-  "main": "electron/main.js",
+  "main": "index.ts",
   "private": true
 }
