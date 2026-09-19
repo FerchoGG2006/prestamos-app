@@ -23,10 +23,13 @@ function createWindow() {
   const prodPath = path.join(__dirname, '../dist/index.html');
 
   if (process.env.NODE_ENV === 'development' || !app.isPackaged) {
-    mainWindow.loadURL(devUrl).catch(() => {
-      console.log('Esperando servidor de desarrollo...');
-      setTimeout(() => mainWindow.loadURL(devUrl), 2000);
-    });
+    const tryLoad = () => {
+      mainWindow.loadURL(devUrl).catch(() => {
+        console.log('Esperando a que Metro Bundler termine de inicializar...');
+        setTimeout(tryLoad, 1500);
+      });
+    };
+    tryLoad();
   } else {
     mainWindow.loadFile(prodPath);
   }
