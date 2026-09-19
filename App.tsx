@@ -28,6 +28,8 @@ import { CustomerDetailView } from './src/presentation/views/collector/CustomerD
 import { AdminDashboardView } from './src/presentation/views/admin/AdminDashboardView';
 import { LoansTableView } from './src/presentation/views/admin/LoansTableView';
 import { SettlementsTableView } from './src/presentation/views/admin/SettlementsTableView';
+import { AuditLogsView } from './src/presentation/views/admin/AuditLogsView';
+import { ConfigView } from './src/presentation/views/admin/ConfigView';
 import { PaymentModal } from './src/presentation/components/PaymentModal';
 import { RenewalModal } from './src/presentation/components/RenewalModal';
 import { PromiseModal } from './src/presentation/components/PromiseModal';
@@ -42,6 +44,8 @@ import {
   LayoutDashboard,
   CreditCard,
   Wifi,
+  ShieldCheck,
+  Settings,
 } from 'lucide-react-native';
 
 export default function App() {
@@ -55,7 +59,7 @@ export default function App() {
 
   // Tabs activos
   const [collectorTab, setCollectorTab] = useState<'COBROS' | 'CLIENTES' | 'LIQUIDAR'>('COBROS');
-  const [adminTab, setAdminTab] = useState<'DASHBOARD' | 'CREDITOS' | 'LIQUIDACIONES'>('DASHBOARD');
+  const [adminTab, setAdminTab] = useState<'DASHBOARD' | 'CREDITOS' | 'LIQUIDACIONES' | 'AUDITORIA' | 'CONFIGURACION'>('DASHBOARD');
 
   // Estado reactivo del almacén local
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -247,13 +251,17 @@ export default function App() {
               routes={routes}
               onOpenCustomerDetail={(customer) => setDetailCustomer(customer)}
             />
-          ) : (
+          ) : adminTab === 'LIQUIDACIONES' ? (
             <SettlementsTableView
               settlements={settlements}
               routes={routes}
               users={localStore.getUsers()}
               onOpenNewSettlement={() => setSettlementModalVisible(true)}
             />
+          ) : adminTab === 'AUDITORIA' ? (
+            <AuditLogsView logs={localStore.getAuditLogs()} />
+          ) : (
+            <ConfigView />
           )
         )}
       </View>
@@ -306,7 +314,7 @@ export default function App() {
           >
             <CreditCard size={18} color={adminTab === 'CREDITOS' ? '#ffffff' : COLORS.textSecondary} />
             <Text style={[styles.adminTabText, adminTab === 'CREDITOS' && styles.adminTabTextActive]}>
-              Cartera y Créditos
+              Créditos
             </Text>
           </TouchableOpacity>
 
@@ -316,7 +324,27 @@ export default function App() {
           >
             <Landmark size={18} color={adminTab === 'LIQUIDACIONES' ? '#ffffff' : COLORS.textSecondary} />
             <Text style={[styles.adminTabText, adminTab === 'LIQUIDACIONES' && styles.adminTabTextActive]}>
-              Liquidaciones y Arqueo
+              Liquidación
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.adminTabBtn, adminTab === 'AUDITORIA' && styles.adminTabBtnActive]}
+            onPress={() => setAdminTab('AUDITORIA')}
+          >
+            <ShieldCheck size={18} color={adminTab === 'AUDITORIA' ? '#ffffff' : COLORS.textSecondary} />
+            <Text style={[styles.adminTabText, adminTab === 'AUDITORIA' && styles.adminTabTextActive]}>
+              Auditoría
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.adminTabBtn, adminTab === 'CONFIGURACION' && styles.adminTabBtnActive]}
+            onPress={() => setAdminTab('CONFIGURACION')}
+          >
+            <Settings size={18} color={adminTab === 'CONFIGURACION' ? '#ffffff' : COLORS.textSecondary} />
+            <Text style={[styles.adminTabText, adminTab === 'CONFIGURACION' && styles.adminTabTextActive]}>
+              Ajustes
             </Text>
           </TouchableOpacity>
         </View>
