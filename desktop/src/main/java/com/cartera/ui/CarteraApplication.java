@@ -35,7 +35,7 @@ public final class CarteraApplication extends Application {
     private VBox sidebar() {
         var box = new VBox(8); box.getStyleClass().add("sidebar");
         var title = new Label("SISTEMA DE\nCARTERA"); title.getStyleClass().add("brand");
-        box.getChildren().add(title, nav("Inicio"), nav("Clientes"), nav("Créditos"), nav("Cobros de hoy"),
+        box.getChildren().addAll(title, nav("Inicio"), nav("Clientes"), nav("Créditos"), nav("Cobros de hoy"),
                 nav("Rutas"), nav("Caja"), nav("Liquidaciones"), nav("Reportes"), nav("Auditoría"), nav("Configuración"));
         return box;
     }
