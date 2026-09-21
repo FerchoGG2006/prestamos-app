@@ -20,7 +20,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 /** Native JavaFX entry point. There is no WebView, browser or localhost user interface. */
 public final class CarteraApplication extends Application {
     private ConfigurableApplicationContext context;
-    @Override public void init() {
+    @Override public void init() throws Exception {
+        java.nio.file.Files.createDirectories(java.nio.file.Paths.get(System.getProperty("user.home"), ".sistema-cartera"));
         context = new SpringApplicationBuilder(CarteraInfrastructureApplication.class)
                 .web(WebApplicationType.NONE).headless(false).run();
     }
