@@ -8,6 +8,7 @@ import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.ui.views.CustomersView;
 import com.cartera.ui.views.DashboardView;
 import com.cartera.ui.views.LoansView;
+import com.cartera.ui.views.PlaceholderView;
 import com.cartera.ui.views.TodayCollectionsView;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -182,9 +183,11 @@ public final class CarteraApplication extends Application {
                 viewNode = loansView;
                 break;
             case "Inicio":
-            default:
                 dashboardView.refresh();
                 viewNode = dashboardView;
+                break;
+            default:
+                viewNode = new PlaceholderView(viewName);
                 break;
         }
 

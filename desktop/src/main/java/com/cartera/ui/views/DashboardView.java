@@ -45,7 +45,7 @@ public class DashboardView extends VBox {
         metrics.getChildren().addAll(
                 createMetricCard("Cobrado hoy", lblCollected, "metric-value-green"),
                 createMetricCard("Clientes por cobrar", lblPending, "metric-value"),
-                createMetricCard("Cartera en mora", lblOverdue, "metric-value-red"),
+                createMetricCard("Cuotas vencidas", lblOverdue, "metric-value-red"),
                 createMetricCard("Caja actual", lblCash, "metric-value")
         );
 

@@ -63,7 +63,8 @@ public class TodayCollectionsService {
             BigDecimal installmentAmount,
             BigDecimal installmentPending,
             String statusText,
-            boolean isPaidToday
+            boolean isPaidToday,
+            BigDecimal overdueTotal
     ) {}
 
     public DailyMetrics getDailyMetrics(LocalDate date) {
@@ -77,11 +78,10 @@ public class TodayCollectionsService {
         List<CollectionItem> items = getTodayCollectionItems(date);
         int pending = (int) items.stream().filter(i -> !i.isPaidToday()).count();
 
+        // Hecho objetivo (no una regla de mora): suma de cuotas con vencimiento anterior a hoy y saldo pendiente.
         BigDecimal overdue = BigDecimal.ZERO;
         for (var item : items) {
-            if ("EN MORA".equals(item.statusText())) {
-                overdue = overdue.add(item.installmentPending());
-            }
+            overdue = overdue.add(item.overdueTotal());
         }
 
         var movements = cashMovementRepository.findByCreatedAtStartingWith(todayStr);
@@ -116,12 +116,24 @@ public class TodayCollectionsService {
                     .map(InstallmentEntity::getPendingAmount)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            // Buscar cuota correspondiente a hoy o la primera pendiente
-            InstallmentEntity todayOrPending = null;
+            // Prioridad: la cuota vencida pendiente más antigua (la que el asignador paga primero),
+            // luego la de hoy, luego la primera pendiente.
+            BigDecimal overdueTotal = BigDecimal.ZERO;
+            InstallmentEntity oldestOverdue = null;
             for (var inst : installments) {
-                if (inst.getDueDate().equals(dateStr)) {
-                    todayOrPending = inst;
-                    break;
+                if (inst.getPendingAmount().signum() > 0 && LocalDate.parse(inst.getDueDate()).isBefore(date)) {
+                    overdueTotal = overdueTotal.add(inst.getPendingAmount());
+                    if (oldestOverdue == null) oldestOverdue = inst;
+                }
+            }
+
+            InstallmentEntity todayOrPending = oldestOverdue;
+            if (todayOrPending == null) {
+                for (var inst : installments) {
+                    if (inst.getDueDate().equals(dateStr)) {
+                        todayOrPending = inst;
+                        break;
+                    }
                 }
             }
             if (todayOrPending == null) {
@@ -143,7 +155,7 @@ public class TodayCollectionsService {
             if (isPaidToday) {
                 statusText = "AL DÍA / PAGADO";
             } else if (dueDate.isBefore(date)) {
-                statusText = "EN MORA";
+                statusText = "VENCIDA";
             } else if (dueDate.equals(date)) {
                 statusText = "COBRO HOY";
             } else {
@@ -166,7 +178,8 @@ public class TodayCollectionsService {
                     todayOrPending.getAmount(),
                     todayOrPending.getPendingAmount(),
                     statusText,
-                    isPaidToday
+                    isPaidToday,
+                    overdueTotal
             ));
         }
 

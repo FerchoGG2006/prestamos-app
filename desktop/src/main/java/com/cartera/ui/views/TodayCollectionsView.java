@@ -3,7 +3,7 @@ package com.cartera.ui.views;
 import com.cartera.collections.application.TodayCollectionsService;
 import com.cartera.collections.application.TodayCollectionsService.CollectionItem;
 import com.cartera.payments.application.RecordPaymentUseCase;
-import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
@@ -13,6 +13,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
+import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.util.Locale;
@@ -32,6 +33,11 @@ public class TodayCollectionsView extends VBox {
     private final TableView<CollectionItem> table = new TableView<>();
     private final Label lblCounter = new Label();
 
+    private final Label lblFooterClients = new Label();
+    private final Label lblFooterPending = new Label();
+    private final Label lblFooterTotalCuotas = new Label();
+    private final Label lblFooterTotalBalance = new Label();
+
     public TodayCollectionsView(TodayCollectionsService collectionsService,
                                 RecordPaymentUseCase paymentUseCase,
                                 Stage primaryStage,
@@ -41,12 +47,12 @@ public class TodayCollectionsView extends VBox {
         this.primaryStage = primaryStage;
         this.onDataUpdated = onDataUpdated;
 
-        setSpacing(16);
+        setSpacing(18);
         setPadding(new Insets(24));
         setStyle("-fx-background-color: #0f172a;");
 
         buildHeader();
-        buildTable();
+        buildTableCard();
         refreshData();
     }
 
@@ -64,7 +70,7 @@ public class TodayCollectionsView extends VBox {
         TextField searchField = new TextField();
         searchField.setPromptText("Buscar cliente, documento o barrio...");
         searchField.getStyleClass().add("search-field");
-        searchField.setPrefWidth(300);
+        searchField.setPrefWidth(320);
 
         FilteredList<CollectionItem> filtered = new FilteredList<>(masterData, p -> true);
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {
@@ -77,7 +83,7 @@ public class TodayCollectionsView extends VBox {
                         || item.neighborhood().toLowerCase().contains(q)
                         || item.businessName().toLowerCase().contains(q);
             });
-            updateCounter(filtered.size());
+            updateStats(filtered.size());
         });
         table.setItems(filtered);
 
@@ -89,70 +95,175 @@ public class TodayCollectionsView extends VBox {
         getChildren().add(top);
     }
 
-    private void buildTable() {
+    private void buildTableCard() {
+        VBox tableCard = new VBox();
+        tableCard.getStyleClass().add("table-card");
+        VBox.setVgrow(tableCard, Priority.ALWAYS);
+
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(table, Priority.ALWAYS);
 
-        // Columna Cliente
-        TableColumn<CollectionItem, String> colCustomer = new TableColumn<>("Cliente");
-        colCustomer.setCellValueFactory(data -> new SimpleStringProperty(
-                data.getValue().fullName() + "\n" + (data.getValue().businessName().isBlank() ? "" : data.getValue().businessName() + " • ") + data.getValue().phone()
-        ));
-        colCustomer.setPrefWidth(220);
-
-        // Columna Dirección
-        TableColumn<CollectionItem, String> colAddress = new TableColumn<>("Dirección / Barrio");
-        colAddress.setCellValueFactory(data -> new SimpleStringProperty(
-                data.getValue().address() + "\nBarrio " + data.getValue().neighborhood()
-        ));
-        colAddress.setPrefWidth(200);
-
-        // Columna Cuota Hoy
-        TableColumn<CollectionItem, String> colCuota = new TableColumn<>("Cuota del Día");
-        colCuota.setCellValueFactory(data -> new SimpleStringProperty(
-                CURRENCY.format(data.getValue().installmentPending()) + " (Cuota #" + data.getValue().installmentNumber() + ")"
-        ));
-        colCuota.setPrefWidth(160);
-
-        // Columna Saldo
-        TableColumn<CollectionItem, String> colBalance = new TableColumn<>("Saldo Total");
-        colBalance.setCellValueFactory(data -> new SimpleStringProperty(
-                CURRENCY.format(data.getValue().loanBalance())
-        ));
-        colBalance.setPrefWidth(130);
-
-        // Columna Estado (Badge)
-        TableColumn<CollectionItem, String> colStatus = new TableColumn<>("Estado");
-        colStatus.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().statusText()));
-        colStatus.setCellFactory(col -> new TableCell<>() {
+        // 1. Columna Cliente con Avatar
+        TableColumn<CollectionItem, CollectionItem> colCustomer = new TableColumn<>("CLIENTE");
+        colCustomer.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue()));
+        colCustomer.setCellFactory(col -> new TableCell<>() {
             @Override
-            protected void updateItem(String text, boolean empty) {
-                super.updateItem(text, empty);
-                if (empty || text == null) {
+            protected void updateItem(CollectionItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
                     setGraphic(null);
                     setText(null);
                 } else {
-                    Label badge = new Label(text);
-                    if (text.contains("PAGADO") || text.contains("AL DÍA")) {
-                        badge.getStyleClass().add("badge-paid");
-                    } else if (text.contains("MORA")) {
-                        badge.getStyleClass().add("badge-overdue");
+                    HBox box = new HBox(12);
+                    box.setAlignment(Pos.CENTER_LEFT);
+
+                    Label lblInitials = new Label(getInitials(item.fullName()));
+                    lblInitials.setStyle("-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    StackPane avatar = new StackPane(lblInitials);
+                    avatar.setPrefSize(34, 34);
+                    avatar.setMinSize(34, 34);
+                    avatar.setMaxSize(34, 34);
+                    avatar.setStyle("-fx-background-color: linear-gradient(to bottom right, #3b82f6, #1d4ed8); -fx-background-radius: 17;");
+
+                    VBox textGroup = new VBox(2);
+                    Label name = new Label(item.fullName());
+                    name.setStyle("-fx-text-fill: #f8fafc; -fx-font-weight: bold; -fx-font-size: 13px;");
+
+                    String sub = (item.businessName().isBlank() ? "" : item.businessName() + " • ") + item.phone();
+                    Label subtitle = new Label(sub);
+                    subtitle.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+
+                    textGroup.getChildren().addAll(name, subtitle);
+                    box.getChildren().addAll(avatar, textGroup);
+                    setGraphic(box);
+                    setText(null);
+                }
+            }
+        });
+        colCustomer.setPrefWidth(240);
+
+        // 2. Columna Dirección con Pin
+        TableColumn<CollectionItem, CollectionItem> colAddress = new TableColumn<>("DIRECCIÓN / BARRIO");
+        colAddress.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue()));
+        colAddress.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(CollectionItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    VBox box = new VBox(2);
+                    box.setAlignment(Pos.CENTER_LEFT);
+                    Label address = new Label(item.address());
+                    address.setStyle("-fx-text-fill: #e2e8f0; -fx-font-size: 13px; -fx-font-weight: 500;");
+
+                    Label neighborhood = new Label("📍 Barrio " + item.neighborhood());
+                    neighborhood.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
+
+                    box.getChildren().addAll(address, neighborhood);
+                    setGraphic(box);
+                    setText(null);
+                }
+            }
+        });
+        colAddress.setPrefWidth(210);
+
+        // 3. Columna Cuota del Día
+        TableColumn<CollectionItem, CollectionItem> colCuota = new TableColumn<>("CUOTA DEL DÍA");
+        colCuota.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue()));
+        colCuota.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(CollectionItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    VBox box = new VBox(2);
+                    box.setAlignment(Pos.CENTER_LEFT);
+
+                    boolean isPending = item.installmentPending().compareTo(BigDecimal.ZERO) > 0;
+                    Label amount = new Label(CURRENCY.format(item.installmentPending()));
+                    amount.setStyle(isPending
+                            ? "-fx-text-fill: #10b981; -fx-font-weight: bold; -fx-font-size: 13px;"
+                            : "-fx-text-fill: #94a3b8; -fx-font-weight: bold; -fx-font-size: 13px;");
+
+                    Label tag = new Label("Cuota #" + item.installmentNumber());
+                    tag.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
+
+                    box.getChildren().addAll(amount, tag);
+                    setGraphic(box);
+                    setText(null);
+                }
+            }
+        });
+        colCuota.setPrefWidth(160);
+
+        // 4. Columna Saldo Total
+        TableColumn<CollectionItem, CollectionItem> colBalance = new TableColumn<>("SALDO TOTAL");
+        colBalance.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue()));
+        colBalance.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(CollectionItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    VBox box = new VBox(2);
+                    box.setAlignment(Pos.CENTER_LEFT);
+                    Label amount = new Label(CURRENCY.format(item.loanBalance()));
+                    amount.setStyle("-fx-text-fill: #38bdf8; -fx-font-weight: bold; -fx-font-size: 13px;");
+
+                    Label tag = new Label("Saldo crédito");
+                    tag.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
+
+                    box.getChildren().addAll(amount, tag);
+                    setGraphic(box);
+                    setText(null);
+                }
+            }
+        });
+        colBalance.setPrefWidth(140);
+
+        // 5. Columna Estado (Pill Badge)
+        TableColumn<CollectionItem, CollectionItem> colStatus = new TableColumn<>("ESTADO");
+        colStatus.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue()));
+        colStatus.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(CollectionItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    Label badge = new Label();
+                    badge.setAlignment(Pos.CENTER);
+                    String baseStyle = "-fx-padding: 4 12; -fx-background-radius: 20; -fx-font-weight: bold; -fx-font-size: 11px;";
+
+                    if (item.isPaidToday()) {
+                        badge.setText("✓  AL DÍA / PAGADO");
+                        badge.setStyle(baseStyle + "-fx-background-color: rgba(16, 185, 129, 0.15); -fx-text-fill: #34d399; -fx-border-color: rgba(16, 185, 129, 0.3); -fx-border-radius: 20;");
+                    } else if (item.statusText().contains("VENCIDA")) {
+                        badge.setText("⚠  VENCIDA");
+                        badge.setStyle(baseStyle + "-fx-background-color: rgba(239, 68, 68, 0.15); -fx-text-fill: #f87171; -fx-border-color: rgba(239, 68, 68, 0.3); -fx-border-radius: 20;");
                     } else {
-                        badge.getStyleClass().add("badge-today");
+                        badge.setText("●  COBRO HOY");
+                        badge.setStyle(baseStyle + "-fx-background-color: rgba(56, 189, 248, 0.15); -fx-text-fill: #38bdf8; -fx-border-color: rgba(56, 189, 248, 0.3); -fx-border-radius: 20;");
                     }
                     setGraphic(badge);
                     setText(null);
                 }
             }
         });
-        colStatus.setPrefWidth(140);
+        colStatus.setPrefWidth(150);
 
-        // Columna Acción
-        TableColumn<CollectionItem, Void> colAction = new TableColumn<>("Acción");
+        // 6. Columna Acción
+        TableColumn<CollectionItem, Void> colAction = new TableColumn<>("ACCIÓN");
         colAction.setCellFactory(col -> new TableCell<>() {
             private final Button btnPay = new Button("Cobrar");
             {
-                btnPay.getStyleClass().add("btn-success");
                 btnPay.setOnAction(e -> {
                     CollectionItem item = getTableView().getItems().get(getIndex());
                     PaymentDialog.show(primaryStage, item, paymentUseCase, success -> {
@@ -174,30 +285,68 @@ public class TodayCollectionsView extends VBox {
                     if (item.isPaidToday()) {
                         btnPay.setText("✓ Al día");
                         btnPay.setDisable(true);
-                        btnPay.setStyle("-fx-background-color: #334155; -fx-text-fill: #94a3b8;");
+                        btnPay.setStyle("-fx-background-color: rgba(51, 65, 85, 0.5); -fx-text-fill: #94a3b8; -fx-font-size: 12px; -fx-font-weight: 500; -fx-padding: 6 14; -fx-background-radius: 6; -fx-border-color: #334155; -fx-border-radius: 6;");
                     } else {
                         btnPay.setText("Cobrar");
                         btnPay.setDisable(false);
-                        btnPay.setStyle("-fx-background-color: #10b981; -fx-text-fill: white; -fx-font-weight: bold;");
+                        btnPay.setStyle("-fx-background-color: linear-gradient(to right, #10b981, #059669); -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 6 16; -fx-background-radius: 6; -fx-cursor: hand;");
                     }
                     setGraphic(btnPay);
                 }
             }
         });
-        colAction.setPrefWidth(110);
+        colAction.setPrefWidth(120);
 
         table.getColumns().addAll(colCustomer, colAddress, colCuota, colBalance, colStatus, colAction);
-        getChildren().add(table);
+
+        // Footer Summary Bar
+        HBox footer = new HBox(28);
+        footer.getStyleClass().add("table-card-footer");
+        footer.setAlignment(Pos.CENTER_LEFT);
+
+        lblFooterClients.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
+        lblFooterPending.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
+        lblFooterTotalCuotas.setStyle("-fx-text-fill: #10b981; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblFooterTotalBalance.setStyle("-fx-text-fill: #38bdf8; -fx-font-size: 12px; -fx-font-weight: bold;");
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        footer.getChildren().addAll(lblFooterClients, lblFooterPending, spacer, lblFooterTotalCuotas, lblFooterTotalBalance);
+
+        tableCard.getChildren().addAll(table, footer);
+        getChildren().add(tableCard);
     }
 
     public void refreshData() {
         var items = collectionsService.getTodayCollectionItems(LocalDate.now());
         masterData.setAll(items);
-        updateCounter(items.size());
+        updateStats(items.size());
     }
 
-    private void updateCounter(int total) {
+    private void updateStats(int total) {
         long pending = masterData.stream().filter(i -> !i.isPaidToday()).count();
+        BigDecimal totalCuotas = masterData.stream()
+                .filter(i -> !i.isPaidToday())
+                .map(CollectionItem::installmentPending)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalBalance = masterData.stream()
+                .map(CollectionItem::loanBalance)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         lblCounter.setText(total + " clientes en ruta • " + pending + " pendientes de cobro");
+        lblFooterClients.setText("👥 Total en ruta: " + total);
+        lblFooterPending.setText("⏳ Pendientes hoy: " + pending);
+        lblFooterTotalCuotas.setText("💵 Cuotas hoy: " + CURRENCY.format(totalCuotas));
+        lblFooterTotalBalance.setText("💼 Cartera total: " + CURRENCY.format(totalBalance));
+    }
+
+    private static String getInitials(String fullName) {
+        if (fullName == null || fullName.isBlank()) return "CL";
+        String[] parts = fullName.trim().split("\\s+");
+        if (parts.length >= 2) {
+            return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
+        }
+        return fullName.substring(0, Math.min(2, fullName.length())).toUpperCase();
     }
 }

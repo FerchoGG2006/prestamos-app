@@ -11,6 +11,7 @@ import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -18,7 +19,9 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
+/** Seeds fictitious demo data on an empty database. Disable with cartera.demo-data.enabled=false. */
 @Component
+@ConditionalOnProperty(name = "cartera.demo-data.enabled", havingValue = "true", matchIfMissing = false)
 public class DataInitializer implements CommandLineRunner {
     private final AppUserRepository userRepository;
     private final RouteRepository routeRepository;

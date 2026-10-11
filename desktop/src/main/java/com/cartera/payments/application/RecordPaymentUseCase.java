@@ -6,6 +6,9 @@ import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.entity.PaymentAllocationEntity;
 import com.cartera.infrastructure.persistence.entity.PaymentEntity;
+import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
+import com.cartera.infrastructure.persistence.repository.AppUserRepository;
+import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.persistence.repository.CashMovementRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
@@ -32,18 +35,24 @@ public class RecordPaymentUseCase {
     private final InstallmentRepository installmentRepository;
     private final LoanRepository loanRepository;
     private final CashMovementRepository cashMovementRepository;
+    private final AppUserRepository userRepository;
+    private final AuditLogRepository auditLogRepository;
     private final PaymentApplicationService applicationService = new PaymentApplicationService();
 
     public RecordPaymentUseCase(PaymentRepository paymentRepository,
                                 PaymentAllocationRepository allocationRepository,
                                 InstallmentRepository installmentRepository,
                                 LoanRepository loanRepository,
-                                CashMovementRepository cashMovementRepository) {
+                                CashMovementRepository cashMovementRepository,
+                                AppUserRepository userRepository,
+                                AuditLogRepository auditLogRepository) {
         this.paymentRepository = paymentRepository;
         this.allocationRepository = allocationRepository;
         this.installmentRepository = installmentRepository;
         this.loanRepository = loanRepository;
         this.cashMovementRepository = cashMovementRepository;
+        this.userRepository = userRepository;
+        this.auditLogRepository = auditLogRepository;
     }
 
     public record RecordPaymentCommand(
@@ -77,12 +86,32 @@ public class RecordPaymentUseCase {
 
         var existing = paymentRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
+            // Idempotent replay: report the real persisted outcome, never a fabricated one.
             var p = existing.get();
-            return new PaymentExecutionResult(p.getId(), p.getAmount(), 0, BigDecimal.ZERO, false);
+            var current = installmentRepository.findByLoanIdOrderByInstallmentNumberAsc(p.getLoanId());
+            BigDecimal balance = current.stream()
+                    .map(InstallmentEntity::getPendingAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            int affected = allocationRepository.findByPaymentId(p.getId()).size();
+            return new PaymentExecutionResult(p.getId(), p.getAmount(), affected, balance,
+                    balance.signum() == 0);
         }
 
         LoanEntity loan = loanRepository.findById(command.loanId())
                 .orElseThrow(() -> new IllegalArgumentException("Crédito no encontrado con ID: " + command.loanId()));
+        if (!"ACTIVO".equals(loan.getStatus())) {
+            throw new IllegalStateException("El crédito no está activo (estado: " + loan.getStatus() + "); no admite cobros.");
+        }
+
+        String collectorId = command.collectorId() != null ? command.collectorId() : loan.getCollectorId();
+        if (collectorId == null || collectorId.isBlank()) {
+            throw new IllegalArgumentException("Debe indicarse el cobrador que registra el pago.");
+        }
+        var collector = userRepository.findById(collectorId)
+                .orElseThrow(() -> new IllegalArgumentException("Cobrador no registrado: " + collectorId));
+        if (collector.getActive() == null || collector.getActive() != 1) {
+            throw new IllegalStateException("El cobrador " + collector.getFullName() + " está inactivo y no puede registrar cobros.");
+        }
 
         List<InstallmentEntity> installmentEntities = installmentRepository.findByLoanIdOrderByInstallmentNumberAsc(command.loanId());
         if (installmentEntities.isEmpty()) {
@@ -113,7 +142,7 @@ public class RecordPaymentUseCase {
                 idempotencyKey,
                 loan.getId(),
                 loan.getCustomerId(),
-                command.collectorId() != null ? command.collectorId() : (loan.getCollectorId() != null ? loan.getCollectorId() : "usr-col-1"),
+                collectorId,
                 null,
                 command.amount(),
                 command.method() != null ? command.method() : "EFECTIVO",
@@ -166,7 +195,7 @@ public class RecordPaymentUseCase {
         CashMovementEntity cashMovement = new CashMovementEntity(
                 cashMovementId,
                 loan.getRouteId(),
-                command.collectorId() != null ? command.collectorId() : loan.getCollectorId(),
+                collectorId,
                 null,
                 "ENTRADA",
                 "PAGO_CUOTA",
@@ -176,6 +205,22 @@ public class RecordPaymentUseCase {
                 nowStr
         );
         cashMovementRepository.save(cashMovement);
+
+        // Auditoría: misma transacción que el pago; si falla el registro, el pago se revierte.
+        auditLogRepository.save(new AuditLogEntity(
+                UUID.randomUUID().toString(),
+                collectorId,
+                "PAYMENT",
+                paymentId,
+                "REGISTRAR_COBRO",
+                null,
+                "loan=" + loan.getId() + ";amount=" + command.amount().toPlainString()
+                        + ";method=" + paymentEntity.getMethod()
+                        + ";cuotas=" + domainResult.allocations().size()
+                        + ";saldo=" + remainingBalance.toPlainString(),
+                "Idempotency-Key=" + idempotencyKey,
+                nowStr
+        ));
 
         return new PaymentExecutionResult(
                 paymentId,

@@ -11,7 +11,7 @@ import java.util.List;
 /** Pure domain application service. Persistence later enforces the idempotency key in one transaction. */
 public final class PaymentApplicationService {
     public PaymentApplicationResult allocate(Money received, List<Installment> installments, LocalDate paymentDate) {
-        if (!received.isPositive()) throw new IllegalArgumentException("Payment must be positive");
+        if (!received.isPositive()) throw new IllegalArgumentException("El pago debe ser mayor a cero.");
         var remaining = received;
         var updated = new ArrayList<Installment>();
         var allocations = new ArrayList<PaymentAllocation>();
@@ -22,7 +22,7 @@ public final class PaymentApplicationService {
             allocations.add(new PaymentAllocation(installment.id(), allocated));
             remaining = remaining.subtract(allocated);
         }
-        if (remaining.isPositive()) throw new IllegalArgumentException("Payment exceeds pending installments; business policy is pending");
+        if (remaining.isPositive()) throw new IllegalArgumentException("El monto excede el saldo pendiente de las cuotas del crédito (la política de sobrepago aún no está definida por el negocio).");
         return new PaymentApplicationResult(List.copyOf(updated), List.copyOf(allocations));
     }
     public record PaymentApplicationResult(List<Installment> installments, List<PaymentAllocation> allocations) { }

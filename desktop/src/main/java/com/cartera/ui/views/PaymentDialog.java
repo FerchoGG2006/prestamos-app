@@ -30,6 +30,9 @@ public class PaymentDialog {
         dialog.initOwner(parentStage);
         dialog.setTitle("Registrar Cobro - " + item.fullName());
 
+        // Una sola clave por apertura del diálogo: reintentar tras un fallo no puede duplicar el cobro.
+        final String idempotencyKey = UUID.randomUUID().toString();
+
         VBox root = new VBox(16);
         root.setStyle("-fx-background-color: #0f172a; -fx-padding: 24;");
         root.setPrefWidth(460);
@@ -95,8 +98,7 @@ public class PaymentDialog {
         btnConfirm.setStyle("-fx-background-color: #10b981; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 6; -fx-cursor: hand;");
         btnConfirm.setOnAction(e -> {
             try {
-                String raw = txtAmount.getText().trim().replace("$", "").replace(".", "").replace(",", "");
-                BigDecimal amount = new BigDecimal(raw);
+                BigDecimal amount = parseAmount(txtAmount.getText());
                 if (amount.compareTo(BigDecimal.ZERO) <= 0) {
                     lblFeedback.setText("El monto debe ser mayor a cero.");
                     lblFeedback.setStyle("-fx-text-fill: #ef4444;");
@@ -113,7 +115,7 @@ public class PaymentDialog {
                         cmbMethod.getValue(),
                         "usr-col-1",
                         LocalDate.now(),
-                        UUID.randomUUID().toString()
+                        idempotencyKey
                 );
 
                 var res = useCase.execute(cmd);
@@ -146,7 +148,36 @@ public class PaymentDialog {
         root.getChildren().addAll(title, infoCard, lblAmount, txtAmount, shortcuts, lblMethod, cmbMethod, lblFeedback, actions);
 
         Scene scene = new Scene(root);
+        var theme = PaymentDialog.class.getResource("/ui/theme.css");
+        if (theme != null) scene.getStylesheets().add(theme.toExternalForm());
         dialog.setScene(scene);
         dialog.showAndWait();
+    }
+
+    /**
+     * Parses a user-typed peso amount. Accepts "$ 15.000", "15,000", "15000", "15000.00", "15.000,50".
+     * A lone separator followed by exactly 3 digits is a thousands separator; otherwise it is decimal.
+     */
+    static BigDecimal parseAmount(String input) {
+        if (input == null) throw new NumberFormatException("vacío");
+        String s = input.trim().replace("$", "").replace(" ", "").replace("\u00a0", "");
+        if (s.isEmpty()) throw new NumberFormatException("vacío");
+        int lastDot = s.lastIndexOf('.');
+        int lastComma = s.lastIndexOf(',');
+        if (lastDot >= 0 && lastComma >= 0) {
+            char decimal = lastDot > lastComma ? '.' : ',';
+            char group = decimal == '.' ? ',' : '.';
+            s = s.replace(String.valueOf(group), "").replace(decimal, '.');
+        } else if (lastDot >= 0 || lastComma >= 0) {
+            char sep = lastDot >= 0 ? '.' : ',';
+            int count = (int) s.chars().filter(c -> c == sep).count();
+            int digitsAfter = s.length() - s.lastIndexOf(sep) - 1;
+            if (count > 1 || digitsAfter == 3) {
+                s = s.replace(String.valueOf(sep), "");
+            } else {
+                s = s.replace(sep, '.');
+            }
+        }
+        return new BigDecimal(s);
     }
 }

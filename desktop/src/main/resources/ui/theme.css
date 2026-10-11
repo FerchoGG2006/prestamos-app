@@ -1,6 +1,6 @@
 .sidebar { -fx-background-color: #1e293b; -fx-padding: 24 16; -fx-pref-width: 230; }
 .brand { -fx-text-fill: #f8fafc; -fx-font-size: 18px; -fx-font-weight: bold; -fx-padding: 0 0 22 8; }
-.nav-button { -fx-background-color: transparent; -fx-text-fill: #94a3b8; -fx-alignment: CENTER-LEFT; -fx-padding: 10 14; -fx-font-size: 14px; -fx-background-radius: 8; cursor: pointer; -fx-cursor: hand; }
+.nav-button { -fx-background-color: transparent; -fx-text-fill: #94a3b8; -fx-alignment: CENTER-LEFT; -fx-padding: 10 14; -fx-font-size: 14px; -fx-background-radius: 8; -fx-cursor: hand; cursor: pointer; }
 .nav-button:hover { -fx-background-color: #334155; -fx-text-fill: #f8fafc; }
 .nav-button-active { -fx-background-color: #2563eb !important; -fx-text-fill: white !important; -fx-font-weight: bold; }
 
@@ -17,11 +17,11 @@
 .muted { -fx-text-fill: #94a3b8; -fx-font-size: 13px; }
 
 /* Buttons */
-.btn-primary { -fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 8 16; -fx-background-radius: 6; cursor: pointer; -fx-cursor: hand; }
+.btn-primary { -fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 8 16; -fx-background-radius: 6; -fx-cursor: hand; cursor: pointer; }
 .btn-primary:hover { -fx-background-color: #1d4ed8; }
-.btn-success { -fx-background-color: #10b981; -fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 8 16; -fx-background-radius: 6; cursor: pointer; -fx-cursor: hand; }
+.btn-success { -fx-background-color: #10b981; -fx-text-fill: white; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 8 16; -fx-background-radius: 6; -fx-cursor: hand; cursor: pointer; }
 .btn-success:hover { -fx-background-color: #059669; }
-.btn-secondary { -fx-background-color: #334155; -fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-padding: 8 16; -fx-background-radius: 6; cursor: pointer; -fx-cursor: hand; }
+.btn-secondary { -fx-background-color: #334155; -fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-padding: 8 16; -fx-background-radius: 6; -fx-cursor: hand; cursor: pointer; }
 .btn-secondary:hover { -fx-background-color: #475569; }
 
 /* Badges */
@@ -33,19 +33,23 @@
 .search-field { -fx-background-color: #1e293b; -fx-text-fill: #f8fafc; -fx-prompt-text-fill: #64748b; -fx-border-color: #334155; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 8 12; -fx-font-size: 13px; }
 .search-field:focused { -fx-border-color: #2563eb; }
 
-/* TableView Dark Styling */
-.table-view { -fx-background-color: #0f172a; -fx-border-color: #334155; -fx-border-radius: 8; -fx-background-radius: 8; }
-.table-view .column-header-background { -fx-background-color: #1e293b; -fx-border-color: transparent transparent #334155 transparent; }
-.table-view .column-header { -fx-background-color: transparent; -fx-padding: 10 8; }
-.table-view .column-header .label { -fx-text-fill: #94a3b8; -fx-font-weight: bold; -fx-font-size: 12px; }
-.table-row-cell { -fx-background-color: #0f172a; -fx-border-color: transparent transparent #1e293b transparent; -fx-padding: 6 0; }
-.table-row-cell:odd { -fx-background-color: #131d31; }
-.table-row-cell:hover { -fx-background-color: #1e293b; }
+/* Modern Card Container for Tables */
+.table-card { -fx-background-color: #1e293b; -fx-background-radius: 12; -fx-border-color: #334155; -fx-border-radius: 12; -fx-border-width: 1; }
+.table-card-footer { -fx-background-color: #141e2e; -fx-background-radius: 0 0 12 12; -fx-padding: 12 24; -fx-border-color: #334155 transparent transparent transparent; -fx-border-width: 1 0 0 0; }
+
+/* TableView Modern Clean Styling (No vertical gridlines) */
+.table-view { -fx-background-color: transparent; -fx-table-cell-border-color: transparent; -fx-border-color: transparent; -fx-border-width: 0; -fx-background-insets: 0; -fx-padding: 0; }
+.table-view .column-header-background { -fx-background-color: #1e293b; -fx-border-color: transparent transparent #334155 transparent; -fx-border-width: 0 0 1 0; -fx-padding: 0; }
+.table-view .column-header { -fx-background-color: transparent; -fx-border-color: transparent; -fx-border-width: 0; -fx-padding: 12 16; }
+.table-view .column-header .label { -fx-text-fill: #94a3b8; -fx-font-weight: bold; -fx-font-size: 11px; }
+.table-row-cell { -fx-background-color: #1e293b; -fx-border-color: transparent transparent rgba(51, 65, 85, 0.45) transparent; -fx-border-width: 0 0 1 0; -fx-padding: 8 4; }
+.table-row-cell:odd { -fx-background-color: #172133; }
+.table-row-cell:hover { -fx-background-color: #24344d; }
 .table-row-cell:selected { -fx-background-color: #1e3a8a; }
-.table-cell { -fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-alignment: CENTER-LEFT; }
-.table-row-cell:empty { -fx-background-color: #0f172a; -fx-border-color: transparent; }
-.table-row-cell:empty .table-cell { -fx-border-color: transparent; }
-.table-view .filler { -fx-background-color: #1e293b; -fx-border-color: transparent transparent #334155 transparent; }
+.table-cell { -fx-border-color: transparent; -fx-border-width: 0; -fx-padding: 0 12; -fx-alignment: CENTER-LEFT; }
+.table-row-cell:empty { -fx-background-color: transparent; -fx-border-color: transparent; }
+.table-row-cell:empty .table-cell { -fx-border-color: transparent; -fx-border-width: 0; }
+.table-view .filler { -fx-background-color: transparent; -fx-border-color: transparent; }
 
 /* ScrollPane and ScrollBar Styling */
 .sidebar-scroll { -fx-background-color: #1e293b; -fx-background: #1e293b; -fx-border-color: transparent #334155 transparent transparent; -fx-border-width: 0 1 0 0; -fx-padding: 0; -fx-background-insets: 0; }
@@ -56,4 +60,5 @@
 .scroll-bar .track { -fx-background-color: transparent; }
 .scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-background-color: transparent; -fx-padding: 0; }
 .scroll-bar .increment-arrow, .scroll-bar .decrement-arrow { -fx-shape: " "; }
+
 
