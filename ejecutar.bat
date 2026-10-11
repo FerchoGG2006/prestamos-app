@@ -4,5 +4,5 @@ echo =========================================================
 echo   Iniciando Sistema de Prestamos y Cobros (Escritorio)
 echo =========================================================
 cd /d "%~dp0"
-start "" "node_modules\electron\dist\electron.exe" electron\main.js
+call "%~dp0ejecutar-java.bat"
 exit

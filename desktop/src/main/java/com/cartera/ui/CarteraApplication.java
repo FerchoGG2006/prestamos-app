@@ -12,14 +12,18 @@ import com.cartera.ui.views.TodayCollectionsView;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.stage.Screen;
 import javafx.stage.Stage;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -32,6 +36,7 @@ import java.util.Map;
 public final class CarteraApplication extends Application {
     private ConfigurableApplicationContext context;
     private BorderPane root;
+    private BorderPane mainContainer;
     private Label topTitle;
     private final Map<String, Button> navButtons = new HashMap<>();
 
@@ -70,23 +75,32 @@ public final class CarteraApplication extends Application {
         customersView = new CustomersView(customerRepository);
         loansView = new LoansView(loanRepository, customerRepository);
 
+        mainContainer = new BorderPane();
+        mainContainer.setStyle("-fx-background-color: #0f172a;");
+        mainContainer.setTop(topBar());
+
         root.setLeft(sidebar());
-        root.setTop(topBar());
+        root.setCenter(mainContainer);
 
         // Iniciar en Dashboard
         navigateTo("Inicio");
 
-        var scene = new Scene(root, 1280, 800);
+        Rectangle2D visualBounds = Screen.getPrimary().getVisualBounds();
+        double initialWidth = Math.min(1280, visualBounds.getWidth());
+        double initialHeight = Math.min(800, visualBounds.getHeight());
+
+        var scene = new Scene(root, initialWidth, initialHeight);
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
 
         stage.setTitle("Sistema de Cartera y Cobros");
-        stage.setMinWidth(1024);
-        stage.setMinHeight(680);
+        stage.setMinWidth(960);
+        stage.setMinHeight(580);
         stage.setScene(scene);
+        stage.setMaximized(true);
         stage.show();
     }
 
-    private VBox sidebar() {
+    private Node sidebar() {
         var box = new VBox(6);
         box.getStyleClass().add("sidebar");
 
@@ -107,7 +121,12 @@ public final class CarteraApplication extends Application {
                 createNavButton("Configuración")
         );
 
-        return box;
+        ScrollPane scroll = new ScrollPane(box);
+        scroll.getStyleClass().add("sidebar-scroll");
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        return scroll;
     }
 
     private Button createNavButton(String name) {
@@ -127,11 +146,13 @@ public final class CarteraApplication extends Application {
         topTitle = new Label("Inicio");
         topTitle.getStyleClass().add("page-title");
 
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
         var status = new Label("● OFFLINE — SQLite Activo");
         status.getStyleClass().add("status-ok");
 
-        HBox.setHgrow(topTitle, Priority.ALWAYS);
-        bar.getChildren().addAll(topTitle, status);
+        bar.getChildren().addAll(topTitle, spacer, status);
         return bar;
     }
 
@@ -167,7 +188,7 @@ public final class CarteraApplication extends Application {
                 break;
         }
 
-        root.setCenter(viewNode);
+        mainContainer.setCenter(viewNode);
     }
 
     @Override

@@ -63,7 +63,7 @@ public class LoansView extends VBox {
 
     private void buildTable() {
         TableView<LoanEntity> table = new TableView<>();
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(table, Priority.ALWAYS);
 
         TableColumn<LoanEntity, String> colCustomer = new TableColumn<>("Cliente");

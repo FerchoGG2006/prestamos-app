@@ -51,4 +51,7 @@ yarn-error.*
 *.ear
 .idea/
 *.iml
+.project
+.classpath
+.settings/
 

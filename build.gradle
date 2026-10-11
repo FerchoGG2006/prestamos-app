@@ -1,0 +1,6 @@
+// Root Gradle build file
+allprojects {
+    repositories {
+        mavenCentral()
+    }
+}

@@ -15,7 +15,7 @@ public final class PaymentApplicationService {
         var remaining = received;
         var updated = new ArrayList<Installment>();
         var allocations = new ArrayList<PaymentAllocation>();
-        for (var installment : installments.stream().sorted(Comparator.comparing(Installment::number)).toList()) {
+        for (var installment : installments.stream().sorted(Comparator.comparingInt(Installment::number)).toList()) {
             if (!remaining.isPositive() || !installment.pending().isPositive()) { updated.add(installment); continue; }
             var allocated = remaining.min(installment.pending());
             updated.add(installment.apply(allocated, paymentDate));

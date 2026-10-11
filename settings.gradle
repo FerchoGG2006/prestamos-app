@@ -1,0 +1,2 @@
+rootProject.name = 'prestamos-app'
+include 'desktop'

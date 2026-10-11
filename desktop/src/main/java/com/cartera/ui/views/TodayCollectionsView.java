@@ -90,7 +90,7 @@ public class TodayCollectionsView extends VBox {
     }
 
     private void buildTable() {
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(table, Priority.ALWAYS);
 
         // Columna Cliente

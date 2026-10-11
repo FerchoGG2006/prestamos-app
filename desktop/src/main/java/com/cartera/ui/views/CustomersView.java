@@ -66,7 +66,7 @@ public class CustomersView extends VBox {
 
     private void buildTable() {
         TableView<CustomerEntity> table = new TableView<>();
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(table, Priority.ALWAYS);
 
         TableColumn<CustomerEntity, String> colName = new TableColumn<>("Nombre y Documento");

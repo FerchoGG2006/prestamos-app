@@ -77,6 +77,8 @@ public class DashboardView extends VBox {
     private VBox createMetricCard(String label, Label valueLabel, String valueStyleClass) {
         VBox card = new VBox(8);
         card.getStyleClass().add("metric-card");
+        card.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(card, Priority.ALWAYS);
         Label lbl = new Label(label);
         valueLabel.getStyleClass().add(valueStyleClass);
         card.getChildren().addAll(lbl, valueLabel);
