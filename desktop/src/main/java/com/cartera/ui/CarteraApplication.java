@@ -102,17 +102,20 @@ public final class CarteraApplication extends Application {
         var renewLoanUseCase = context.getBean(com.cartera.renewals.application.RenewLoanUseCase.class);
 
         dashboardView = new DashboardView(collectionsService, () -> navigateTo("Cobros y Rutas"));
-        todayCollectionsView = new TodayCollectionsView(collectionsService, paymentUseCase, stage, () -> {
+
+        todayCollectionsView = new TodayCollectionsView(collectionsService, paymentUseCase, settlementUseCase, dailySettlementRepository, stage, () -> {
             dashboardView.refresh();
             if (loansView != null) loansView.refresh();
-            if (portfolioManagementView != null) portfolioManagementView.refresh();
+            if (customersView != null) customersView.refresh();
         });
-        customersView = new CustomersView(customerRepository, createCustomerUseCase, stage);
+
         loansView = new LoansView(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, stage, () -> {
             dashboardView.refresh();
             todayCollectionsView.refreshData();
-            if (portfolioManagementView != null) portfolioManagementView.refresh();
+            if (customersView != null) customersView.refresh();
         });
+
+        customersView = new CustomersView(customerRepository, createCustomerUseCase, loanRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, loansView, stage);
         portfolioManagementView = new PortfolioManagementView(customersView, loansView);
 
         var cashManagementView = new CashManagementView(cashMovementRepository, auditLogRepository, stage);
@@ -124,7 +127,7 @@ public final class CarteraApplication extends Application {
         var userRepository = context.getBean(com.cartera.infrastructure.persistence.repository.AppUserRepository.class);
 
         auditView = new AuditView(auditLogRepository);
-        reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository);
+        reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository);
         configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, stage);
 
         mainContainer = new BorderPane();
@@ -138,7 +141,6 @@ public final class CarteraApplication extends Application {
 
         appRoot = new StackPane();
         appRoot.setStyle("-fx-background-color: #0b1120;");
-        // Iniciar en LoginView
         appRoot.getChildren().add(loginView);
 
         Rectangle2D visualBounds = Screen.getPrimary().getVisualBounds();
@@ -162,16 +164,24 @@ public final class CarteraApplication extends Application {
         stage.show();
     }
 
+    private VBox navContainer;
+
     private void onLoginSuccess(UserSession session) {
         if (lblUserName != null) {
-            lblUserName.setText("\uD83D\uDC64  " + session.fullName());
+            lblUserName.setText("👤  " + session.fullName());
         }
         if (lblUserRole != null) {
-            String roleText = session.isAdmin() ? "Administrador \u2022 Acceso Total" : "Cobrador \u2022 Ruta Activa";
+            String roleText = session.isAdmin() ? "Administrador • Acceso Total" : "Cobrador • Ruta Activa";
             lblUserRole.setText(roleText);
         }
 
-        navigateTo("Inicio");
+        buildSidebarMenu(session);
+
+        if (session.isCollector()) {
+            navigateTo("Cobros y Rutas");
+        } else {
+            navigateTo("Inicio");
+        }
         appRoot.getChildren().setAll(root);
     }
 
@@ -191,47 +201,31 @@ public final class CarteraApplication extends Application {
         brandBox.setAlignment(Pos.CENTER_LEFT);
         brandBox.setPadding(new Insets(0, 0, 16, 4));
 
-        var logoBadge = new Label("\uD83D\uDCBC");
+        var logoBadge = new Label("💼");
         logoBadge.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 15px; -fx-padding: 8; -fx-background-radius: 8;");
 
         var brandText = new VBox(2);
         var title = new Label("SISTEMA CARTERA");
         title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 14px; -fx-font-weight: bold;");
-        var subtitle = new Label("Cobros & Administraci\u00f3n");
+        var subtitle = new Label("Cobros & Administración");
         subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
         brandText.getChildren().addAll(title, subtitle);
 
         brandBox.getChildren().addAll(logoBadge, brandText);
 
-        // Tarjeta de Identificaci\u00f3n de Rol Dinámica
+        // Tarjeta de Identificación de Rol Dinámica
         var userCard = new VBox(3);
         userCard.getStyleClass().add("sidebar-user-card");
-        lblUserName = new Label("\uD83D\uDC64  Carlos Cobrador");
+        lblUserName = new Label("👤  Usuario");
         lblUserName.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 12px; -fx-font-weight: bold;");
-        lblUserRole = new Label("Cobrador \u2022 Ruta Activa");
+        lblUserRole = new Label("Sesión Activa");
         lblUserRole.setStyle("-fx-text-fill: #10b981; -fx-font-size: 10px;");
         userCard.getChildren().addAll(lblUserName, lblUserRole);
 
         box.getChildren().addAll(brandBox, userCard);
 
-        // 1. GENERAL
-        box.getChildren().add(createSectionHeader("GENERAL"));
-        box.getChildren().add(createNavButton("\uD83C\uDFE0  Panel Principal", "Inicio"));
-
-        // 2. OPERACI\u00d3N Y RUTA (Cobrador)
-        box.getChildren().add(createSectionHeader("OPERACI\u00d3N Y RUTA"));
-        box.getChildren().add(createNavButton("\uD83D\uDCCD  Cobros y Rutas del D\u00eda", "Cobros y Rutas"));
-        box.getChildren().add(createNavButton("\uD83D\uDC65  Gesti\u00f3n de Cartera", "Gesti\u00f3n de Cartera"));
-
-        // 3. TESORER\u00cdA Y CIERRES
-        box.getChildren().add(createSectionHeader("TESORER\u00cdA Y CIERRES"));
-        box.getChildren().add(createNavButton("\uD83D\uDCB5  Tesorer\u00eda y Cierres", "Tesorer\u00eda y Cierres"));
-
-        // 4. ADMINISTRACI\u00d3N Y CONTROL (Admin)
-        box.getChildren().add(createSectionHeader("ADMINISTRACI\u00d3N Y CONTROL"));
-        box.getChildren().add(createNavButton("\uD83D\uDCCA  Reportes y M\u00e9tricas", "Reportes"));
-        box.getChildren().add(createNavButton("\uD83D\uDEE1\uFE0F  Auditor\u00eda del Sistema", "Auditor\u00eda"));
-        box.getChildren().add(createNavButton("\u2699\uFE0F  Configuraci\u00f3n", "Configuraci\u00f3n"));
+        navContainer = new VBox(4);
+        box.getChildren().add(navContainer);
 
         // Espaciador para fijar la versión y logout abajo
         Region spacer = new Region();
@@ -239,14 +233,14 @@ public final class CarteraApplication extends Application {
         box.getChildren().add(spacer);
 
         // Botón Cerrar Sesión
-        Button btnLogout = new Button("\uD83D\uDEAA  Cerrar Sesi\u00f3n");
+        Button btnLogout = new Button("🚪  Cerrar Sesión");
         btnLogout.getStyleClass().add("nav-button");
         btnLogout.setStyle("-fx-text-fill: #f87171; -fx-padding: 8 14; -fx-font-size: 13px;");
         btnLogout.setMaxWidth(Double.MAX_VALUE);
         btnLogout.setOnAction(e -> onLogout());
         box.getChildren().add(btnLogout);
 
-        var versionLabel = new Label("v1.2.0 Desktop \u2022 SQLite Nativo");
+        var versionLabel = new Label("v1.3.0 Desktop • SQLite Nativo");
         versionLabel.getStyleClass().add("sidebar-version");
         box.getChildren().add(versionLabel);
 
@@ -256,6 +250,32 @@ public final class CarteraApplication extends Application {
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
         return scroll;
+    }
+
+    private void buildSidebarMenu(UserSession session) {
+        if (navContainer == null) return;
+        navContainer.getChildren().clear();
+        navButtons.clear();
+
+        if (session != null && session.isCollector()) {
+            // Menú Ultra Limpio para Cobrador (solo lo que necesita)
+            navContainer.getChildren().add(createSectionHeader("OPERACIÓN Y RUTA"));
+            navContainer.getChildren().add(createNavButton("📍  Ruta y Liquidación", "Cobros y Rutas"));
+            navContainer.getChildren().add(createNavButton("👥  Mis Clientes", "Clientes"));
+        } else {
+            // Menú Completo para Administrador
+            navContainer.getChildren().add(createSectionHeader("GENERAL"));
+            navContainer.getChildren().add(createNavButton("📊  Panel Principal", "Inicio"));
+
+            navContainer.getChildren().add(createSectionHeader("OPERACIÓN Y RUTA"));
+            navContainer.getChildren().add(createNavButton("📍  Ruta y Liquidación", "Cobros y Rutas"));
+            navContainer.getChildren().add(createNavButton("👥  Clientes y Créditos", "Clientes"));
+
+            navContainer.getChildren().add(createSectionHeader("ADMINISTRACIÓN Y CONTROL"));
+            navContainer.getChildren().add(createNavButton("💰  Caja y Tesorería", "Tesorería y Cierres"));
+            navContainer.getChildren().add(createNavButton("📈  Informes y Auditoría", "Reportes"));
+            navContainer.getChildren().add(createNavButton("⚙️  Configuración", "Configuración"));
+        }
     }
 
     private Label createSectionHeader(String title) {
@@ -300,49 +320,53 @@ public final class CarteraApplication extends Application {
             case "Cobros y Rutas":
             case "Cobros de hoy":
             case "Rutas":
+            case "Liquidación":
                 activeKey = "Cobros y Rutas";
-                effectiveTitle = "Cobros y Rutas del D\u00eda";
+                effectiveTitle = "Ruta y Liquidación Diaria";
                 todayCollectionsView.refreshData();
                 viewNode = todayCollectionsView;
                 break;
-            case "Gesti\u00f3n de Cartera":
-                activeKey = "Gesti\u00f3n de Cartera";
-                effectiveTitle = "Gesti\u00f3n de Cartera";
-                portfolioManagementView.refresh();
-                viewNode = portfolioManagementView;
-                break;
             case "Clientes":
-                activeKey = "Gesti\u00f3n de Cartera";
-                effectiveTitle = "Gesti\u00f3n de Cartera";
-                portfolioManagementView.showSection("customers");
-                viewNode = portfolioManagementView;
+            case "Gestión de Cartera":
+                activeKey = "Clientes";
+                effectiveTitle = "Clientes y Créditos";
+                customersView.refresh();
+                customersView.showSection("customers");
+                viewNode = customersView;
                 break;
-            case "Cr\u00e9ditos":
-                activeKey = "Gesti\u00f3n de Cartera";
-                effectiveTitle = "Gesti\u00f3n de Cartera";
-                portfolioManagementView.showSection("loans");
-                viewNode = portfolioManagementView;
+            case "Créditos":
+            case "Préstamos":
+                activeKey = "Clientes";
+                effectiveTitle = "Clientes y Créditos";
+                customersView.refresh();
+                customersView.showSection("loans");
+                viewNode = customersView;
                 break;
-            case "Tesorer\u00eda y Cierres":
+            case "Tesorería y Cierres":
             case "Caja":
-            case "Liquidaciones":
-                activeKey = "Tesorer\u00eda y Cierres";
-                effectiveTitle = "Tesorer\u00eda y Cierres";
+            case "Tesorería":
+                activeKey = "Tesorería y Cierres";
+                effectiveTitle = "Caja y Tesorería";
                 treasuryManagementView.refresh();
                 viewNode = treasuryManagementView;
                 break;
             case "Reportes":
-                effectiveTitle = "Reportes y M\u00e9tricas";
+                activeKey = "Reportes";
+                effectiveTitle = "Informes y Auditoría";
                 reportsView.refresh();
+                reportsView.showSection("reports");
                 viewNode = reportsView;
                 break;
-            case "Auditor\u00eda":
-                effectiveTitle = "Auditor\u00eda del Sistema";
-                auditView.refresh();
-                viewNode = auditView;
+            case "Auditoría":
+                activeKey = "Reportes";
+                effectiveTitle = "Informes y Auditoría";
+                reportsView.refresh();
+                reportsView.showSection("audit");
+                viewNode = reportsView;
                 break;
-            case "Configuraci\u00f3n":
-                effectiveTitle = "Configuraci\u00f3n del Sistema";
+            case "Configuración":
+                activeKey = "Configuración";
+                effectiveTitle = "Configuración del Sistema";
                 configurationView.refreshUsers();
                 viewNode = configurationView;
                 break;

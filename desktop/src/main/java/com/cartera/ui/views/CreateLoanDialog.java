@@ -235,6 +235,16 @@ public class CreateLoanDialog extends Stage {
         });
     }
 
+    public void setSelectedCustomer(String customerId) {
+        if (customerId == null || cmbCustomer == null) return;
+        for (var c : cmbCustomer.getItems()) {
+            if (customerId.equals(c.getId())) {
+                cmbCustomer.setValue(c);
+                break;
+            }
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private void setupPlanTable() {
         planTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);

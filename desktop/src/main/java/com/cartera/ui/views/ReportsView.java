@@ -8,6 +8,7 @@ import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.PaymentRepository;
+import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -23,7 +24,7 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Vista de reportes y métricas financieras consolidadas del negocio.
+ * Vista unificada de Informes y Auditoría del Negocio.
  */
 public class ReportsView extends VBox {
 
@@ -36,6 +37,13 @@ public class ReportsView extends VBox {
     private final InstallmentRepository installmentRepository;
     private final PaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
+    private final AuditLogRepository auditLogRepository;
+
+    private AuditView auditView;
+    private StackPane contentArea;
+    private VBox reportsContainer;
+    private Button btnTabReports;
+    private Button btnTabAudit;
 
     private final Label lblTotalPrincipal = new Label("$ 0");
     private final Label lblTotalInterest = new Label("$ 0");
@@ -59,18 +67,26 @@ public class ReportsView extends VBox {
                        InstallmentRepository installmentRepository,
                        PaymentRepository paymentRepository,
                        CustomerRepository customerRepository) {
+        this(loanRepository, installmentRepository, paymentRepository, customerRepository, null);
+    }
+
+    public ReportsView(LoanRepository loanRepository,
+                       InstallmentRepository installmentRepository,
+                       PaymentRepository paymentRepository,
+                       CustomerRepository customerRepository,
+                       AuditLogRepository auditLogRepository) {
         this.loanRepository = loanRepository;
         this.installmentRepository = installmentRepository;
         this.paymentRepository = paymentRepository;
         this.customerRepository = customerRepository;
+        this.auditLogRepository = auditLogRepository;
 
         setSpacing(18);
         setPadding(new Insets(24));
         setStyle("-fx-background-color: #0f172a;");
 
         buildHeader();
-        buildMetrics();
-        buildTableCard();
+        buildContentArea();
         refresh();
     }
 
@@ -79,22 +95,70 @@ public class ReportsView extends VBox {
         top.setAlignment(Pos.CENTER_LEFT);
 
         VBox titleBox = new VBox(4);
-        Label title = new Label("Reportes y Métricas Financieras");
+        Label title = new Label("Informes y Auditoría");
         title.getStyleClass().add("section-title");
-        Label subtitle = new Label("Consolidado general de colocación, rendimientos y estado de cartera");
+        Label subtitle = new Label("Consolidado general de rentabilidad, colocación y auditoría de transacciones");
         subtitle.getStyleClass().add("muted");
         titleBox.getChildren().addAll(title, subtitle);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
+
+        // Segmented Control
+        HBox segmentBar = new HBox(4);
+        segmentBar.getStyleClass().add("segment-bar");
+        segmentBar.setAlignment(Pos.CENTER);
+
+        btnTabReports = new Button("📊  Métricas y Rentabilidad");
+        btnTabReports.getStyleClass().addAll("segment-btn", "segment-btn-active");
+        btnTabReports.setOnAction(e -> showSection("reports"));
+
+        btnTabAudit = new Button("📜  Auditoría del Sistema");
+        btnTabAudit.getStyleClass().add("segment-btn");
+        btnTabAudit.setOnAction(e -> showSection("audit"));
+
+        segmentBar.getChildren().addAll(btnTabReports, btnTabAudit);
 
         Button btnRefresh = new Button("↻ Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
-        top.getChildren().addAll(titleBox, btnRefresh);
+        top.getChildren().addAll(titleBox, segmentBar, btnRefresh);
         getChildren().add(top);
     }
 
-    private void buildMetrics() {
+    public void showSection(String section) {
+        btnTabReports.getStyleClass().remove("segment-btn-active");
+        btnTabAudit.getStyleClass().remove("segment-btn-active");
+
+        if ("audit".equalsIgnoreCase(section)) {
+            btnTabAudit.getStyleClass().add("segment-btn-active");
+            if (auditView != null) {
+                auditView.refresh();
+                contentArea.getChildren().setAll(auditView);
+            }
+        } else {
+            btnTabReports.getStyleClass().add("segment-btn-active");
+            contentArea.getChildren().setAll(reportsContainer);
+        }
+    }
+
+    private void buildContentArea() {
+        contentArea = new StackPane();
+        VBox.setVgrow(contentArea, Priority.ALWAYS);
+
+        reportsContainer = new VBox(18);
+        VBox.setVgrow(reportsContainer, Priority.ALWAYS);
+        reportsContainer.getChildren().addAll(buildMetrics(), buildTableCard());
+
+        if (auditLogRepository != null) {
+            auditView = new AuditView(auditLogRepository);
+            auditView.setPadding(new Insets(0));
+        }
+
+        contentArea.getChildren().setAll(reportsContainer);
+        getChildren().add(contentArea);
+    }
+
+    private HBox buildMetrics() {
         HBox metrics = new HBox(16);
 
         lblTotalPrincipal.getStyleClass().add("metric-value");
@@ -108,7 +172,7 @@ public class ReportsView extends VBox {
                 createMetricCard("Recaudo Total Histórico", lblTotalCollected),
                 createMetricCard("Cuotas Vencidas / Riesgo", lblTotalOverdue)
         );
-        getChildren().add(metrics);
+        return metrics;
     }
 
     private VBox createMetricCard(String title, Label val) {
@@ -122,7 +186,7 @@ public class ReportsView extends VBox {
     }
 
     @SuppressWarnings("unchecked")
-    private void buildTableCard() {
+    private VBox buildTableCard() {
         VBox tableCard = new VBox();
         tableCard.getStyleClass().add("table-card");
         VBox.setVgrow(tableCard, Priority.ALWAYS);
@@ -161,7 +225,7 @@ public class ReportsView extends VBox {
         table.setItems(reportItems);
 
         tableCard.getChildren().addAll(title, table);
-        getChildren().add(tableCard);
+        return tableCard;
     }
 
     public void refresh() {
@@ -211,5 +275,8 @@ public class ReportsView extends VBox {
         }).toList();
 
         reportItems.setAll(items);
+        if (auditView != null) {
+            auditView.refresh();
+        }
     }
 }
