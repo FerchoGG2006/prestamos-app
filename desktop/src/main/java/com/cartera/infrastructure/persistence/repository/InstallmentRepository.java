@@ -7,6 +7,7 @@ import java.util.List;
 
 @Repository
 public interface InstallmentRepository extends JpaRepository<InstallmentEntity, String> {
+    List<InstallmentEntity> findByLoanId(String loanId);
     List<InstallmentEntity> findByLoanIdOrderByInstallmentNumberAsc(String loanId);
     List<InstallmentEntity> findByDueDate(String dueDate);
     List<InstallmentEntity> findByDueDateAndStatus(String dueDate, String status);

@@ -9,6 +9,7 @@ import com.cartera.infrastructure.security.UserSession;
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.ui.views.AuditView;
 import com.cartera.ui.views.CashManagementView;
+import com.cartera.ui.views.ConfigurationView;
 import com.cartera.ui.views.CustomersView;
 import com.cartera.ui.views.DashboardView;
 import com.cartera.ui.views.LoansView;
@@ -66,6 +67,7 @@ public final class CarteraApplication extends Application {
     private TreasuryManagementView treasuryManagementView;
     private AuditView auditView;
     private ReportsView reportsView;
+    private ConfigurationView configurationView;
 
     @Override
     public void init() throws Exception {
@@ -96,6 +98,8 @@ public final class CarteraApplication extends Application {
         var auditLogRepository = context.getBean(com.cartera.infrastructure.persistence.repository.AuditLogRepository.class);
         var dailySettlementRepository = context.getBean(com.cartera.infrastructure.persistence.repository.DailySettlementRepository.class);
         var settlementUseCase = context.getBean(com.cartera.settlement.application.SettlementUseCase.class);
+        var installmentRepository = context.getBean(com.cartera.infrastructure.persistence.repository.InstallmentRepository.class);
+        var renewLoanUseCase = context.getBean(com.cartera.renewals.application.RenewLoanUseCase.class);
 
         dashboardView = new DashboardView(collectionsService, () -> navigateTo("Cobros y Rutas"));
         todayCollectionsView = new TodayCollectionsView(collectionsService, paymentUseCase, stage, () -> {
@@ -104,7 +108,7 @@ public final class CarteraApplication extends Application {
             if (portfolioManagementView != null) portfolioManagementView.refresh();
         });
         customersView = new CustomersView(customerRepository, createCustomerUseCase, stage);
-        loansView = new LoansView(loanRepository, customerRepository, createLoanUseCase, stage, () -> {
+        loansView = new LoansView(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, stage, () -> {
             dashboardView.refresh();
             todayCollectionsView.refreshData();
             if (portfolioManagementView != null) portfolioManagementView.refresh();
@@ -115,10 +119,13 @@ public final class CarteraApplication extends Application {
         var settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository);
         treasuryManagementView = new TreasuryManagementView(cashManagementView, settlementManagementView);
 
-        var installmentRepository = context.getBean(com.cartera.infrastructure.persistence.repository.InstallmentRepository.class);
         var paymentRepository = context.getBean(com.cartera.infrastructure.persistence.repository.PaymentRepository.class);
+        var settingRepository = context.getBean(com.cartera.infrastructure.persistence.repository.SystemSettingRepository.class);
+        var userRepository = context.getBean(com.cartera.infrastructure.persistence.repository.AppUserRepository.class);
+
         auditView = new AuditView(auditLogRepository);
         reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository);
+        configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, stage);
 
         mainContainer = new BorderPane();
         mainContainer.setStyle("-fx-background-color: #0f172a;");
@@ -142,6 +149,12 @@ public final class CarteraApplication extends Application {
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
 
         stage.setTitle("Sistema de Cartera y Cobros");
+        try {
+            var iconStream = getClass().getResourceAsStream("/ui/icon.png");
+            if (iconStream != null) {
+                stage.getIcons().add(new javafx.scene.image.Image(iconStream));
+            }
+        } catch (Exception ignored) {}
         stage.setMinWidth(960);
         stage.setMinHeight(580);
         stage.setScene(scene);
@@ -330,7 +343,8 @@ public final class CarteraApplication extends Application {
                 break;
             case "Configuraci\u00f3n":
                 effectiveTitle = "Configuraci\u00f3n del Sistema";
-                viewNode = new PlaceholderView("Configuraci\u00f3n del Sistema");
+                configurationView.refreshUsers();
+                viewNode = configurationView;
                 break;
             case "Inicio":
             default:

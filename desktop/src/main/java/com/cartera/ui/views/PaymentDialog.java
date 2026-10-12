@@ -124,16 +124,25 @@ public class PaymentDialog {
 
                 var res = useCase.execute(cmd);
 
-                Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setTitle("Cobro Exitoso");
-                alert.setHeaderText("Pago registrado correctamente");
-                alert.setContentText("Monto abonado: " + CURRENCY.format(res.allocatedAmount()) +
-                        "\nCuotas impactadas: " + res.installmentsAffectedCount() +
-                        "\nNuevo saldo pendiente: " + CURRENCY.format(res.remainingLoanBalance()) +
-                        (res.isLoanFullyPaid() ? "\n¡Crédito completamente cancelado!" : ""));
-                alert.showAndWait();
+                var receiptData = new ReceiptDialog.ReceiptData(
+                        res.paymentId(),
+                        item.fullName(),
+                        item.documentNumber(),
+                        item.loanId(),
+                        res.allocatedAmount(),
+                        res.remainingLoanBalance(),
+                        res.installmentsAffectedCount(),
+                        com.cartera.infrastructure.security.UserSessionContext.getSession()
+                                .map(com.cartera.infrastructure.security.UserSession::fullName)
+                                .orElse("Carlos Cobrador"),
+                        cmbMethod.getValue(),
+                        "SISTEMA DE CARTERA",
+                        ""
+                );
 
                 dialog.close();
+                new ReceiptDialog(receiptData, parentStage).showAndWait();
+
                 if (onFinished != null) onFinished.accept(true);
 
             } catch (NumberFormatException nfe) {

@@ -146,7 +146,6 @@ public class CreateLoanUseCase {
 
         String loanId = UUID.randomUUID().toString();
         String nowTime = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-        String nowDate = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
 
         BigDecimal interestAmount = cmd.totalAgreed().subtract(cmd.principal());
         BigDecimal rate = cmd.interestRate() != null ? cmd.interestRate() :

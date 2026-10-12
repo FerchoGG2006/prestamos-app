@@ -44,21 +44,38 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (customerRepository.count() > 0) {
-            return; // Ya hay datos inicializados
-        }
-
         String now = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
         LocalDate today = LocalDate.now();
-
-        // 1. Usuarios del sistema
         String userId = "usr-col-1";
-        userRepository.save(new AppUserEntity(
-                userId, "carlos", PasswordHasher.hash("carlos123"), "Carlos Cobrador", 1, now
-        ));
-        userRepository.save(new AppUserEntity(
-                "usr-admin-1", "admin", PasswordHasher.hash("admin123"), "Administrador General", 1, now
-        ));
+
+        // 1. Asegurar usuarios del sistema (Cobrador y Administrador)
+        userRepository.findByUsername("carlos").ifPresentOrElse(
+                u -> {
+                    if (u.getPasswordHash() == null || !u.getPasswordHash().contains("$")) {
+                        u.setPasswordHash(PasswordHasher.hash("carlos123"));
+                        userRepository.save(u);
+                    }
+                },
+                () -> userRepository.save(new AppUserEntity(
+                        "usr-col-1", "carlos", PasswordHasher.hash("carlos123"), "Carlos Cobrador", 1, now
+                ))
+        );
+
+        userRepository.findByUsername("admin").ifPresentOrElse(
+                u -> {
+                    if (u.getPasswordHash() == null || !u.getPasswordHash().contains("$")) {
+                        u.setPasswordHash(PasswordHasher.hash("admin123"));
+                        userRepository.save(u);
+                    }
+                },
+                () -> userRepository.save(new AppUserEntity(
+                        "usr-admin-1", "admin", PasswordHasher.hash("admin123"), "Administrador General", 1, now
+                ))
+        );
+
+        if (customerRepository.count() > 0) {
+            return; // Ya hay clientes y préstamos sembrados
+        }
 
         // 2. Ruta
         String routeId = "route-norte";

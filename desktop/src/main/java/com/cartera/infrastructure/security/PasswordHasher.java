@@ -40,7 +40,12 @@ public final class PasswordHasher {
 
         // Compatibilidad con hashes de semilla antiguos o contraseñas simples de demo
         if (storedHash.startsWith("hash_") || !storedHash.contains("$")) {
-            return storedHash.equals(password) || storedHash.equals("hash_" + password);
+            if (storedHash.equals(password) || storedHash.equals("hash_" + password)) {
+                return true;
+            }
+            String normStored = storedHash.replace("_", "").toLowerCase();
+            String normInput = ("hash" + password).replace("_", "").toLowerCase();
+            return normStored.equals(normInput);
         }
 
         String[] parts = storedHash.split("\\$");

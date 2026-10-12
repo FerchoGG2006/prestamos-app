@@ -3,6 +3,7 @@ package com.cartera.ui.views;
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
+import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
@@ -27,6 +28,8 @@ public class LoansView extends VBox {
     private final LoanRepository loanRepository;
     private final CustomerRepository customerRepository;
     private final com.cartera.loans.application.CreateLoanUseCase createLoanUseCase;
+    private final com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase;
+    private final InstallmentRepository installmentRepository;
     private final javafx.stage.Stage ownerStage;
     private final Runnable onLoanCreatedCallback;
     private final ObservableList<LoanEntity> loansList = FXCollections.observableArrayList();
@@ -38,12 +41,16 @@ public class LoansView extends VBox {
 
     public LoansView(LoanRepository loanRepository,
                      CustomerRepository customerRepository,
+                     InstallmentRepository installmentRepository,
                      com.cartera.loans.application.CreateLoanUseCase createLoanUseCase,
+                     com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase,
                      javafx.stage.Stage ownerStage,
                      Runnable onLoanCreatedCallback) {
         this.loanRepository = loanRepository;
         this.customerRepository = customerRepository;
+        this.installmentRepository = installmentRepository;
         this.createLoanUseCase = createLoanUseCase;
+        this.renewLoanUseCase = renewLoanUseCase;
         this.ownerStage = ownerStage;
         this.onLoanCreatedCallback = onLoanCreatedCallback;
 
@@ -264,7 +271,44 @@ public class LoansView extends VBox {
         });
         colStatus.setPrefWidth(140);
 
-        table.getColumns().addAll(colCustomer, colPrincipal, colTotal, colTerms, colDate, colStatus);
+        // 7. Acciones
+        TableColumn<LoanEntity, LoanEntity> colAction = new TableColumn<>("ACCIONES");
+        colAction.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
+        colAction.setCellFactory(col -> new TableCell<>() {
+            private final Button btnRenew = new Button("🔄 Renovar");
+            {
+                btnRenew.setStyle("-fx-background-color: #334155; -fx-text-fill: #f8fafc; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
+                btnRenew.setOnAction(e -> {
+                    LoanEntity loan = getItem();
+                    if (loan != null && "ACTIVO".equalsIgnoreCase(loan.getStatus()) && renewLoanUseCase != null) {
+                        String name = customerNames.getOrDefault(loan.getCustomerId(), "Cliente #" + loan.getCustomerId());
+                        new RenewLoanDialog(loan, name, renewLoanUseCase, installmentRepository, ownerStage, res -> {
+                            refresh();
+                            if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
+                        }).showAndWait();
+                    }
+                });
+            }
+
+            @Override
+            protected void updateItem(LoanEntity l, boolean empty) {
+                super.updateItem(l, empty);
+                if (empty || l == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    if ("ACTIVO".equalsIgnoreCase(l.getStatus())) {
+                        setGraphic(btnRenew);
+                    } else {
+                        setGraphic(null);
+                    }
+                    setText(null);
+                }
+            }
+        });
+        colAction.setPrefWidth(110);
+
+        table.getColumns().addAll(colCustomer, colPrincipal, colTotal, colTerms, colDate, colStatus, colAction);
         table.setItems(loansList);
 
         // Footer Summary Bar
