@@ -26,6 +26,9 @@ public class LoansView extends VBox {
 
     private final LoanRepository loanRepository;
     private final CustomerRepository customerRepository;
+    private final com.cartera.loans.application.CreateLoanUseCase createLoanUseCase;
+    private final javafx.stage.Stage ownerStage;
+    private final Runnable onLoanCreatedCallback;
     private final ObservableList<LoanEntity> loansList = FXCollections.observableArrayList();
     private Map<String, String> customerNames = Map.of();
 
@@ -33,9 +36,16 @@ public class LoansView extends VBox {
     private final Label lblFooterPrincipal = new Label();
     private final Label lblFooterTotalAgreed = new Label();
 
-    public LoansView(LoanRepository loanRepository, CustomerRepository customerRepository) {
+    public LoansView(LoanRepository loanRepository,
+                     CustomerRepository customerRepository,
+                     com.cartera.loans.application.CreateLoanUseCase createLoanUseCase,
+                     javafx.stage.Stage ownerStage,
+                     Runnable onLoanCreatedCallback) {
         this.loanRepository = loanRepository;
         this.customerRepository = customerRepository;
+        this.createLoanUseCase = createLoanUseCase;
+        this.ownerStage = ownerStage;
+        this.onLoanCreatedCallback = onLoanCreatedCallback;
 
         setSpacing(18);
         setPadding(new Insets(24));
@@ -58,14 +68,26 @@ public class LoansView extends VBox {
         titleBox.getChildren().addAll(title, subtitle);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
+        Button btnNewLoan = new Button("+ Otorgar Crédito");
+        btnNewLoan.getStyleClass().add("btn-primary");
+        btnNewLoan.setOnAction(e -> {
+            if (createLoanUseCase != null) {
+                new CreateLoanDialog(createLoanUseCase, customerRepository, ownerStage, l -> {
+                    refresh();
+                    if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
+                }).showAndWait();
+            }
+        });
+
         Button btnRefresh = new Button("↻ Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
-        top.getChildren().addAll(titleBox, btnRefresh);
+        top.getChildren().addAll(titleBox, btnNewLoan, btnRefresh);
         getChildren().add(top);
     }
 
+    @SuppressWarnings("unchecked")
     private void buildTableCard() {
         VBox tableCard = new VBox();
         tableCard.getStyleClass().add("table-card");

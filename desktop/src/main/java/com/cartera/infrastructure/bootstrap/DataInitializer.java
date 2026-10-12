@@ -10,6 +10,7 @@ import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.RouteRepository;
+import com.cartera.infrastructure.security.PasswordHasher;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -50,10 +51,13 @@ public class DataInitializer implements CommandLineRunner {
         String now = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
         LocalDate today = LocalDate.now();
 
-        // 1. Usuario
+        // 1. Usuarios del sistema
         String userId = "usr-col-1";
         userRepository.save(new AppUserEntity(
-                userId, "carlos", "hash_carlos_123", "Carlos Cobrador", 1, now
+                userId, "carlos", PasswordHasher.hash("carlos123"), "Carlos Cobrador", 1, now
+        ));
+        userRepository.save(new AppUserEntity(
+                "usr-admin-1", "admin", PasswordHasher.hash("admin123"), "Administrador General", 1, now
         ));
 
         // 2. Ruta

@@ -61,4 +61,16 @@
 .scroll-bar .increment-button, .scroll-bar .decrement-button { -fx-background-color: transparent; -fx-padding: 0; }
 .scroll-bar .increment-arrow, .scroll-bar .decrement-arrow { -fx-shape: " "; }
 
+/* Sidebar Sections & Components */
+.sidebar-section-header { -fx-text-fill: #64748b; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 16 10 4 10; }
+.sidebar-user-card { -fx-background-color: #141e2e; -fx-background-radius: 10; -fx-padding: 10 12; -fx-border-color: #334155; -fx-border-radius: 10; }
+.sidebar-version { -fx-text-fill: #475569; -fx-font-size: 11px; -fx-padding: 10 12; }
+
+/* Segmented Control Bar */
+.segment-bar { -fx-background-color: #1e293b; -fx-background-radius: 8; -fx-padding: 3; -fx-border-color: #334155; -fx-border-radius: 8; }
+.segment-btn { -fx-background-color: transparent; -fx-text-fill: #94a3b8; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 7 14; -fx-background-radius: 6; -fx-cursor: hand; cursor: pointer; }
+.segment-btn:hover { -fx-background-color: #334155; -fx-text-fill: #f8fafc; }
+.segment-btn-active { -fx-background-color: #2563eb !important; -fx-text-fill: white !important; }
+
+
 

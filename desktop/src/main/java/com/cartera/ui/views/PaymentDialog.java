@@ -109,11 +109,15 @@ public class PaymentDialog {
                 lblFeedback.setText("Registrando pago transaccional en SQLite...");
                 lblFeedback.setStyle("-fx-text-fill: #38bdf8;");
 
+                String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
+                        .map(com.cartera.infrastructure.security.UserSession::userId)
+                        .orElse("usr-col-1");
+
                 var cmd = new RecordPaymentCommand(
                         item.loanId(),
                         amount,
                         cmbMethod.getValue(),
-                        "usr-col-1",
+                        collectorId,
                         LocalDate.now(),
                         idempotencyKey
                 );

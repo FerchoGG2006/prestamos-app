@@ -95,6 +95,7 @@ public class TodayCollectionsView extends VBox {
         getChildren().add(top);
     }
 
+    @SuppressWarnings("unchecked")
     private void buildTableCard() {
         VBox tableCard = new VBox();
         tableCard.getStyleClass().add("table-card");

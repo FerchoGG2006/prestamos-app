@@ -13,12 +13,18 @@ import javafx.scene.layout.*;
 
 public class CustomersView extends VBox {
     private final CustomerRepository customerRepository;
+    private final com.cartera.customers.application.CreateCustomerUseCase createCustomerUseCase;
+    private final javafx.stage.Stage ownerStage;
     private final ObservableList<CustomerEntity> customerList = FXCollections.observableArrayList();
     private final Label lblFooterTotal = new Label();
     private final TableView<CustomerEntity> table = new TableView<>();
 
-    public CustomersView(CustomerRepository customerRepository) {
+    public CustomersView(CustomerRepository customerRepository,
+                         com.cartera.customers.application.CreateCustomerUseCase createCustomerUseCase,
+                         javafx.stage.Stage ownerStage) {
         this.customerRepository = customerRepository;
+        this.createCustomerUseCase = createCustomerUseCase;
+        this.ownerStage = ownerStage;
 
         setSpacing(18);
         setPadding(new Insets(24));
@@ -44,7 +50,7 @@ public class CustomersView extends VBox {
         TextField searchField = new TextField();
         searchField.setPromptText("Buscar por nombre, documento o barrio...");
         searchField.getStyleClass().add("search-field");
-        searchField.setPrefWidth(320);
+        searchField.setPrefWidth(300);
 
         FilteredList<CustomerEntity> filtered = new FilteredList<>(customerList, p -> true);
         searchField.textProperty().addListener((obs, old, val) -> {
@@ -60,14 +66,23 @@ public class CustomersView extends VBox {
         });
         table.setItems(filtered);
 
-        Button btnRefresh = new Button("↻ Actualizar");
+        Button btnNewCustomer = new Button("+ Registrar Cliente");
+        btnNewCustomer.getStyleClass().add("btn-primary");
+        btnNewCustomer.setOnAction(e -> {
+            if (createCustomerUseCase != null) {
+                new CustomerDialog(createCustomerUseCase, ownerStage, c -> refresh()).showAndWait();
+            }
+        });
+
+        Button btnRefresh = new Button("↻");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
-        top.getChildren().addAll(titleBox, searchField, btnRefresh);
+        top.getChildren().addAll(titleBox, searchField, btnNewCustomer, btnRefresh);
         getChildren().add(top);
     }
 
+    @SuppressWarnings("unchecked")
     private void buildTableCard() {
         VBox tableCard = new VBox();
         tableCard.getStyleClass().add("table-card");
