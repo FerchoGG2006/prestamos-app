@@ -417,6 +417,7 @@ public class CustomersView extends VBox {
         detailCard.getChildren().addAll(header, contactBox, creditCard);
     }
 
+    @SuppressWarnings("unchecked")
     private void showInstallmentsModal(LoanEntity loan) {
         if (installmentRepository == null) return;
         Stage modal = new Stage();

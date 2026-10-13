@@ -7,15 +7,12 @@ import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.security.AuthService;
 import com.cartera.infrastructure.security.UserSession;
 import com.cartera.payments.application.RecordPaymentUseCase;
-import com.cartera.ui.views.AuditView;
 import com.cartera.ui.views.CashManagementView;
 import com.cartera.ui.views.ConfigurationView;
 import com.cartera.ui.views.CustomersView;
 import com.cartera.ui.views.DashboardView;
 import com.cartera.ui.views.LoansView;
 import com.cartera.ui.views.LoginView;
-import com.cartera.ui.views.PlaceholderView;
-import com.cartera.ui.views.PortfolioManagementView;
 import com.cartera.ui.views.ReportsView;
 import com.cartera.ui.views.SettlementManagementView;
 import com.cartera.ui.views.TodayCollectionsView;
@@ -63,9 +60,7 @@ public final class CarteraApplication extends Application {
     private TodayCollectionsView todayCollectionsView;
     private CustomersView customersView;
     private LoansView loansView;
-    private PortfolioManagementView portfolioManagementView;
     private TreasuryManagementView treasuryManagementView;
-    private AuditView auditView;
     private ReportsView reportsView;
     private ConfigurationView configurationView;
 
@@ -116,7 +111,6 @@ public final class CarteraApplication extends Application {
         });
 
         customersView = new CustomersView(customerRepository, createCustomerUseCase, loanRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, loansView, stage);
-        portfolioManagementView = new PortfolioManagementView(customersView, loansView);
 
         var cashManagementView = new CashManagementView(cashMovementRepository, auditLogRepository, stage);
         var settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository);
@@ -126,7 +120,6 @@ public final class CarteraApplication extends Application {
         var settingRepository = context.getBean(com.cartera.infrastructure.persistence.repository.SystemSettingRepository.class);
         var userRepository = context.getBean(com.cartera.infrastructure.persistence.repository.AppUserRepository.class);
 
-        auditView = new AuditView(auditLogRepository);
         reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository);
         configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, stage);
 
