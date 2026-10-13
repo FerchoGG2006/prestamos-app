@@ -107,17 +107,17 @@ public class ReportsView extends VBox {
         segmentBar.getStyleClass().add("segment-bar");
         segmentBar.setAlignment(Pos.CENTER);
 
-        btnTabReports = new Button("📊  Métricas y Rentabilidad");
+        btnTabReports = new Button("Métricas y Rentabilidad");
         btnTabReports.getStyleClass().addAll("segment-btn", "segment-btn-active");
         btnTabReports.setOnAction(e -> showSection("reports"));
 
-        btnTabAudit = new Button("📜  Auditoría del Sistema");
+        btnTabAudit = new Button("Auditoría del Sistema");
         btnTabAudit.getStyleClass().add("segment-btn");
         btnTabAudit.setOnAction(e -> showSection("audit"));
 
         segmentBar.getChildren().addAll(btnTabReports, btnTabAudit);
 
-        Button btnRefresh = new Button("↻ Actualizar");
+        Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 

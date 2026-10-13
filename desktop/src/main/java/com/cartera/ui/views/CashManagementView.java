@@ -79,7 +79,7 @@ public class CashManagementView extends VBox {
         btnNewMovement.getStyleClass().add("btn-primary");
         btnNewMovement.setOnAction(e -> openNewMovementDialog());
 
-        Button btnRefresh = new Button("↻ Actualizar");
+        Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
@@ -269,7 +269,7 @@ public class CashManagementView extends VBox {
             try {
                 String clean = txtAmount.getText().replaceAll("[^0-9.]", "").trim();
                 if (clean.isEmpty() || new BigDecimal(clean).compareTo(BigDecimal.ZERO) <= 0) {
-                    lblFeedback.setText("⚠ Ingresa un monto mayor a cero.");
+                    lblFeedback.setText("Ingresa un monto mayor a cero.");
                     lblFeedback.setStyle("-fx-text-fill: #ef4444;");
                     lblFeedback.setVisible(true);
                     lblFeedback.setManaged(true);
@@ -312,7 +312,7 @@ public class CashManagementView extends VBox {
                 refresh();
                 dialog.close();
             } catch (Exception ex) {
-                lblFeedback.setText("⚠ Error: " + ex.getMessage());
+                lblFeedback.setText("Error: " + ex.getMessage());
                 lblFeedback.setStyle("-fx-text-fill: #ef4444;");
                 lblFeedback.setVisible(true);
                 lblFeedback.setManaged(true);

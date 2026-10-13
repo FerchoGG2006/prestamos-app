@@ -69,7 +69,7 @@ public class AuditView extends VBox {
         });
         table.setItems(filtered);
 
-        Button btnRefresh = new Button("↻ Actualizar");
+        Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 

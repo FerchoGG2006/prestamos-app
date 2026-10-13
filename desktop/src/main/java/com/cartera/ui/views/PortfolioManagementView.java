@@ -51,11 +51,11 @@ public class PortfolioManagementView extends BorderPane {
         segmentBar.getStyleClass().add("segment-bar");
         segmentBar.setAlignment(Pos.CENTER);
 
-        btnCustomers = new Button("👥  Directorio de Clientes");
+        btnCustomers = new Button("Directorio de Clientes");
         btnCustomers.getStyleClass().addAll("segment-btn", "segment-btn-active");
         btnCustomers.setOnAction(e -> showSection("customers"));
 
-        btnLoans = new Button("📑  Créditos y Préstamos");
+        btnLoans = new Button("Créditos y Préstamos");
         btnLoans.getStyleClass().add("segment-btn");
         btnLoans.setOnAction(e -> showSection("loans"));
 

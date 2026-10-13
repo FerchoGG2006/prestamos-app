@@ -93,17 +93,17 @@ public class TodayCollectionsView extends VBox {
         segmentBar.getStyleClass().add("segment-bar");
         segmentBar.setAlignment(Pos.CENTER);
 
-        btnTabRoute = new Button("📍  Ruta y Cobros de Hoy");
+        btnTabRoute = new Button("Ruta y Cobros de Hoy");
         btnTabRoute.getStyleClass().addAll("segment-btn", "segment-btn-active");
         btnTabRoute.setOnAction(e -> showSection("route"));
 
-        btnTabSettlement = new Button("🔒  Cuadre y Liquidación Diaria");
+        btnTabSettlement = new Button("Cuadre y Liquidación Diaria");
         btnTabSettlement.getStyleClass().add("segment-btn");
         btnTabSettlement.setOnAction(e -> showSection("settlement"));
 
         segmentBar.getChildren().addAll(btnTabRoute, btnTabSettlement);
 
-        Button btnRefresh = new Button("↻ Actualizar");
+        Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refreshData());
 
@@ -235,7 +235,7 @@ public class TodayCollectionsView extends VBox {
                     Label address = new Label(item.address());
                     address.setStyle("-fx-text-fill: #e2e8f0; -fx-font-size: 13px; -fx-font-weight: 500;");
 
-                    Label neighborhood = new Label("📍 Barrio " + item.neighborhood());
+                    Label neighborhood = new Label("Barrio " + item.neighborhood());
                     neighborhood.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     box.getChildren().addAll(address, neighborhood);
@@ -320,13 +320,13 @@ public class TodayCollectionsView extends VBox {
                     String baseStyle = "-fx-padding: 4 12; -fx-background-radius: 20; -fx-font-weight: bold; -fx-font-size: 11px;";
 
                     if (item.isPaidToday()) {
-                        badge.setText("✓  AL DÍA / PAGADO");
+                        badge.setText("AL DÍA / PAGADO");
                         badge.setStyle(baseStyle + "-fx-background-color: rgba(16, 185, 129, 0.15); -fx-text-fill: #34d399; -fx-border-color: rgba(16, 185, 129, 0.3); -fx-border-radius: 20;");
                     } else if (item.statusText().contains("VENCIDA")) {
-                        badge.setText("⚠  VENCIDA");
+                        badge.setText("VENCIDA");
                         badge.setStyle(baseStyle + "-fx-background-color: rgba(239, 68, 68, 0.15); -fx-text-fill: #f87171; -fx-border-color: rgba(239, 68, 68, 0.3); -fx-border-radius: 20;");
                     } else {
-                        badge.setText("●  COBRO HOY");
+                        badge.setText("COBRO HOY");
                         badge.setStyle(baseStyle + "-fx-background-color: rgba(56, 189, 248, 0.15); -fx-text-fill: #38bdf8; -fx-border-color: rgba(56, 189, 248, 0.3); -fx-border-radius: 20;");
                     }
                     setGraphic(badge);
@@ -360,7 +360,7 @@ public class TodayCollectionsView extends VBox {
                 } else {
                     CollectionItem item = getTableView().getItems().get(getIndex());
                     if (item.isPaidToday()) {
-                        btnPay.setText("✓ Al día");
+                        btnPay.setText("Al día");
                         btnPay.setDisable(true);
                         btnPay.setStyle("-fx-background-color: rgba(51, 65, 85, 0.5); -fx-text-fill: #94a3b8; -fx-font-size: 12px; -fx-font-weight: 500; -fx-padding: 6 14; -fx-background-radius: 6; -fx-border-color: #334155; -fx-border-radius: 6;");
                     } else {
@@ -415,10 +415,10 @@ public class TodayCollectionsView extends VBox {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         lblCounter.setText(total + " clientes en ruta • " + pending + " pendientes de cobro");
-        lblFooterClients.setText("👥 Total en ruta: " + total);
-        lblFooterPending.setText("⏳ Pendientes hoy: " + pending);
-        lblFooterTotalCuotas.setText("💵 Cuotas hoy: " + CURRENCY.format(totalCuotas));
-        lblFooterTotalBalance.setText("💼 Cartera total: " + CURRENCY.format(totalBalance));
+        lblFooterClients.setText("Total en ruta: " + total);
+        lblFooterPending.setText("Pendientes hoy: " + pending);
+        lblFooterTotalCuotas.setText("Cuotas hoy: " + CURRENCY.format(totalCuotas));
+        lblFooterTotalBalance.setText("Cartera total: " + CURRENCY.format(totalBalance));
     }
 
     private static String getInitials(String fullName) {

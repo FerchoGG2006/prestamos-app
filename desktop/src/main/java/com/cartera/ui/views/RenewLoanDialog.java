@@ -91,7 +91,7 @@ public class RenewLoanDialog extends Stage {
         // Header
         HBox header = new HBox(12);
         header.setAlignment(Pos.CENTER_LEFT);
-        Label icon = new Label("🔄");
+        Label icon = new Label("RENOVACIÓN");
         icon.setStyle("-fx-font-size: 24px;");
         VBox titleBox = new VBox(2);
         Label title = new Label("Renovación de Crédito");
@@ -232,7 +232,7 @@ public class RenewLoanDialog extends Stage {
             }
             close();
         } catch (Exception ex) {
-            lblFeedback.setText("⚠ Error: " + ex.getMessage());
+            lblFeedback.setText("Error: " + ex.getMessage());
             lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.15); -fx-padding: 6 10; -fx-background-radius: 6;");
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);

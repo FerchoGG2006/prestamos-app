@@ -41,7 +41,7 @@ public class SettlementManagementView extends VBox {
     private final TextField txtDelivered = new TextField("0");
     private final Label lblDifference = new Label("$ 0 (CUADRADO)");
     private final TextField txtJustification = new TextField();
-    private final Button btnCloseSettlement = new Button("🔒  Cerrar y Liquidar Jornada");
+    private final Button btnCloseSettlement = new Button("Cerrar y Liquidar Jornada");
     private final Label lblStatusBadge = new Label("ABIERTA");
     private final Label lblFeedback = new Label();
 
@@ -78,7 +78,7 @@ public class SettlementManagementView extends VBox {
         dpDate.getStyleClass().add("search-field");
         dpDate.valueProperty().addListener((obs, old, val) -> refresh());
 
-        Button btnRefresh = new Button("↻ Recalcular");
+        Button btnRefresh = new Button("Recalcular");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
@@ -219,7 +219,7 @@ public class SettlementManagementView extends VBox {
         lblExpected.setText(CURRENCY.format(currentSummary.expectedAmount()));
 
         if (currentSummary.isClosed()) {
-            lblStatusBadge.setText("✓ LIQUIDADA / CERRADA");
+            lblStatusBadge.setText("LIQUIDADA / CERRADA");
             lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: rgba(16, 185, 129, 0.2); -fx-text-fill: #34d399;");
             txtDelivered.setDisable(true);
             txtJustification.setDisable(true);
@@ -230,7 +230,7 @@ public class SettlementManagementView extends VBox {
                 txtJustification.setText(currentSummary.settlement().getDifferenceJustification());
             }
         } else {
-            lblStatusBadge.setText("● JORNADA ABIERTA");
+            lblStatusBadge.setText("JORNADA ABIERTA");
             lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: rgba(37, 99, 235, 0.2); -fx-text-fill: #60a5fa;");
             txtDelivered.setDisable(false);
             txtJustification.setDisable(false);
@@ -257,13 +257,13 @@ public class SettlementManagementView extends VBox {
 
             BigDecimal diff = delivered.subtract(expected);
             if (diff.compareTo(BigDecimal.ZERO) == 0) {
-                lblDifference.setText("$ 0  ✓ (CUADRADO EXACTO)");
+                lblDifference.setText("$ 0 (CUADRADO)");
                 lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #10b981;");
             } else if (diff.compareTo(BigDecimal.ZERO) > 0) {
                 lblDifference.setText("+ " + CURRENCY.format(diff) + "  (SOBRANTE)");
                 lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #38bdf8;");
             } else {
-                lblDifference.setText("- " + CURRENCY.format(diff.abs()) + "  ⚠ (FALTANTE)");
+                lblDifference.setText("- " + CURRENCY.format(diff.abs()) + " (FALTANTE)");
                 lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #ef4444;");
             }
         } catch (Exception ignored) {
@@ -292,7 +292,7 @@ public class SettlementManagementView extends VBox {
             settlementUseCase.closeSettlement(currentSummary.sessionId(), delivered, justification, authorId);
             refresh();
 
-            lblFeedback.setText("✓ Liquidación cerrada y registrada de forma inmutable.");
+            lblFeedback.setText("Liquidación cerrada exitosamente.");
             lblFeedback.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);
@@ -302,7 +302,7 @@ public class SettlementManagementView extends VBox {
     }
 
     private void showError(String msg) {
-        lblFeedback.setText("⚠ " + msg);
+        lblFeedback.setText(msg);
         lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
         lblFeedback.setVisible(true);
         lblFeedback.setManaged(true);

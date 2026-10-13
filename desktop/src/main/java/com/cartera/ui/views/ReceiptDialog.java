@@ -118,15 +118,15 @@ public class ReceiptDialog extends Stage {
         HBox actions = new HBox(10);
         actions.setAlignment(Pos.CENTER);
 
-        Button btnPrint = new Button("🖨️  Imprimir");
+        Button btnPrint = new Button("Imprimir Recibo");
         btnPrint.getStyleClass().add("btn-primary");
         btnPrint.setOnAction(e -> printTicket(ticketCard));
 
-        Button btnCopy = new Button("📋  Copiar (WhatsApp)");
+        Button btnCopy = new Button("Copiar Texto");
         btnCopy.getStyleClass().add("btn-success");
         btnCopy.setOnAction(e -> {
             copyToClipboard(now);
-            lblCopied.setText("✓ ¡Texto de recibo copiado al portapapeles!");
+            lblCopied.setText("Texto de recibo copiado al portapapeles.");
             lblCopied.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 6 10; -fx-background-radius: 6;");
             lblCopied.setVisible(true);
             lblCopied.setManaged(true);
@@ -179,18 +179,18 @@ public class ReceiptDialog extends Stage {
 
     private void copyToClipboard(String now) {
         String text = String.format("""
-                🧾 *COMPROBANTE DE PAGO*
-                *%s*
-                -----------------------------------
-                📅 Fecha: %s
-                🔢 Recibo: #%s
-                👤 Cliente: %s
-                💳 Documento: %s
-                💵 *ABONO RECIBIDO:* %s
-                📉 *SALDO RESTANTE:* %s
-                🤝 Cobrador: %s
-                -----------------------------------
-                ¡Gracias por su puntual cumplimiento!
+                COMPROBANTE DE PAGO
+                %s
+                ===================================
+                Fecha: %s
+                Recibo No: %s
+                Cliente: %s
+                Documento: %s
+                Valor Pagado: %s
+                Saldo Pendiente: %s
+                Cobrador: %s
+                ===================================
+                Comprobante emitido por el sistema.
                 """,
                 data.companyName() != null ? data.companyName() : "SISTEMA DE CARTERA",
                 now,

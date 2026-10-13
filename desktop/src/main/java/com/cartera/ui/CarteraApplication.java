@@ -168,7 +168,7 @@ public final class CarteraApplication extends Application {
 
     private void onLoginSuccess(UserSession session) {
         if (lblUserName != null) {
-            lblUserName.setText("👤  " + session.fullName());
+            lblUserName.setText(session.fullName());
         }
         if (lblUserRole != null) {
             String roleText = session.isAdmin() ? "Administrador • Acceso Total" : "Cobrador • Ruta Activa";
@@ -201,7 +201,7 @@ public final class CarteraApplication extends Application {
         brandBox.setAlignment(Pos.CENTER_LEFT);
         brandBox.setPadding(new Insets(0, 0, 16, 4));
 
-        var logoBadge = new Label("💼");
+        var logoBadge = new Label("SC");
         logoBadge.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 15px; -fx-padding: 8; -fx-background-radius: 8;");
 
         var brandText = new VBox(2);
@@ -216,7 +216,7 @@ public final class CarteraApplication extends Application {
         // Tarjeta de Identificación de Rol Dinámica
         var userCard = new VBox(3);
         userCard.getStyleClass().add("sidebar-user-card");
-        lblUserName = new Label("👤  Usuario");
+        lblUserName = new Label("Usuario");
         lblUserName.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 12px; -fx-font-weight: bold;");
         lblUserRole = new Label("Sesión Activa");
         lblUserRole.setStyle("-fx-text-fill: #10b981; -fx-font-size: 10px;");
@@ -233,7 +233,7 @@ public final class CarteraApplication extends Application {
         box.getChildren().add(spacer);
 
         // Botón Cerrar Sesión
-        Button btnLogout = new Button("🚪  Cerrar Sesión");
+        Button btnLogout = new Button("Cerrar Sesión");
         btnLogout.getStyleClass().add("nav-button");
         btnLogout.setStyle("-fx-text-fill: #f87171; -fx-padding: 8 14; -fx-font-size: 13px;");
         btnLogout.setMaxWidth(Double.MAX_VALUE);
@@ -260,21 +260,21 @@ public final class CarteraApplication extends Application {
         if (session != null && session.isCollector()) {
             // Menú Ultra Limpio para Cobrador (solo lo que necesita)
             navContainer.getChildren().add(createSectionHeader("OPERACIÓN Y RUTA"));
-            navContainer.getChildren().add(createNavButton("📍  Ruta y Liquidación", "Cobros y Rutas"));
-            navContainer.getChildren().add(createNavButton("👥  Mis Clientes", "Clientes"));
+            navContainer.getChildren().add(createNavButton("Ruta y Liquidación", "Cobros y Rutas"));
+            navContainer.getChildren().add(createNavButton("Mis Clientes", "Clientes"));
         } else {
             // Menú Completo para Administrador
             navContainer.getChildren().add(createSectionHeader("GENERAL"));
-            navContainer.getChildren().add(createNavButton("📊  Panel Principal", "Inicio"));
+            navContainer.getChildren().add(createNavButton("Panel Principal", "Inicio"));
 
             navContainer.getChildren().add(createSectionHeader("OPERACIÓN Y RUTA"));
-            navContainer.getChildren().add(createNavButton("📍  Ruta y Liquidación", "Cobros y Rutas"));
-            navContainer.getChildren().add(createNavButton("👥  Clientes y Créditos", "Clientes"));
+            navContainer.getChildren().add(createNavButton("Ruta y Liquidación", "Cobros y Rutas"));
+            navContainer.getChildren().add(createNavButton("Clientes y Créditos", "Clientes"));
 
             navContainer.getChildren().add(createSectionHeader("ADMINISTRACIÓN Y CONTROL"));
-            navContainer.getChildren().add(createNavButton("💰  Caja y Tesorería", "Tesorería y Cierres"));
-            navContainer.getChildren().add(createNavButton("📈  Informes y Auditoría", "Reportes"));
-            navContainer.getChildren().add(createNavButton("⚙️  Configuración", "Configuración"));
+            navContainer.getChildren().add(createNavButton("Caja y Tesorería", "Tesorería y Cierres"));
+            navContainer.getChildren().add(createNavButton("Informes y Auditoría", "Reportes"));
+            navContainer.getChildren().add(createNavButton("Configuración", "Configuración"));
         }
     }
 
@@ -304,7 +304,7 @@ public final class CarteraApplication extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        var status = new Label("\u25CF OFFLINE \u2014 SQLite Activo");
+        var status = new Label("OFFLINE \u2014 SQLite Activo");
         status.getStyleClass().add("status-ok");
 
         bar.getChildren().addAll(topTitle, spacer, status);

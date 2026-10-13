@@ -62,7 +62,7 @@ public class DashboardView extends VBox {
         bannerText.getChildren().addAll(bannerTitle, bannerDesc);
         HBox.setHgrow(bannerText, Priority.ALWAYS);
 
-        Button btnAction = new Button("Ir a Cobros de Hoy →");
+        Button btnAction = new Button("Ir a Cobros de Hoy");
         btnAction.getStyleClass().add("btn-primary");
         btnAction.setStyle("-fx-font-size: 14px; -fx-padding: 10 20;");
         btnAction.setOnAction(e -> {

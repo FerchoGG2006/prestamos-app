@@ -102,11 +102,11 @@ public class CustomersView extends VBox {
         segmentBar.getStyleClass().add("segment-bar");
         segmentBar.setAlignment(Pos.CENTER);
 
-        btnTabCustomers = new Button("👥  Ficha de Clientes y Créditos");
+        btnTabCustomers = new Button("Ficha de Clientes y Créditos");
         btnTabCustomers.getStyleClass().addAll("segment-btn", "segment-btn-active");
         btnTabCustomers.setOnAction(e -> showSection("customers"));
 
-        btnTabLoans = new Button("📋  Cartera Global de Préstamos");
+        btnTabLoans = new Button("Cartera Global de Préstamos");
         btnTabLoans.getStyleClass().add("segment-btn");
         btnTabLoans.setOnAction(e -> showSection("loans"));
 
@@ -120,7 +120,7 @@ public class CustomersView extends VBox {
             }
         });
 
-        Button btnRefresh = new Button("↻ Actualizar");
+        Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
@@ -260,10 +260,10 @@ public class CustomersView extends VBox {
                     box.setAlignment(Pos.CENTER_LEFT);
 
                     String b = (c.getNeighborhood() != null && !c.getNeighborhood().isBlank()) ? c.getNeighborhood() : "Sin barrio";
-                    Label lblN = new Label("📍 " + b);
+                    Label lblN = new Label("Barrio: " + b);
                     lblN.setStyle("-fx-text-fill: #e2e8f0; -fx-font-size: 12px;");
 
-                    Label lblP = new Label("📞 " + (c.getPhone() != null ? c.getPhone() : "-"));
+                    Label lblP = new Label("Tel: " + (c.getPhone() != null ? c.getPhone() : "-"));
                     lblP.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     box.getChildren().addAll(lblN, lblP);
@@ -280,7 +280,7 @@ public class CustomersView extends VBox {
         detailCard.getChildren().clear();
         detailCard.setAlignment(Pos.CENTER);
 
-        Label icon = new Label("👤");
+        Label icon = new Label("");
         icon.setStyle("-fx-font-size: 40px; -fx-opacity: 0.5;");
 
         Label prompt = new Label("Selecciona un cliente");
@@ -327,10 +327,10 @@ public class CustomersView extends VBox {
         contactBox.setStyle("-fx-background-color: #0f172a; -fx-background-radius: 8; -fx-padding: 12;");
 
         contactBox.getChildren().addAll(
-                createDetailRow("📞 Teléfono:", c.getPhone() != null ? c.getPhone() : "No registrado"),
-                createDetailRow("📍 Dirección:", c.getAddress() != null ? c.getAddress() : "No registrada"),
-                createDetailRow("🏙️ Barrio:", c.getNeighborhood() != null ? c.getNeighborhood() : "Sin barrio"),
-                createDetailRow("🏢 Negocio:", c.getBusinessName() != null ? c.getBusinessName() : "Particular")
+                createDetailRow("Teléfono:", c.getPhone() != null ? c.getPhone() : "No registrado"),
+                createDetailRow("Dirección:", c.getAddress() != null ? c.getAddress() : "No registrada"),
+                createDetailRow("Barrio:", c.getNeighborhood() != null ? c.getNeighborhood() : "Sin barrio"),
+                createDetailRow("Negocio:", c.getBusinessName() != null ? c.getBusinessName() : "Particular")
         );
 
         // Sección de Crédito
@@ -350,7 +350,7 @@ public class CustomersView extends VBox {
             credTitle.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-font-weight: bold;");
             Region sp = new Region();
             HBox.setHgrow(sp, Priority.ALWAYS);
-            Label badge = new Label("● AL DÍA");
+            Label badge = new Label("AL DÍA");
             badge.setStyle("-fx-background-color: rgba(16, 185, 129, 0.2); -fx-text-fill: #34d399; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8; -fx-background-radius: 10;");
             credHeader.getChildren().addAll(credTitle, sp, badge);
 
@@ -374,7 +374,7 @@ public class CustomersView extends VBox {
 
             // Acciones Rápidas para el Crédito
             HBox actionButtons = new HBox(8);
-            Button btnRenew = new Button("🔄 Renovar Crédito");
+            Button btnRenew = new Button("Renovar Crédito");
             btnRenew.getStyleClass().add("btn-primary");
             btnRenew.setStyle("-fx-font-size: 11px; -fx-padding: 6 12;");
             btnRenew.setOnAction(e -> {
@@ -386,7 +386,7 @@ public class CustomersView extends VBox {
                 }
             });
 
-            Button btnPlan = new Button("📑 Ver Cuotas");
+            Button btnPlan = new Button("Ver Cuotas");
             btnPlan.getStyleClass().add("btn-secondary");
             btnPlan.setStyle("-fx-font-size: 11px; -fx-padding: 6 12;");
             btnPlan.setOnAction(e -> showInstallmentsModal(activeLoan));
@@ -397,7 +397,7 @@ public class CustomersView extends VBox {
             Label noLoan = new Label("Sin créditos activos en este momento.");
             noLoan.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
 
-            Button btnNewLoan = new Button("➕ Otorgar Nuevo Crédito");
+            Button btnNewLoan = new Button("Otorgar Nuevo Crédito");
             btnNewLoan.getStyleClass().add("btn-success");
             btnNewLoan.setMaxWidth(Double.MAX_VALUE);
             btnNewLoan.setOnAction(e -> {
@@ -498,7 +498,7 @@ public class CustomersView extends VBox {
     }
 
     private void updateStats(int count) {
-        lblFooterTotal.setText("👥 Total de clientes: " + count);
+        lblFooterTotal.setText("Total de clientes: " + count);
     }
 
     private static String getInitials(String fullName) {

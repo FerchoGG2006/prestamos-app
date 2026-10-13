@@ -52,11 +52,11 @@ public class TreasuryManagementView extends BorderPane {
         segmentBar.getStyleClass().add("segment-bar");
         segmentBar.setAlignment(Pos.CENTER);
 
-        btnCash = new Button("💵  Arqueo y Caja");
+        btnCash = new Button("Arqueo y Caja");
         btnCash.getStyleClass().addAll("segment-btn", "segment-btn-active");
         btnCash.setOnAction(e -> showSection("cash"));
 
-        btnSettlements = new Button("📋  Liquidación de Rutas");
+        btnSettlements = new Button("Liquidación de Rutas");
         btnSettlements.getStyleClass().add("segment-btn");
         btnSettlements.setOnAction(e -> showSection("settlements"));
 

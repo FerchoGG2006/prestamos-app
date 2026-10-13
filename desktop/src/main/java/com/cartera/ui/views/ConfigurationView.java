@@ -159,11 +159,11 @@ public class ConfigurationView extends VBox {
         lblBackupFeedback.setManaged(false);
 
         HBox btns = new HBox(10);
-        Button btnExport = new Button("💾  Crear Copia");
+        Button btnExport = new Button("Crear Copia");
         btnExport.getStyleClass().add("btn-success");
         btnExport.setOnAction(e -> exportBackup());
 
-        Button btnOpenFolder = new Button("📂  Abrir Carpeta");
+        Button btnOpenFolder = new Button("Abrir Carpeta");
         btnOpenFolder.getStyleClass().add("btn-secondary");
         btnOpenFolder.setOnAction(e -> openDbFolder());
 
@@ -252,7 +252,7 @@ public class ConfigurationView extends VBox {
         settingRepository.save(new SystemSettingEntity("company_phone", txtPhone.getText().trim(), now));
         settingRepository.save(new SystemSettingEntity("company_city", txtCity.getText().trim(), now));
 
-        lblParamsFeedback.setText("✓ Parámetros actualizados con éxito.");
+        lblParamsFeedback.setText("Parámetros actualizados con éxito.");
         lblParamsFeedback.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 6 10; -fx-background-radius: 6;");
         lblParamsFeedback.setVisible(true);
         lblParamsFeedback.setManaged(true);
@@ -309,7 +309,7 @@ public class ConfigurationView extends VBox {
             String pass = txtPass.getText();
 
             if (name.isEmpty() || user.isEmpty() || pass.isEmpty()) {
-                lblErr.setText("⚠ Todos los campos son obligatorios.");
+                lblErr.setText("Todos los campos son obligatorios.");
                 lblErr.setStyle("-fx-text-fill: #ef4444;");
                 lblErr.setVisible(true);
                 lblErr.setManaged(true);
@@ -317,7 +317,7 @@ public class ConfigurationView extends VBox {
             }
 
             if (userRepository.findByUsername(user).isPresent()) {
-                lblErr.setText("⚠ Ya existe un usuario con ese nombre de acceso.");
+                lblErr.setText("Ya existe un usuario con ese nombre de acceso.");
                 lblErr.setStyle("-fx-text-fill: #ef4444;");
                 lblErr.setVisible(true);
                 lblErr.setManaged(true);
@@ -371,7 +371,7 @@ public class ConfigurationView extends VBox {
         try {
             Path dbPath = Paths.get(System.getProperty("user.home"), ".sistema-cartera", "cartera.db");
             if (!Files.exists(dbPath)) {
-                lblBackupFeedback.setText("⚠ No se encontró el archivo de base de datos.");
+                lblBackupFeedback.setText("No se encontró el archivo de base de datos.");
                 lblBackupFeedback.setStyle("-fx-text-fill: #ef4444;");
                 lblBackupFeedback.setVisible(true);
                 lblBackupFeedback.setManaged(true);
@@ -387,13 +387,13 @@ public class ConfigurationView extends VBox {
             File dest = fileChooser.showSaveDialog(ownerStage);
             if (dest != null) {
                 Files.copy(dbPath, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                lblBackupFeedback.setText("✓ Copia exportada con éxito:\n" + dest.getName());
+                lblBackupFeedback.setText("Copia exportada con éxito:\n" + dest.getName());
                 lblBackupFeedback.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 6 10; -fx-background-radius: 6;");
                 lblBackupFeedback.setVisible(true);
                 lblBackupFeedback.setManaged(true);
             }
         } catch (Exception ex) {
-            lblBackupFeedback.setText("⚠ Error al respaldar: " + ex.getMessage());
+            lblBackupFeedback.setText("Error al respaldar: " + ex.getMessage());
             lblBackupFeedback.setStyle("-fx-text-fill: #ef4444;");
             lblBackupFeedback.setVisible(true);
             lblBackupFeedback.setManaged(true);

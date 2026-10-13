@@ -86,7 +86,7 @@ public class LoansView extends VBox {
             }
         });
 
-        Button btnRefresh = new Button("↻ Actualizar");
+        Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
@@ -258,10 +258,10 @@ public class LoansView extends VBox {
                     badge.setAlignment(Pos.CENTER);
                     String base = "-fx-padding: 4 12; -fx-background-radius: 20; -fx-font-weight: bold; -fx-font-size: 11px;";
                     if ("FINALIZADO".equalsIgnoreCase(text)) {
-                        badge.setText("✓  FINALIZADO");
+                        badge.setText("FINALIZADO");
                         badge.setStyle(base + "-fx-background-color: rgba(16, 185, 129, 0.15); -fx-text-fill: #34d399; -fx-border-color: rgba(16, 185, 129, 0.3); -fx-border-radius: 20;");
                     } else {
-                        badge.setText("●  " + text.toUpperCase());
+                        badge.setText(text.toUpperCase());
                         badge.setStyle(base + "-fx-background-color: rgba(56, 189, 248, 0.15); -fx-text-fill: #38bdf8; -fx-border-color: rgba(56, 189, 248, 0.3); -fx-border-radius: 20;");
                     }
                     setGraphic(badge);
@@ -275,7 +275,7 @@ public class LoansView extends VBox {
         TableColumn<LoanEntity, LoanEntity> colAction = new TableColumn<>("ACCIONES");
         colAction.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
         colAction.setCellFactory(col -> new TableCell<>() {
-            private final Button btnRenew = new Button("🔄 Renovar");
+            private final Button btnRenew = new Button("Renovar");
             {
                 btnRenew.setStyle("-fx-background-color: #334155; -fx-text-fill: #f8fafc; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
                 btnRenew.setOnAction(e -> {
@@ -338,9 +338,9 @@ public class LoansView extends VBox {
         BigDecimal sumPrincipal = loans.stream().map(LoanEntity::getPrincipal).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal sumTotalAgreed = loans.stream().map(LoanEntity::getTotalAgreed).reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        lblFooterCount.setText("📋 Contratos activos: " + loans.size());
-        lblFooterPrincipal.setText("💵 Capital total prestado: " + CURRENCY.format(sumPrincipal));
-        lblFooterTotalAgreed.setText("💼 Cartera total pactada: " + CURRENCY.format(sumTotalAgreed));
+        lblFooterCount.setText("Contratos activos: " + loans.size());
+        lblFooterPrincipal.setText("Capital total prestado: " + CURRENCY.format(sumPrincipal));
+        lblFooterTotalAgreed.setText("Cartera total pactada: " + CURRENCY.format(sumTotalAgreed));
     }
 
     private static String getInitials(String fullName) {

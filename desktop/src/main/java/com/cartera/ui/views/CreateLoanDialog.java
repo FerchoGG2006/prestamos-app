@@ -85,7 +85,7 @@ public class CreateLoanDialog extends Stage {
         // Header
         HBox header = new HBox(12);
         header.setAlignment(Pos.CENTER_LEFT);
-        Label icon = new Label("📑");
+        Label icon = new Label("NUEVO CRÉDITO");
         icon.setStyle("-fx-font-size: 24px;");
         VBox titleBox = new VBox(2);
         Label title = new Label("Nuevo Crédito y Desembolso");
@@ -351,7 +351,7 @@ public class CreateLoanDialog extends Stage {
     }
 
     private void showError(String msg) {
-        lblFeedback.setText("⚠ " + msg);
+        lblFeedback.setText(msg);
         lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
         lblFeedback.setVisible(true);
         lblFeedback.setManaged(true);

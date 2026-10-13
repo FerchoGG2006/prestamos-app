@@ -25,7 +25,7 @@ public class LoginView extends StackPane {
     private final TextField txtUsername = new TextField();
     private final PasswordField txtPassword = new PasswordField();
     private final Label lblError = new Label();
-    private final Button btnLogin = new Button("Ingresar al Sistema →");
+    private final Button btnLogin = new Button("Ingresar al Sistema");
 
     public LoginView(AuthService authService, Consumer<UserSession> onLoginSuccess) {
         this.authService = authService;
@@ -154,12 +154,12 @@ public class LoginView extends StackPane {
             showError("Error al iniciar sesión: " + ex.getMessage());
         } finally {
             btnLogin.setDisable(false);
-            btnLogin.setText("Ingresar al Sistema →");
+            btnLogin.setText("Ingresar al Sistema");
         }
     }
 
     private void showError(String message) {
-        lblError.setText("⚠ " + message);
+        lblError.setText(message);
         lblError.setVisible(true);
         lblError.setManaged(true);
     }
