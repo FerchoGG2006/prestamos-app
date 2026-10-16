@@ -3,18 +3,15 @@ package com.cartera.history.application;
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
-import com.cartera.infrastructure.persistence.entity.PaymentEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
-import com.cartera.infrastructure.persistence.repository.PaymentRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * Servicio de Consulta y Evaluación de Historial Crediticio.
@@ -28,16 +25,13 @@ public class CreditHistoryService {
     private final CustomerRepository customerRepository;
     private final LoanRepository loanRepository;
     private final InstallmentRepository installmentRepository;
-    private final PaymentRepository paymentRepository;
 
     public CreditHistoryService(CustomerRepository customerRepository,
                                 LoanRepository loanRepository,
-                                InstallmentRepository installmentRepository,
-                                PaymentRepository paymentRepository) {
+                                InstallmentRepository installmentRepository) {
         this.customerRepository = customerRepository;
         this.loanRepository = loanRepository;
         this.installmentRepository = installmentRepository;
-        this.paymentRepository = paymentRepository;
     }
 
     public enum RepaymentRating {
