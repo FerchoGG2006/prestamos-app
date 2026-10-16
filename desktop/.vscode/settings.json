@@ -9,5 +9,7 @@
   ],
   "java.import.gradle.enabled": true,
   "java.import.gradle.wrapper.enabled": true,
-  "java.import.gradle.java.home": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot"
+  "java.import.gradle.java.home": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.12.101-hotspot",
+  "boot-java.validation.boot.version-validation": "OFF",
+  "boot-java.validation.java.version-validation": "OFF"
 }

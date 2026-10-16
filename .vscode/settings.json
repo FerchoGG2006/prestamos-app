@@ -16,5 +16,7 @@
   "scss.validate": false,
   "css.lint.unknownVendorSpecificProperties": "ignore",
   "css.lint.vendorPrefix": "ignore",
-  "css.lint.unknownProperties": "ignore"
+  "css.lint.unknownProperties": "ignore",
+  "boot-java.validation.boot.version-validation": "OFF",
+  "boot-java.validation.java.version-validation": "OFF"
 }

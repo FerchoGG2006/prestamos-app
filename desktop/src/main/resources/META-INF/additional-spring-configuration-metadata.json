@@ -1,0 +1,10 @@
+{
+  "properties": [
+    {
+      "name": "cartera.demo-data.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Habilita o deshabilita la carga inicial de datos de prueba en la base de datos local SQLite.",
+      "defaultValue": false
+    }
+  ]
+}
