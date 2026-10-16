@@ -85,7 +85,7 @@ public class RenewLoanDialog extends Stage {
     private void buildUI() {
         VBox root = new VBox(18);
         root.setPadding(new Insets(24));
-        root.setStyle("-fx-background-color: #1e293b;");
+        root.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12;");
         root.setPrefWidth(520);
 
         // Header
@@ -95,27 +95,28 @@ public class RenewLoanDialog extends Stage {
         icon.setStyle("-fx-font-size: 24px;");
         VBox titleBox = new VBox(2);
         Label title = new Label("Renovación de Crédito");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 18px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
         Label subtitle = new Label("Cliente: " + customerName);
-        subtitle.setStyle("-fx-text-fill: #38bdf8; -fx-font-size: 13px; -fx-font-weight: bold;");
+        subtitle.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 13px; -fx-font-weight: bold;");
         titleBox.getChildren().addAll(title, subtitle);
         header.getChildren().addAll(icon, titleBox);
 
         // Tarjeta resumen del crédito actual
         HBox balanceCard = new HBox(16);
         balanceCard.getStyleClass().add("table-card");
+        balanceCard.setStyle("-fx-background-color: #f8fafc; -fx-background-radius: 10; -fx-border-color: #e2e8f0; -fx-border-radius: 10; -fx-border-width: 1;");
         balanceCard.setPadding(new Insets(14));
         balanceCard.setAlignment(Pos.CENTER_LEFT);
 
-        VBox b1 = new VBox(2, new Label("Saldo Pendiente por Pagar") {{ setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;"); }}, lblCurrentBalance);
+        VBox b1 = new VBox(2, new Label("Saldo Pendiente por Pagar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblCurrentBalance);
         lblCurrentBalance.setText(CURRENCY.format(currentBalance));
-        lblCurrentBalance.setStyle("-fx-text-fill: #f87171; -fx-font-size: 16px; -fx-font-weight: bold;");
+        lblCurrentBalance.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 16px; -fx-font-weight: bold;");
 
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
-        VBox b2 = new VBox(2, new Label("Efectivo Neto a Entregar") {{ setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;"); }}, lblNetCash);
-        lblNetCash.setStyle("-fx-text-fill: #34d399; -fx-font-size: 18px; -fx-font-weight: bold;");
+        VBox b2 = new VBox(2, new Label("Efectivo Neto a Entregar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblNetCash);
+        lblNetCash.setStyle("-fx-text-fill: #059669; -fx-font-size: 18px; -fx-font-weight: bold;");
 
         balanceCard.getChildren().addAll(b1, sp, b2);
 
@@ -142,8 +143,8 @@ public class RenewLoanDialog extends Stage {
         setupField(grid, "Cuotas *", txtInstallmentCount, 1, 1);
         setupField(grid, "Fecha Inicio *", dpStartDate, 0, 2);
 
-        VBox boxTotal = new VBox(4, new Label("Nuevo Total Pactado") {{ setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;"); }}, lblNewTotal);
-        lblNewTotal.setStyle("-fx-text-fill: #38bdf8; -fx-font-size: 15px; -fx-font-weight: bold;");
+        VBox boxTotal = new VBox(4, new Label("Nuevo Total Pactado") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblNewTotal);
+        lblNewTotal.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 15px; -fx-font-weight: bold;");
         grid.add(boxTotal, 1, 2);
 
         // Feedback
@@ -173,7 +174,7 @@ public class RenewLoanDialog extends Stage {
     private void setupField(GridPane grid, String label, javafx.scene.Node field, int col, int row) {
         VBox box = new VBox(4);
         Label l = new Label(label);
-        l.setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px; -fx-font-weight: bold;");
+        l.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         box.getChildren().addAll(l, field);
         grid.add(box, col, row);
     }
@@ -190,10 +191,10 @@ public class RenewLoanDialog extends Stage {
             lblNewTotal.setText(CURRENCY.format(totalAgreed));
 
             if (netCash.compareTo(BigDecimal.ZERO) < 0) {
-                lblNetCash.setStyle("-fx-text-fill: #ef4444; -fx-font-size: 18px; -fx-font-weight: bold;");
+                lblNetCash.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 18px; -fx-font-weight: bold;");
                 btnConfirm.setDisable(true);
             } else {
-                lblNetCash.setStyle("-fx-text-fill: #34d399; -fx-font-size: 18px; -fx-font-weight: bold;");
+                lblNetCash.setStyle("-fx-text-fill: #059669; -fx-font-size: 18px; -fx-font-weight: bold;");
                 btnConfirm.setDisable(false);
             }
         } catch (Exception ignored) {
@@ -233,7 +234,7 @@ public class RenewLoanDialog extends Stage {
             close();
         } catch (Exception ex) {
             lblFeedback.setText("Error: " + ex.getMessage());
-            lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.15); -fx-padding: 6 10; -fx-background-radius: 6;");
+            lblFeedback.setStyle("-fx-text-fill: #b91c1c; -fx-background-color: #fef2f2; -fx-padding: 6 10; -fx-background-radius: 6; -fx-border-color: #fecaca; -fx-border-radius: 6;");
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);
         }

@@ -80,7 +80,7 @@ public final class CarteraApplication extends Application {
         authService = context.getBean(AuthService.class);
 
         root = new BorderPane();
-        root.setStyle("-fx-background-color: #0f172a;");
+        root.setStyle("-fx-background-color: #f8fafc;");
 
         // Inicializar vistas con servicios inyectados de Spring
         var collectionsService = context.getBean(TodayCollectionsService.class);
@@ -124,7 +124,7 @@ public final class CarteraApplication extends Application {
         configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, stage);
 
         mainContainer = new BorderPane();
-        mainContainer.setStyle("-fx-background-color: #0f172a;");
+        mainContainer.setStyle("-fx-background-color: #f8fafc;");
         mainContainer.setTop(topBar());
 
         root.setLeft(sidebar());
@@ -133,7 +133,7 @@ public final class CarteraApplication extends Application {
         loginView = new LoginView(authService, this::onLoginSuccess);
 
         appRoot = new StackPane();
-        appRoot.setStyle("-fx-background-color: #0b1120;");
+        appRoot.setStyle("-fx-background-color: #f1f5f9;");
         appRoot.getChildren().add(loginView);
 
         Rectangle2D visualBounds = Screen.getPrimary().getVisualBounds();
@@ -195,11 +195,11 @@ public final class CarteraApplication extends Application {
         brandBox.setPadding(new Insets(0, 0, 16, 4));
 
         var logoBadge = new Label("SC");
-        logoBadge.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 15px; -fx-padding: 8; -fx-background-radius: 8;");
+        logoBadge.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 8 10; -fx-background-radius: 8;");
 
         var brandText = new VBox(2);
         var title = new Label("SISTEMA CARTERA");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 14px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
         var subtitle = new Label("Cobros & Administración");
         subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
         brandText.getChildren().addAll(title, subtitle);
@@ -210,9 +210,9 @@ public final class CarteraApplication extends Application {
         var userCard = new VBox(3);
         userCard.getStyleClass().add("sidebar-user-card");
         lblUserName = new Label("Usuario");
-        lblUserName.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblUserName.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 12px; -fx-font-weight: bold;");
         lblUserRole = new Label("Sesión Activa");
-        lblUserRole.setStyle("-fx-text-fill: #10b981; -fx-font-size: 10px;");
+        lblUserRole.setStyle("-fx-text-fill: #059669; -fx-font-size: 10px; -fx-font-weight: bold;");
         userCard.getChildren().addAll(lblUserName, lblUserRole);
 
         box.getChildren().addAll(brandBox, userCard);
@@ -228,7 +228,7 @@ public final class CarteraApplication extends Application {
         // Botón Cerrar Sesión
         Button btnLogout = new Button("Cerrar Sesión");
         btnLogout.getStyleClass().add("nav-button");
-        btnLogout.setStyle("-fx-text-fill: #f87171; -fx-padding: 8 14; -fx-font-size: 13px;");
+        btnLogout.setStyle("-fx-text-fill: #dc2626; -fx-padding: 8 14; -fx-font-size: 13px;");
         btnLogout.setMaxWidth(Double.MAX_VALUE);
         btnLogout.setOnAction(e -> onLogout());
         box.getChildren().add(btnLogout);

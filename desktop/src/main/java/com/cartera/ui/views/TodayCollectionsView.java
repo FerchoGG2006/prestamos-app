@@ -70,7 +70,7 @@ public class TodayCollectionsView extends VBox {
 
         setSpacing(18);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
         buildContentArea();
@@ -204,11 +204,11 @@ public class TodayCollectionsView extends VBox {
 
                     VBox textGroup = new VBox(2);
                     Label name = new Label(item.fullName());
-                    name.setStyle("-fx-text-fill: #f8fafc; -fx-font-weight: bold; -fx-font-size: 13px;");
+                    name.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px;");
 
                     String sub = (item.businessName().isBlank() ? "" : item.businessName() + " • ") + item.phone();
                     Label subtitle = new Label(sub);
-                    subtitle.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+                    subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     textGroup.getChildren().addAll(name, subtitle);
                     box.getChildren().addAll(avatar, textGroup);
@@ -233,7 +233,7 @@ public class TodayCollectionsView extends VBox {
                     VBox box = new VBox(2);
                     box.setAlignment(Pos.CENTER_LEFT);
                     Label address = new Label(item.address());
-                    address.setStyle("-fx-text-fill: #e2e8f0; -fx-font-size: 13px; -fx-font-weight: 500;");
+                    address.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 13px; -fx-font-weight: 500;");
 
                     Label neighborhood = new Label("Barrio " + item.neighborhood());
                     neighborhood.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
@@ -263,7 +263,7 @@ public class TodayCollectionsView extends VBox {
                     boolean isPending = item.installmentPending().compareTo(BigDecimal.ZERO) > 0;
                     Label amount = new Label(CURRENCY.format(item.installmentPending()));
                     amount.setStyle(isPending
-                            ? "-fx-text-fill: #10b981; -fx-font-weight: bold; -fx-font-size: 13px;"
+                            ? "-fx-text-fill: #059669; -fx-font-weight: bold; -fx-font-size: 13px;"
                             : "-fx-text-fill: #94a3b8; -fx-font-weight: bold; -fx-font-size: 13px;");
 
                     Label tag = new Label("Cuota #" + item.installmentNumber());
@@ -291,7 +291,7 @@ public class TodayCollectionsView extends VBox {
                     VBox box = new VBox(2);
                     box.setAlignment(Pos.CENTER_LEFT);
                     Label amount = new Label(CURRENCY.format(item.loanBalance()));
-                    amount.setStyle("-fx-text-fill: #38bdf8; -fx-font-weight: bold; -fx-font-size: 13px;");
+                    amount.setStyle("-fx-text-fill: #2563eb; -fx-font-weight: bold; -fx-font-size: 13px;");
 
                     Label tag = new Label("Saldo crédito");
                     tag.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
@@ -321,13 +321,13 @@ public class TodayCollectionsView extends VBox {
 
                     if (item.isPaidToday()) {
                         badge.setText("AL DÍA / PAGADO");
-                        badge.setStyle(baseStyle + "-fx-background-color: rgba(16, 185, 129, 0.15); -fx-text-fill: #34d399; -fx-border-color: rgba(16, 185, 129, 0.3); -fx-border-radius: 20;");
+                        badge.setStyle(baseStyle + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 20;");
                     } else if (item.statusText().contains("VENCIDA")) {
                         badge.setText("VENCIDA");
-                        badge.setStyle(baseStyle + "-fx-background-color: rgba(239, 68, 68, 0.15); -fx-text-fill: #f87171; -fx-border-color: rgba(239, 68, 68, 0.3); -fx-border-radius: 20;");
+                        badge.setStyle(baseStyle + "-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 20;");
                     } else {
                         badge.setText("COBRO HOY");
-                        badge.setStyle(baseStyle + "-fx-background-color: rgba(56, 189, 248, 0.15); -fx-text-fill: #38bdf8; -fx-border-color: rgba(56, 189, 248, 0.3); -fx-border-radius: 20;");
+                        badge.setStyle(baseStyle + "-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 20;");
                     }
                     setGraphic(badge);
                     setText(null);
@@ -362,11 +362,11 @@ public class TodayCollectionsView extends VBox {
                     if (item.isPaidToday()) {
                         btnPay.setText("Al día");
                         btnPay.setDisable(true);
-                        btnPay.setStyle("-fx-background-color: rgba(51, 65, 85, 0.5); -fx-text-fill: #94a3b8; -fx-font-size: 12px; -fx-font-weight: 500; -fx-padding: 6 14; -fx-background-radius: 6; -fx-border-color: #334155; -fx-border-radius: 6;");
+                        btnPay.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #94a3b8; -fx-font-size: 12px; -fx-font-weight: 500; -fx-padding: 6 14; -fx-background-radius: 6; -fx-border-color: #e2e8f0; -fx-border-radius: 6;");
                     } else {
                         btnPay.setText("Cobrar");
                         btnPay.setDisable(false);
-                        btnPay.setStyle("-fx-background-color: linear-gradient(to right, #10b981, #059669); -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 6 16; -fx-background-radius: 6; -fx-cursor: hand;");
+                        btnPay.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 6 16; -fx-background-radius: 6; -fx-cursor: hand; -fx-effect: dropshadow(gaussian, rgba(5,150,105,0.2), 4, 0, 0, 1);");
                     }
                     setGraphic(btnPay);
                 }
@@ -381,10 +381,10 @@ public class TodayCollectionsView extends VBox {
         footer.getStyleClass().add("table-card-footer");
         footer.setAlignment(Pos.CENTER_LEFT);
 
-        lblFooterClients.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
-        lblFooterPending.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
-        lblFooterTotalCuotas.setStyle("-fx-text-fill: #10b981; -fx-font-size: 12px; -fx-font-weight: bold;");
-        lblFooterTotalBalance.setStyle("-fx-text-fill: #38bdf8; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblFooterClients.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
+        lblFooterPending.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
+        lblFooterTotalCuotas.setStyle("-fx-text-fill: #059669; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblFooterTotalBalance.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 12px; -fx-font-weight: bold;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);

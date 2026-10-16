@@ -30,7 +30,7 @@ public class AuditView extends VBox {
 
         setSpacing(18);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
         buildTableCard();
@@ -112,11 +112,11 @@ public class AuditView extends VBox {
                     badge.setAlignment(Pos.CENTER);
                     String base = "-fx-padding: 3 8; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px;";
                     if (action.contains("LOGIN") || action.contains("COBRO") || action.contains("CREAR")) {
-                        badge.setStyle(base + "-fx-background-color: rgba(16, 185, 129, 0.2); -fx-text-fill: #34d399;");
+                        badge.setStyle(base + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 12;");
                     } else if (action.contains("DESEMBOLSO") || action.contains("CERRADA")) {
-                        badge.setStyle(base + "-fx-background-color: rgba(37, 99, 235, 0.2); -fx-text-fill: #60a5fa;");
+                        badge.setStyle(base + "-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 12;");
                     } else {
-                        badge.setStyle(base + "-fx-background-color: rgba(148, 163, 184, 0.2); -fx-text-fill: #cbd5e1;");
+                        badge.setStyle(base + "-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-border-color: #e2e8f0; -fx-border-radius: 12;");
                     }
                     setGraphic(badge);
                     setText(null);
@@ -151,7 +151,7 @@ public class AuditView extends VBox {
         HBox footer = new HBox(16);
         footer.getStyleClass().add("table-card-footer");
         footer.setAlignment(Pos.CENTER_LEFT);
-        lblCount.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
+        lblCount.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         footer.getChildren().add(lblCount);
 
         tableCard.getChildren().addAll(table, footer);

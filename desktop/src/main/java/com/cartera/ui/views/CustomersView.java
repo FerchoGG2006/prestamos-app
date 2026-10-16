@@ -78,7 +78,7 @@ public class CustomersView extends VBox {
 
         setSpacing(18);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
         buildContentArea();
@@ -182,7 +182,7 @@ public class CustomersView extends VBox {
 
         HBox footer = new HBox(12);
         footer.setAlignment(Pos.CENTER_LEFT);
-        lblFooterTotal.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+        lblFooterTotal.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
         footer.getChildren().add(lblFooterTotal);
 
         leftPane.getChildren().addAll(searchField, table, footer);
@@ -232,10 +232,10 @@ public class CustomersView extends VBox {
 
                     VBox textGroup = new VBox(2);
                     Label name = new Label(c.getFullName());
-                    name.setStyle("-fx-text-fill: #f8fafc; -fx-font-weight: bold; -fx-font-size: 12px;");
+                    name.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 12px;");
 
                     Label doc = new Label("CC: " + c.getDocumentNumber());
-                    doc.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+                    doc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     textGroup.getChildren().addAll(name, doc);
                     box.getChildren().addAll(avatar, textGroup);
@@ -261,7 +261,7 @@ public class CustomersView extends VBox {
 
                     String b = (c.getNeighborhood() != null && !c.getNeighborhood().isBlank()) ? c.getNeighborhood() : "Sin barrio";
                     Label lblN = new Label("Barrio: " + b);
-                    lblN.setStyle("-fx-text-fill: #e2e8f0; -fx-font-size: 12px;");
+                    lblN.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 12px;");
 
                     Label lblP = new Label("Tel: " + (c.getPhone() != null ? c.getPhone() : "-"));
                     lblP.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
@@ -284,7 +284,7 @@ public class CustomersView extends VBox {
         icon.setStyle("-fx-font-size: 40px; -fx-opacity: 0.5;");
 
         Label prompt = new Label("Selecciona un cliente");
-        prompt.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 14px; -fx-font-weight: bold;");
+        prompt.setStyle("-fx-text-fill: #64748b; -fx-font-size: 14px; -fx-font-weight: bold;");
 
         Label sub = new Label("Aquí verás su información personal, créditos activos, opciones de renovación y plan de cuotas.");
         sub.setWrapText(true);
@@ -315,16 +315,16 @@ public class CustomersView extends VBox {
 
         VBox namesBox = new VBox(2);
         Label lblName = new Label(c.getFullName());
-        lblName.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 15px; -fx-font-weight: bold;");
+        lblName.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
         Label lblDoc = new Label("C.C. " + c.getDocumentNumber());
-        lblDoc.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
+        lblDoc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         namesBox.getChildren().addAll(lblName, lblDoc);
 
         header.getChildren().addAll(avatar, namesBox);
 
         // Datos de Contacto
         VBox contactBox = new VBox(6);
-        contactBox.setStyle("-fx-background-color: #0f172a; -fx-background-radius: 8; -fx-padding: 12;");
+        contactBox.setStyle("-fx-background-color: #f8fafc; -fx-background-radius: 8; -fx-padding: 12; -fx-border-color: #e2e8f0; -fx-border-radius: 8;");
 
         contactBox.getChildren().addAll(
                 createDetailRow("Teléfono:", c.getPhone() != null ? c.getPhone() : "No registrado"),
@@ -335,7 +335,7 @@ public class CustomersView extends VBox {
 
         // Sección de Crédito
         VBox creditCard = new VBox(10);
-        creditCard.setStyle("-fx-background-color: #141e2e; -fx-background-radius: 10; -fx-padding: 14; -fx-border-color: #334155; -fx-border-radius: 10;");
+        creditCard.setStyle("-fx-background-color: #f8fafc; -fx-background-radius: 10; -fx-padding: 14; -fx-border-color: #e2e8f0; -fx-border-radius: 10;");
 
         List<LoanEntity> customerLoans = (loanRepository != null) ? loanRepository.findByCustomerId(c.getId()) : List.of();
         LoanEntity activeLoan = customerLoans.stream()
@@ -347,11 +347,11 @@ public class CustomersView extends VBox {
             HBox credHeader = new HBox(8);
             credHeader.setAlignment(Pos.CENTER_LEFT);
             Label credTitle = new Label("Crédito Activo");
-            credTitle.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 13px; -fx-font-weight: bold;");
+            credTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 13px; -fx-font-weight: bold;");
             Region sp = new Region();
             HBox.setHgrow(sp, Priority.ALWAYS);
             Label badge = new Label("AL DÍA");
-            badge.setStyle("-fx-background-color: rgba(16, 185, 129, 0.2); -fx-text-fill: #34d399; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8; -fx-background-radius: 10;");
+            badge.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8; -fx-background-radius: 10; -fx-border-color: #a7f3d0; -fx-border-radius: 10;");
             credHeader.getChildren().addAll(credTitle, sp, badge);
 
             BigDecimal currentBalance = (installmentRepository != null)
@@ -362,9 +362,9 @@ public class CustomersView extends VBox {
 
             VBox figures = new VBox(4);
             Label lblBalTitle = new Label("Saldo Pendiente:");
-            lblBalTitle.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+            lblBalTitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
             Label lblBalVal = new Label(CURRENCY.format(currentBalance));
-            lblBalVal.setStyle("-fx-text-fill: #10b981; -fx-font-size: 20px; -fx-font-weight: bold;");
+            lblBalVal.setStyle("-fx-text-fill: #059669; -fx-font-size: 20px; -fx-font-weight: bold;");
 
             Label lblDetails = new Label("Prestado: " + CURRENCY.format(activeLoan.getPrincipal())
                     + " • Total: " + CURRENCY.format(activeLoan.getTotalAgreed())
@@ -395,7 +395,7 @@ public class CustomersView extends VBox {
             creditCard.getChildren().addAll(credHeader, figures, actionButtons);
         } else {
             Label noLoan = new Label("Sin créditos activos en este momento.");
-            noLoan.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
+            noLoan.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
 
             Button btnNewLoan = new Button("Otorgar Nuevo Crédito");
             btnNewLoan.getStyleClass().add("btn-success");
@@ -427,11 +427,11 @@ public class CustomersView extends VBox {
 
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
-        root.setStyle("-fx-background-color: #0f172a;");
+        root.setStyle("-fx-background-color: #ffffff;");
         root.setPrefWidth(540);
 
         Label title = new Label("Plan de Cuotas del Crédito");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 15px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
 
         TableView<InstallmentEntity> tableInst = new TableView<>();
         tableInst.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
@@ -481,7 +481,7 @@ public class CustomersView extends VBox {
         Label l = new Label(label);
         l.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
         Label v = new Label(value);
-        v.setStyle("-fx-text-fill: #e2e8f0; -fx-font-size: 11px;");
+        v.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 11px;");
         row.getChildren().addAll(l, v);
         return row;
     }

@@ -28,17 +28,17 @@ public class PortfolioManagementView extends BorderPane {
         this.loansView = loansView;
 
         setPadding(new Insets(0));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         // Barra de herramientas superior con selector segmentado
         var topBar = new HBox(16);
         topBar.setAlignment(Pos.CENTER_LEFT);
         topBar.setPadding(new Insets(16, 28, 12, 28));
-        topBar.setStyle("-fx-background-color: #131d31; -fx-border-color: #334155; -fx-border-width: 0 0 1 0;");
+        topBar.setStyle("-fx-background-color: #ffffff; -fx-border-color: #e2e8f0; -fx-border-width: 0 0 1 0;");
 
         var titleBox = new VBox(2);
         var mainTitle = new Label("Gestión de Cartera");
-        mainTitle.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 18px; -fx-font-weight: bold;");
+        mainTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
         subTitle = new Label("Directorio de Clientes registrados");
         subTitle.getStyleClass().add("muted");
         titleBox.getChildren().addAll(mainTitle, subTitle);

@@ -10,7 +10,7 @@ import javafx.scene.layout.VBox;
 public class PlaceholderView extends StackPane {
     public PlaceholderView(String moduleName) {
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         VBox card = new VBox(10);
         card.setAlignment(Pos.CENTER);

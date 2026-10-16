@@ -58,14 +58,14 @@ public class ReceiptDialog extends Stage {
     private void buildUI() {
         VBox root = new VBox(16);
         root.setPadding(new Insets(24));
-        root.setStyle("-fx-background-color: #0f172a;");
+        root.setStyle("-fx-background-color: #f1f5f9;");
         root.setPrefWidth(420);
 
         // Tarjeta estilo Ticket Térmico
         VBox ticketCard = new VBox(8);
         ticketCard.setAlignment(Pos.CENTER);
         ticketCard.setPadding(new Insets(20));
-        ticketCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 8; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 15, 0, 0, 4);");
+        ticketCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-border-color: #e2e8f0; -fx-border-radius: 12; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 20, 0, 0, 4);");
 
         String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
 
@@ -126,7 +126,7 @@ public class ReceiptDialog extends Stage {
         btnCopy.setOnAction(e -> {
             copyToClipboard(now);
             lblCopied.setText("Texto de recibo copiado al portapapeles.");
-            lblCopied.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 6 10; -fx-background-radius: 6;");
+            lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
             lblCopied.setVisible(true);
             lblCopied.setManaged(true);
         });

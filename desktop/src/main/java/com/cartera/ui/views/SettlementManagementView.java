@@ -55,7 +55,7 @@ public class SettlementManagementView extends VBox {
 
         setSpacing(18);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
         buildSettlementCard();
@@ -94,12 +94,12 @@ public class SettlementManagementView extends VBox {
         HBox cardHeader = new HBox(12);
         cardHeader.setAlignment(Pos.CENTER_LEFT);
         Label cardTitle = new Label("Liquidación de la Jornada");
-        cardTitle.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 15px; -fx-font-weight: bold;");
+        cardTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: rgba(37, 99, 235, 0.2); -fx-text-fill: #60a5fa;");
+        lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 12;");
         cardHeader.getChildren().addAll(cardTitle, spacer, lblStatusBadge);
 
         // Grid de Cuadre
@@ -107,14 +107,14 @@ public class SettlementManagementView extends VBox {
         grid.setHgap(20);
         grid.setVgap(12);
 
-        lblCollected.setStyle("-fx-text-fill: #34d399; -fx-font-size: 18px; -fx-font-weight: bold;");
-        lblExpected.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 18px; -fx-font-weight: bold;");
+        lblCollected.setStyle("-fx-text-fill: #059669; -fx-font-size: 18px; -fx-font-weight: bold;");
+        lblExpected.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
 
         txtDelivered.getStyleClass().add("search-field");
         txtDelivered.setStyle("-fx-font-size: 14px; -fx-font-weight: bold;");
         txtDelivered.textProperty().addListener((obs, old, val) -> updateDifference());
 
-        lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #10b981;");
+        lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #059669;");
 
         txtJustification.setPromptText("Notas o explicación en caso de diferencia/descuadre...");
         txtJustification.getStyleClass().add("search-field");
@@ -144,7 +144,7 @@ public class SettlementManagementView extends VBox {
     private VBox createFieldBox(String label, javafx.scene.Node content) {
         VBox box = new VBox(4);
         Label lbl = new Label(label);
-        lbl.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px; -fx-font-weight: bold;");
+        lbl.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
         box.getChildren().addAll(lbl, content);
         return box;
     }
@@ -156,7 +156,7 @@ public class SettlementManagementView extends VBox {
         VBox.setVgrow(tableCard, Priority.ALWAYS);
 
         Label title = new Label("Historial de Liquidaciones Cerradas");
-        title.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 14 16 8 16;");
+        title.setStyle("-fx-text-fill: #64748b; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 14 16 8 16;");
 
         historyTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(historyTable, Priority.ALWAYS);
@@ -185,11 +185,11 @@ public class SettlementManagementView extends VBox {
                     BigDecimal diff = s.getCashDifference();
                     setText(CURRENCY.format(diff));
                     if (diff.compareTo(BigDecimal.ZERO) == 0) {
-                        setStyle("-fx-text-fill: #10b981; -fx-font-weight: bold;");
+                        setStyle("-fx-text-fill: #059669; -fx-font-weight: bold;");
                     } else if (diff.compareTo(BigDecimal.ZERO) > 0) {
-                        setStyle("-fx-text-fill: #38bdf8; -fx-font-weight: bold;");
+                        setStyle("-fx-text-fill: #2563eb; -fx-font-weight: bold;");
                     } else {
-                        setStyle("-fx-text-fill: #ef4444; -fx-font-weight: bold;");
+                        setStyle("-fx-text-fill: #dc2626; -fx-font-weight: bold;");
                     }
                 }
             }
@@ -220,7 +220,7 @@ public class SettlementManagementView extends VBox {
 
         if (currentSummary.isClosed()) {
             lblStatusBadge.setText("LIQUIDADA / CERRADA");
-            lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: rgba(16, 185, 129, 0.2); -fx-text-fill: #34d399;");
+            lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 12;");
             txtDelivered.setDisable(true);
             txtJustification.setDisable(true);
             btnCloseSettlement.setDisable(true);
@@ -231,7 +231,7 @@ public class SettlementManagementView extends VBox {
             }
         } else {
             lblStatusBadge.setText("JORNADA ABIERTA");
-            lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: rgba(37, 99, 235, 0.2); -fx-text-fill: #60a5fa;");
+            lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 12;");
             txtDelivered.setDisable(false);
             txtJustification.setDisable(false);
             btnCloseSettlement.setDisable(false);
@@ -258,13 +258,13 @@ public class SettlementManagementView extends VBox {
             BigDecimal diff = delivered.subtract(expected);
             if (diff.compareTo(BigDecimal.ZERO) == 0) {
                 lblDifference.setText("$ 0 (CUADRADO)");
-                lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #10b981;");
+                lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #059669;");
             } else if (diff.compareTo(BigDecimal.ZERO) > 0) {
                 lblDifference.setText("+ " + CURRENCY.format(diff) + "  (SOBRANTE)");
-                lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #38bdf8;");
+                lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2563eb;");
             } else {
                 lblDifference.setText("- " + CURRENCY.format(diff.abs()) + " (FALTANTE)");
-                lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #ef4444;");
+                lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #dc2626;");
             }
         } catch (Exception ignored) {
         }

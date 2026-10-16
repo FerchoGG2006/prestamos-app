@@ -79,7 +79,7 @@ public class CreateLoanDialog extends Stage {
     private void buildUI() {
         VBox root = new VBox(20);
         root.setPadding(new Insets(24, 28, 24, 28));
-        root.setStyle("-fx-background-color: #1e293b;");
+        root.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12;");
         root.setPrefWidth(720);
 
         // Header
@@ -89,9 +89,9 @@ public class CreateLoanDialog extends Stage {
         icon.setStyle("-fx-font-size: 24px;");
         VBox titleBox = new VBox(2);
         Label title = new Label("Nuevo Crédito y Desembolso");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 18px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
         Label subtitle = new Label("Simula las cuotas, calcula intereses y aprueba el desembolso");
-        subtitle.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
+        subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         titleBox.getChildren().addAll(title, subtitle);
         header.getChildren().addAll(icon, titleBox);
 
@@ -104,7 +104,7 @@ public class CreateLoanDialog extends Stage {
 
         // Combo Cliente
         Label lblCust = new Label("Seleccionar Cliente *");
-        lblCust.setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px; -fx-font-weight: bold;");
+        lblCust.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         cmbCustomer.setMaxWidth(Double.MAX_VALUE);
         cmbCustomer.getStyleClass().add("search-field");
         loadCustomers();
@@ -119,7 +119,7 @@ public class CreateLoanDialog extends Stage {
         cmbFrequency.setMaxWidth(Double.MAX_VALUE);
         cmbFrequency.getStyleClass().add("search-field");
         VBox boxFreq = new VBox(4, new Label("Modalidad / Frecuencia *") {{
-            setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px; -fx-font-weight: bold;");
+            setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         }}, cmbFrequency);
 
         // Cuotas
@@ -129,7 +129,7 @@ public class CreateLoanDialog extends Stage {
         dpStartDate.setMaxWidth(Double.MAX_VALUE);
         dpStartDate.getStyleClass().add("search-field");
         VBox boxDate = new VBox(4, new Label("Fecha Primer Cobro *") {{
-            setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px; -fx-font-weight: bold;");
+            setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         }}, dpStartDate);
 
         leftForm.getChildren().addAll(lblCust, cmbCustomer, boxPrincipal, boxInterest, boxFreq, boxCount, boxDate);
@@ -149,21 +149,22 @@ public class CreateLoanDialog extends Stage {
         VBox summaryCard = new VBox(8);
         summaryCard.getStyleClass().add("table-card");
         summaryCard.setPadding(new Insets(14));
+        summaryCard.setStyle("-fx-background-color: #f8fafc; -fx-background-radius: 10; -fx-border-color: #e2e8f0; -fx-border-radius: 10; -fx-border-width: 1;");
 
         Label sumTitle = new Label("Resumen del Plan");
-        sumTitle.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px; -fx-font-weight: bold;");
+        sumTitle.setStyle("-fx-text-fill: #475569; -fx-font-size: 12px; -fx-font-weight: bold;");
 
         HBox sumMetrics = new HBox(12);
         sumMetrics.setAlignment(Pos.CENTER_LEFT);
 
-        VBox mTotal = new VBox(2, new Label("Total a Cobrar") {{ setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 10px;"); }}, lblSummaryTotal);
-        lblSummaryTotal.setStyle("-fx-text-fill: #38bdf8; -fx-font-size: 16px; -fx-font-weight: bold;");
+        VBox mTotal = new VBox(2, new Label("Total a Cobrar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px;"); }}, lblSummaryTotal);
+        lblSummaryTotal.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 16px; -fx-font-weight: bold;");
 
-        VBox mCuota = new VBox(2, new Label("Valor Cuota") {{ setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 10px;"); }}, lblSummaryInstallment);
-        lblSummaryInstallment.setStyle("-fx-text-fill: #10b981; -fx-font-size: 16px; -fx-font-weight: bold;");
+        VBox mCuota = new VBox(2, new Label("Valor Cuota") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px;"); }}, lblSummaryInstallment);
+        lblSummaryInstallment.setStyle("-fx-text-fill: #059669; -fx-font-size: 16px; -fx-font-weight: bold;");
 
-        VBox mInteres = new VBox(2, new Label("Ganancia") {{ setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 10px;"); }}, lblSummaryInterest);
-        lblSummaryInterest.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 16px; -fx-font-weight: bold;");
+        VBox mInteres = new VBox(2, new Label("Ganancia") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px;"); }}, lblSummaryInterest);
+        lblSummaryInterest.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
 
         sumMetrics.getChildren().addAll(mTotal, mCuota, mInteres);
         summaryCard.getChildren().addAll(sumTitle, sumMetrics);
@@ -207,7 +208,7 @@ public class CreateLoanDialog extends Stage {
     private VBox createFieldBox(String label, TextField field) {
         VBox box = new VBox(4);
         Label lbl = new Label(label);
-        lbl.setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px; -fx-font-weight: bold;");
+        lbl.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         field.getStyleClass().add("search-field");
         field.setMaxWidth(Double.MAX_VALUE);
         box.getChildren().addAll(lbl, field);
@@ -318,7 +319,7 @@ public class CreateLoanDialog extends Stage {
 
             btnDisburse.setDisable(true);
             lblFeedback.setText("Procesando crédito y desembolso transaccional en SQLite...");
-            lblFeedback.setStyle("-fx-text-fill: #38bdf8; -fx-background-color: rgba(56, 189, 248, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
+            lblFeedback.setStyle("-fx-text-fill: #1d4ed8; -fx-background-color: #eff6ff; -fx-padding: 8 12; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6;");
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);
 
@@ -352,7 +353,7 @@ public class CreateLoanDialog extends Stage {
 
     private void showError(String msg) {
         lblFeedback.setText(msg);
-        lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
+        lblFeedback.setStyle("-fx-text-fill: #b91c1c; -fx-background-color: #fef2f2; -fx-padding: 8 12; -fx-background-radius: 6; -fx-border-color: #fecaca; -fx-border-radius: 6;");
         lblFeedback.setVisible(true);
         lblFeedback.setManaged(true);
     }

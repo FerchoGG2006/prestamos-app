@@ -55,7 +55,7 @@ public class CashManagementView extends VBox {
 
         setSpacing(18);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
         buildMetrics();
@@ -147,9 +147,9 @@ public class CashManagementView extends VBox {
                     badge.setAlignment(Pos.CENTER);
                     String base = "-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px;";
                     if ("INGRESO".equalsIgnoreCase(type)) {
-                        badge.setStyle(base + "-fx-background-color: rgba(16, 185, 129, 0.2); -fx-text-fill: #34d399;");
+                        badge.setStyle(base + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 12;");
                     } else {
-                        badge.setStyle(base + "-fx-background-color: rgba(239, 68, 68, 0.2); -fx-text-fill: #f87171;");
+                        badge.setStyle(base + "-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 12;");
                     }
                     setGraphic(badge);
                     setText(null);
@@ -176,7 +176,7 @@ public class CashManagementView extends VBox {
                     boolean isIncome = "INGRESO".equalsIgnoreCase(m.getMovementType());
                     String sign = isIncome ? "+ " : "- ";
                     setText(sign + CURRENCY.format(m.getAmount()));
-                    setStyle(isIncome ? "-fx-text-fill: #34d399; -fx-font-weight: bold;" : "-fx-text-fill: #f87171; -fx-font-weight: bold;");
+                    setStyle(isIncome ? "-fx-text-fill: #059669; -fx-font-weight: bold;" : "-fx-text-fill: #dc2626; -fx-font-weight: bold;" );
                 }
             }
         });
@@ -226,11 +226,11 @@ public class CashManagementView extends VBox {
 
         VBox root = new VBox(16);
         root.setPadding(new Insets(24));
-        root.setStyle("-fx-background-color: #1e293b;");
+        root.setStyle("-fx-background-color: #ffffff;");
         root.setPrefWidth(420);
 
         Label title = new Label("Nuevo Movimiento de Efectivo");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 16px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
 
         ComboBox<String> cmbType = new ComboBox<>(FXCollections.observableArrayList("INGRESO", "EGRESO"));
         cmbType.setValue("EGRESO");

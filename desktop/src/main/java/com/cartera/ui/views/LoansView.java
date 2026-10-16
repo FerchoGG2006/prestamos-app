@@ -56,7 +56,7 @@ public class LoansView extends VBox {
 
         setSpacing(18);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
         buildTableCard();
@@ -129,10 +129,10 @@ public class LoansView extends VBox {
 
                     VBox textGroup = new VBox(2);
                     Label lblName = new Label(name);
-                    lblName.setStyle("-fx-text-fill: #f8fafc; -fx-font-weight: bold; -fx-font-size: 13px;");
+                    lblName.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px;");
 
                     Label lblId = new Label("Contrato ID: " + l.getId());
-                    lblId.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+                    lblId.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     textGroup.getChildren().addAll(lblName, lblId);
                     box.getChildren().addAll(avatar, textGroup);
@@ -157,7 +157,7 @@ public class LoansView extends VBox {
                     VBox box = new VBox(2);
                     box.setAlignment(Pos.CENTER_LEFT);
                     Label amount = new Label(CURRENCY.format(l.getPrincipal()));
-                    amount.setStyle("-fx-text-fill: #f8fafc; -fx-font-weight: bold; -fx-font-size: 13px;");
+                    amount.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px;");
                     Label tag = new Label("Desembolsado");
                     tag.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
                     box.getChildren().addAll(amount, tag);
@@ -182,7 +182,7 @@ public class LoansView extends VBox {
                     VBox box = new VBox(2);
                     box.setAlignment(Pos.CENTER_LEFT);
                     Label amount = new Label(CURRENCY.format(l.getTotalAgreed()));
-                    amount.setStyle("-fx-text-fill: #38bdf8; -fx-font-weight: bold; -fx-font-size: 13px;");
+                    amount.setStyle("-fx-text-fill: #2563eb; -fx-font-weight: bold; -fx-font-size: 13px;");
                     Label tag = new Label("Capital + Interés");
                     tag.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
                     box.getChildren().addAll(amount, tag);
@@ -207,7 +207,7 @@ public class LoansView extends VBox {
                     VBox box = new VBox(2);
                     box.setAlignment(Pos.CENTER_LEFT);
                     Label terms = new Label(l.getInstallmentCount() + " cuotas (" + l.getFrequency() + ")");
-                    terms.setStyle("-fx-text-fill: #e2e8f0; -fx-font-weight: 500; -fx-font-size: 13px;");
+                    terms.setStyle("-fx-text-fill: #1e293b; -fx-font-weight: 500; -fx-font-size: 13px;");
                     Label tag = new Label("Modalidad de cobro");
                     tag.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
                     box.getChildren().addAll(terms, tag);
@@ -232,7 +232,7 @@ public class LoansView extends VBox {
                     VBox box = new VBox(2);
                     box.setAlignment(Pos.CENTER_LEFT);
                     Label date = new Label(l.getStartDate());
-                    date.setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 13px;");
+                    date.setStyle("-fx-text-fill: #334155; -fx-font-size: 13px;");
                     Label tag = new Label("Desembolso");
                     tag.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
                     box.getChildren().addAll(date, tag);
@@ -259,10 +259,10 @@ public class LoansView extends VBox {
                     String base = "-fx-padding: 4 12; -fx-background-radius: 20; -fx-font-weight: bold; -fx-font-size: 11px;";
                     if ("FINALIZADO".equalsIgnoreCase(text)) {
                         badge.setText("FINALIZADO");
-                        badge.setStyle(base + "-fx-background-color: rgba(16, 185, 129, 0.15); -fx-text-fill: #34d399; -fx-border-color: rgba(16, 185, 129, 0.3); -fx-border-radius: 20;");
+                        badge.setStyle(base + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 20;");
                     } else {
                         badge.setText(text.toUpperCase());
-                        badge.setStyle(base + "-fx-background-color: rgba(56, 189, 248, 0.15); -fx-text-fill: #38bdf8; -fx-border-color: rgba(56, 189, 248, 0.3); -fx-border-radius: 20;");
+                        badge.setStyle(base + "-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 20;");
                     }
                     setGraphic(badge);
                     setText(null);
@@ -277,7 +277,7 @@ public class LoansView extends VBox {
         colAction.setCellFactory(col -> new TableCell<>() {
             private final Button btnRenew = new Button("Renovar");
             {
-                btnRenew.setStyle("-fx-background-color: #334155; -fx-text-fill: #f8fafc; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
+                btnRenew.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
                 btnRenew.setOnAction(e -> {
                     LoanEntity loan = getItem();
                     if (loan != null && "ACTIVO".equalsIgnoreCase(loan.getStatus()) && renewLoanUseCase != null) {
@@ -316,9 +316,9 @@ public class LoansView extends VBox {
         footer.getStyleClass().add("table-card-footer");
         footer.setAlignment(Pos.CENTER_LEFT);
 
-        lblFooterCount.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
-        lblFooterPrincipal.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 12px; -fx-font-weight: bold;");
-        lblFooterTotalAgreed.setStyle("-fx-text-fill: #38bdf8; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblFooterCount.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
+        lblFooterPrincipal.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblFooterTotalAgreed.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 12px; -fx-font-weight: bold;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);

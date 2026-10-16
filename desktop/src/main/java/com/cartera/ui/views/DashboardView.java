@@ -31,7 +31,7 @@ public class DashboardView extends VBox {
 
         setSpacing(24);
         setPadding(new Insets(28));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildView();
         refresh();
@@ -52,13 +52,13 @@ public class DashboardView extends VBox {
         // Action banner
         HBox banner = new HBox(20);
         banner.setAlignment(Pos.CENTER_LEFT);
-        banner.setStyle("-fx-background-color: #1e293b; -fx-padding: 24; -fx-background-radius: 12; -fx-border-color: #334155; -fx-border-radius: 12;");
+        banner.setStyle("-fx-background-color: #ffffff; -fx-padding: 24; -fx-background-radius: 12; -fx-border-color: #e2e8f0; -fx-border-radius: 12; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.03), 8, 0, 0, 2);");
 
         VBox bannerText = new VBox(6);
         Label bannerTitle = new Label("Ruta de Cobro Activa");
-        bannerTitle.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 16px; -fx-font-weight: bold;");
+        bannerTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
         Label bannerDesc = new Label("Los datos financieros están sincronizados con la base de datos local SQLite. Puedes iniciar la jornada de cobros.");
-        bannerDesc.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 13px;");
+        bannerDesc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 13px;");
         bannerText.getChildren().addAll(bannerTitle, bannerDesc);
         HBox.setHgrow(bannerText, Priority.ALWAYS);
 

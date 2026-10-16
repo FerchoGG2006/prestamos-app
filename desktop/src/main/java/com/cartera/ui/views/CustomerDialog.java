@@ -58,7 +58,7 @@ public class CustomerDialog extends Stage {
     private void buildUI() {
         VBox root = new VBox(20);
         root.setPadding(new Insets(24, 28, 24, 28));
-        root.setStyle("-fx-background-color: #1e293b;");
+        root.setStyle("-fx-background-color: #ffffff;");
         root.setPrefWidth(540);
 
         // Header
@@ -68,9 +68,9 @@ public class CustomerDialog extends Stage {
         icon.setStyle("-fx-font-size: 24px;");
         VBox titleBox = new VBox(2);
         Label title = new Label("Nuevo Cliente");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 18px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
         Label subtitle = new Label("Ingresa los datos personales y de ubicación del cliente");
-        subtitle.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 12px;");
+        subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         titleBox.getChildren().addAll(title, subtitle);
         header.getChildren().addAll(icon, titleBox);
 
@@ -120,7 +120,7 @@ public class CustomerDialog extends Stage {
     private void setupField(GridPane grid, String labelText, TextField field, int col, int row, int colSpan) {
         VBox box = new VBox(4);
         Label lbl = new Label(labelText);
-        lbl.setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px; -fx-font-weight: bold;");
+        lbl.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         field.getStyleClass().add("search-field");
         field.setMaxWidth(Double.MAX_VALUE);
         box.getChildren().addAll(lbl, field);
@@ -150,7 +150,7 @@ public class CustomerDialog extends Stage {
 
         btnSave.setDisable(true);
         lblFeedback.setText("Guardando cliente...");
-        lblFeedback.setStyle("-fx-text-fill: #38bdf8; -fx-background-color: rgba(56, 189, 248, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
+        lblFeedback.setStyle("-fx-text-fill: #2563eb; -fx-background-color: #eff6ff; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-padding: 8 12; -fx-background-radius: 6;");
         lblFeedback.setVisible(true);
         lblFeedback.setManaged(true);
 
@@ -188,7 +188,7 @@ public class CustomerDialog extends Stage {
 
     private void showError(String msg) {
         lblFeedback.setText(msg);
-        lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
+        lblFeedback.setStyle("-fx-text-fill: #dc2626; -fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-padding: 8 12; -fx-background-radius: 6;");
         lblFeedback.setVisible(true);
         lblFeedback.setManaged(true);
     }

@@ -31,7 +31,7 @@ public class LoginView extends StackPane {
         this.authService = authService;
         this.onLoginSuccess = onLoginSuccess;
 
-        setStyle("-fx-background-color: #0b1120;");
+        setStyle("-fx-background-color: #f1f5f9;");
         setAlignment(Pos.CENTER);
         setPadding(new Insets(24));
 
@@ -43,7 +43,7 @@ public class LoginView extends StackPane {
         card.setAlignment(Pos.CENTER);
         card.setMaxWidth(420);
         card.setPadding(new Insets(36, 32, 32, 32));
-        card.setStyle("-fx-background-color: #1e293b; -fx-background-radius: 16; -fx-border-color: #334155; -fx-border-radius: 16; -fx-border-width: 1; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 20, 0, 0, 8);");
+        card.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 16; -fx-border-color: #e2e8f0; -fx-border-radius: 16; -fx-border-width: 1; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 24, 0, 0, 8);");
 
         // Logo e Isotipo
         HBox brandHeader = new HBox(12);
@@ -55,9 +55,9 @@ public class LoginView extends StackPane {
         VBox brandTitles = new VBox(2);
         brandTitles.setAlignment(Pos.CENTER_LEFT);
         Label title = new Label("SISTEMA CARTERA");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 18px; -fx-font-weight: bold; -fx-letter-spacing: 0.5px;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold; -fx-letter-spacing: 0.5px;");
         Label subtitle = new Label("Plataforma Nativa de Cobros & Préstamos");
-        subtitle.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+        subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
         brandTitles.getChildren().addAll(title, subtitle);
 
         brandHeader.getChildren().addAll(logo, brandTitles);
@@ -66,21 +66,21 @@ public class LoginView extends StackPane {
         Label divider = new Label();
         divider.setMaxWidth(Double.MAX_VALUE);
         divider.setPrefHeight(1);
-        divider.setStyle("-fx-background-color: #334155;");
+        divider.setStyle("-fx-background-color: #e2e8f0;");
 
         // Formulario
         VBox form = new VBox(14);
         form.setAlignment(Pos.CENTER_LEFT);
 
         Label lblUser = new Label("Nombre de Usuario");
-        lblUser.setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblUser.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px; -fx-font-weight: bold;");
         txtUsername.setPromptText("Ej. carlos o admin");
         txtUsername.getStyleClass().add("search-field");
         txtUsername.setMaxWidth(Double.MAX_VALUE);
         txtUsername.setStyle("-fx-padding: 10 14; -fx-font-size: 13px;");
 
         Label lblPass = new Label("Contraseña");
-        lblPass.setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblPass.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px; -fx-font-weight: bold;");
         txtPassword.setPromptText("••••••••");
         txtPassword.getStyleClass().add("search-field");
         txtPassword.setMaxWidth(Double.MAX_VALUE);
@@ -95,7 +95,7 @@ public class LoginView extends StackPane {
         lblError.setManaged(false);
         lblError.setWrapText(true);
         lblError.setMaxWidth(Double.MAX_VALUE);
-        lblError.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.15); -fx-padding: 8 12; -fx-background-radius: 8; -fx-font-size: 12px;");
+        lblError.setStyle("-fx-text-fill: #dc2626; -fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 8; -fx-padding: 8 12; -fx-background-radius: 8; -fx-font-size: 12px;");
 
         // Botón Login
         btnLogin.getStyleClass().add("btn-primary");
@@ -108,10 +108,11 @@ public class LoginView extends StackPane {
         // Ayuda demo
         VBox helpBox = new VBox(4);
         helpBox.setAlignment(Pos.CENTER);
+        helpBox.setStyle("-fx-background-color: #f8fafc; -fx-padding: 10 14; -fx-background-radius: 8; -fx-border-color: #e2e8f0; -fx-border-radius: 8;");
         Label helpTitle = new Label("Credenciales Demo Activas:");
         helpTitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
         Label helpText = new Label("Cobrador: carlos / carlos123   •   Admin: admin / admin123");
-        helpText.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+        helpText.setStyle("-fx-text-fill: #475569; -fx-font-size: 11px;");
         helpBox.getChildren().addAll(helpTitle, helpText);
 
         card.getChildren().addAll(brandHeader, divider, form, helpBox);

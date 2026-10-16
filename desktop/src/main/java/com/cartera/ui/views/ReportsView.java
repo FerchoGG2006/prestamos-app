@@ -83,7 +83,7 @@ public class ReportsView extends VBox {
 
         setSpacing(18);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
         buildContentArea();
@@ -192,7 +192,7 @@ public class ReportsView extends VBox {
         VBox.setVgrow(tableCard, Priority.ALWAYS);
 
         Label title = new Label("Consolidado por Crédito");
-        title.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 14 16 8 16;");
+        title.setStyle("-fx-text-fill: #64748b; -fx-font-size: 13px; -fx-font-weight: bold; -fx-padding: 14 16 8 16;");
 
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(table, Priority.ALWAYS);

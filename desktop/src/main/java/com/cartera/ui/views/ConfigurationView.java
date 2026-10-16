@@ -65,7 +65,7 @@ public class ConfigurationView extends VBox {
 
         setSpacing(18);
         setPadding(new Insets(24));
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
         buildContent();
@@ -114,7 +114,7 @@ public class ConfigurationView extends VBox {
         card.setPadding(new Insets(20));
 
         Label title = new Label("Datos de la Empresa / Cartera");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 14px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
 
         txtCompanyName.setPromptText("Ej. Inversiones & Cobranzas del Norte");
         txtCompanyName.getStyleClass().add("search-field");
@@ -149,10 +149,10 @@ public class ConfigurationView extends VBox {
         card.setPadding(new Insets(20));
 
         Label title = new Label("Copia de Seguridad (SQLite)");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 14px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
 
         Label desc = new Label("Respalda todos los clientes, créditos y pagos en un archivo externo para evitar pérdida de datos.");
-        desc.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+        desc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
         desc.setWrapText(true);
 
         lblBackupFeedback.setVisible(false);
@@ -183,7 +183,7 @@ public class ConfigurationView extends VBox {
         HBox header = new HBox(12);
         header.setAlignment(Pos.CENTER_LEFT);
         Label title = new Label("Cobradores y Usuarios");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 14px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -217,7 +217,7 @@ public class ConfigurationView extends VBox {
                 } else {
                     Label badge = new Label(s);
                     badge.setStyle("-fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px; " +
-                            ("ACTIVO".equals(s) ? "-fx-background-color: rgba(16, 185, 129, 0.2); -fx-text-fill: #34d399;" : "-fx-background-color: rgba(239, 68, 68, 0.2); -fx-text-fill: #f87171;"));
+                            ("ACTIVO".equals(s) ? "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 10;" : "-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 10;"));
                     setGraphic(badge);
                     setText(null);
                 }
@@ -235,7 +235,7 @@ public class ConfigurationView extends VBox {
     private VBox createFieldBox(String label, TextField field) {
         VBox box = new VBox(4);
         Label lbl = new Label(label);
-        lbl.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px; -fx-font-weight: bold;");
+        lbl.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
         box.getChildren().addAll(lbl, field);
         return box;
     }
@@ -253,7 +253,7 @@ public class ConfigurationView extends VBox {
         settingRepository.save(new SystemSettingEntity("company_city", txtCity.getText().trim(), now));
 
         lblParamsFeedback.setText("Parámetros actualizados con éxito.");
-        lblParamsFeedback.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 6 10; -fx-background-radius: 6;");
+        lblParamsFeedback.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
         lblParamsFeedback.setVisible(true);
         lblParamsFeedback.setManaged(true);
     }
@@ -272,11 +272,11 @@ public class ConfigurationView extends VBox {
 
         VBox root = new VBox(14);
         root.setPadding(new Insets(24));
-        root.setStyle("-fx-background-color: #1e293b;");
+        root.setStyle("-fx-background-color: #ffffff;");
         root.setPrefWidth(380);
 
         Label title = new Label("Nuevo Cobrador / Usuario");
-        title.setStyle("-fx-text-fill: #f8fafc; -fx-font-size: 16px; -fx-font-weight: bold;");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
 
         TextField txtName = new TextField();
         txtName.setPromptText("Ej. Andrés Pérez");
