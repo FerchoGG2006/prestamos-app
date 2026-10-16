@@ -27,6 +27,7 @@ import {
 import { COLORS } from './src/presentation/theme/colors';
 import { TodayCollectionsView } from './src/presentation/views/collector/TodayCollectionsView';
 import { CustomerDetailView } from './src/presentation/views/collector/CustomerDetailView';
+import { CreditHistoryView } from './src/presentation/views/collector/CreditHistoryView';
 import { SettlementsTableView } from './src/presentation/views/admin/SettlementsTableView';
 import { PaymentModal } from './src/presentation/components/PaymentModal';
 import { RenewalModal } from './src/presentation/components/RenewalModal';
@@ -45,6 +46,7 @@ import {
   Plus,
   FilePlus2,
   RotateCcw,
+  ClipboardList,
 } from 'lucide-react-native';
 
 export default function App() {
@@ -55,7 +57,8 @@ export default function App() {
   const [phoneFrameEnabled, setPhoneFrameEnabled] = useState(true);
 
   // Tabs móviles del cobrador
-  const [collectorTab, setCollectorTab] = useState<'COBROS' | 'CLIENTES' | 'LIQUIDAR'>('COBROS');
+  const [collectorTab, setCollectorTab] = useState<'COBROS' | 'CLIENTES' | 'HISTORIAL' | 'LIQUIDAR'>('COBROS');
+  const [historyInitialDoc, setHistoryInitialDoc] = useState<string>('');
 
   // Estado reactivo del almacén local
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -214,6 +217,26 @@ export default function App() {
             onRenewLoan={(cust, loan) =>
               setRenewalModalData({ visible: true, customer: cust, loan })
             }
+            onOpenCreditHistory={(cust) => {
+              setDetailCustomer(null);
+              setHistoryInitialDoc(cust.documentNumber);
+              setCollectorTab('HISTORIAL');
+            }}
+          />
+        ) : collectorTab === 'HISTORIAL' ? (
+          <CreditHistoryView
+            customers={customers}
+            loans={loans}
+            installments={installments}
+            payments={payments}
+            todayStr={todayStr}
+            initialDocumentNumber={historyInitialDoc}
+            onOpenNewLoan={(c) => {
+              setNewLoanModalVisible(true);
+            }}
+            onOpenPayment={(c, l) => {
+              setPaymentModalData({ visible: true, customer: c, loan: l });
+            }}
           />
         ) : collectorTab === 'COBROS' ? (
           <TodayCollectionsView
@@ -369,13 +392,28 @@ export default function App() {
               </TouchableOpacity>
             </View>
 
-            {/* Tab 3: Nuevo Préstamo */}
+            {/* Tab 3: Historial Crediticio */}
             <TouchableOpacity
               style={styles.dockNavBtn}
-              onPress={() => setNewLoanModalVisible(true)}
+              onPress={() => {
+                setHistoryInitialDoc('');
+                setCollectorTab('HISTORIAL');
+              }}
             >
-              <FilePlus2 size={20} color={COLORS.dockInactive} />
-              <Text style={styles.dockNavText}>Crédito</Text>
+              <ClipboardList
+                size={20}
+                color={
+                  collectorTab === 'HISTORIAL' ? COLORS.dockActive : COLORS.dockInactive
+                }
+              />
+              <Text
+                style={[
+                  styles.dockNavText,
+                  collectorTab === 'HISTORIAL' && styles.dockNavTextActive,
+                ]}
+              >
+                Historial
+              </Text>
             </TouchableOpacity>
 
             {/* Tab 4: Mi Caja / Cuadre */}

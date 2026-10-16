@@ -263,257 +263,144 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      {/* 1. HERO BALANCE CARD (Figma 7020-3430 + Modo Privacidad en Calle 👁️) */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <View style={{ flex: 1, paddingRight: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.heroLabel}>RECAUDO DEL DÍA VS. META DIARIA</Text>
-              <TouchableOpacity
-                onPress={togglePrivacy}
-                style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.14)',
-                  paddingHorizontal: 7,
-                  paddingVertical: 3,
-                  borderRadius: 9999,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                {privacyMode ? (
-                  <EyeOff size={12} color="#E0E7FF" />
-                ) : (
-                  <Eye size={12} color="#E0E7FF" />
-                )}
-                <Text style={{ color: '#E0E7FF', fontSize: 9, fontWeight: '800' }}>
-                  {privacyMode ? 'Mostrar' : 'Ocultar'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.heroMainAmount} numberOfLines={1} adjustsFontSizeToFit>
-              {maskIfPrivate(metrics.collectedToday)}
-            </Text>
-            <Text style={styles.heroGoalSubtitle}>
-              Meta de hoy: {maskIfPrivate(metrics.expectedDailyGoal)}
-            </Text>
+      {/* 1. HERO COMPACTO FINTECH CON KPIS INTEGRADOS (Ultraligero para calle) */}
+      <View style={styles.compactHeroCard}>
+        {/* Fila Superior: Título, Modo Privacidad y Porcentaje */}
+        <View style={styles.compactHeroTopRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.compactHeroLabel}>RECAUDO DE HOY</Text>
+            <TouchableOpacity onPress={togglePrivacy} style={styles.compactEyeBtn}>
+              {privacyMode ? (
+                <EyeOff size={11} color="#C7D2FE" />
+              ) : (
+                <Eye size={11} color="#C7D2FE" />
+              )}
+            </TouchableOpacity>
           </View>
-          <View style={styles.heroPercentPill}>
-            <TrendingUp size={14} color="#34D399" style={{ marginRight: 4 }} />
-            <Text style={styles.heroPercentText}>{metrics.progressPercentage}%</Text>
+
+          <View style={styles.compactPercentPill}>
+            <TrendingUp size={11} color="#34D399" style={{ marginRight: 3 }} />
+            <Text style={styles.compactPercentText}>{metrics.progressPercentage}%</Text>
           </View>
         </View>
 
-        {/* Barra de Progreso de Cumplimiento Diario */}
-        <View style={styles.heroProgressTrack}>
+        {/* Monto Principal y Meta en una sola línea armónica */}
+        <View style={styles.compactAmountRow}>
+          <Text style={styles.compactMainAmount} numberOfLines={1} adjustsFontSizeToFit>
+            {maskIfPrivate(metrics.collectedToday)}
+          </Text>
+          <Text style={styles.compactGoalText}>
+            de {maskIfPrivate(metrics.expectedDailyGoal)}
+          </Text>
+        </View>
+
+        {/* Barra de Progreso Ultra-Slim */}
+        <View style={styles.compactProgressTrack}>
           <View
             style={[
-              styles.heroProgressFill,
+              styles.compactProgressFill,
               { width: `${Math.min(100, Math.max(4, metrics.progressPercentage))}%` },
             ]}
           />
         </View>
-        <View style={styles.heroProgressMetaRow}>
-          <Text style={styles.heroProgressMetaText}>
-            {metrics.visitedCustomersCount} de {metrics.expectedCustomersCount} clientes cobrados
-          </Text>
-          <Text style={styles.heroProgressMetaText}>
-            Efectivo: {maskIfPrivate(metrics.collectedCashToday)} • Digital:{' '}
-            {maskIfPrivate(metrics.collectedDigitalToday)}
-          </Text>
-        </View>
-      </View>
 
-      {/* 2. CUADRÍCULA BENTO ASIMÉTRICA (Patrón #2 de https://share.gemini.google/KjMOzkltAOCD)
-          Incluye Mejora IA #1: overflow: 'hidden' y flexShrink para evitar desbordamiento de botones en pantallas angostas,
-          y Mejora IA #3: micro-bordes de 1px (rgba(15, 23, 42, 0.07)) sobre bloques Soft UI. */}
-      <View style={styles.bentoGridContainer}>
-        {/* Columna Izquierda: Tarjeta Bento Alta "Mi Caja & Capital en Calle" */}
-        <TouchableOpacity
-          style={styles.bentoCardPrimary}
-          activeOpacity={0.88}
-          onPress={onOpenSettlement}
-        >
-          <View style={styles.bentoTopHeader}>
-            <View style={styles.bentoIconBadge}>
-              <Wallet size={16} color={COLORS.primary} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  togglePrivacy();
-                }}
-                style={{
-                  paddingHorizontal: 6,
-                  paddingVertical: 3,
-                  borderRadius: 9999,
-                  backgroundColor: COLORS.surfaceSoft,
-                  borderWidth: 1,
-                  borderColor: COLORS.microBorder,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 3,
-                }}
-              >
-                {privacyMode ? (
-                  <EyeOff size={11} color={COLORS.textMuted} />
-                ) : (
-                  <Eye size={11} color={COLORS.textMuted} />
-                )}
-                <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.textMuted }}>
-                  {privacyMode ? 'Ver' : 'Ocultar'}
-                </Text>
-              </TouchableOpacity>
-              <View style={styles.bentoPillTag}>
-                <Text style={styles.bentoPillTagText} numberOfLines={1}>
-                  Mi Caja
-                </Text>
-                <ArrowUpRight size={12} color={COLORS.primary} />
-              </View>
-            </View>
-          </View>
-
-          <Text style={styles.bentoMutedLabel}>EFECTIVO DISPONIBLE</Text>
-          <Text style={styles.bentoBigAmount} numberOfLines={1} adjustsFontSizeToFit>
-            {maskIfPrivate(metrics.cashAvailableInHand)}
-          </Text>
-
-          <View style={styles.bentoDivider} />
-
-          <View style={styles.bentoMiniRow}>
-            <Text style={styles.bentoMiniLabel}>Capital en Calle</Text>
-            <Text style={styles.bentoMiniValue} numberOfLines={1}>
-              {maskIfPrivate(metrics.activeCapitalInStreet)}
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Columna Derecha: 2 Tarjetas Bento Apiladas ("Cartera en Mora" y "Favoritos / Nuevo Crédito") */}
-        <View style={styles.bentoRightCol}>
-          {/* Tarjeta Bento Superior Derecha: Radar de Mora */}
+        {/* Tira de Micro-KPIs Integrados (Reemplaza la cuadrícula pesada Bento) */}
+        <View style={styles.microKpiStrip}>
           <TouchableOpacity
-            style={[
-              styles.bentoCardSmall,
-              metrics.overdueTotalAmount > 0 && styles.bentoCardMoraSurface,
-            ]}
-            activeOpacity={0.88}
+            style={styles.microKpiItem}
+            activeOpacity={0.7}
+            onPress={onOpenSettlement}
+          >
+            <Wallet size={12} color="#34D399" style={{ marginRight: 4 }} />
+            <Text style={styles.microKpiLabel}>En Caja: </Text>
+            <Text style={styles.microKpiValue}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
+          </TouchableOpacity>
+
+          <View style={styles.microKpiDivider} />
+
+          <TouchableOpacity
+            style={styles.microKpiItem}
+            activeOpacity={0.7}
             onPress={() => setActiveFilter(activeFilter === 'MORA' ? 'TODOS' : 'MORA')}
           >
-            <View style={styles.bentoSmallTopRow}>
-              <Text style={styles.bentoSmallLabel} numberOfLines={1}>
-                TOTAL EN MORA
-              </Text>
-              <ShieldAlert
-                size={15}
-                color={metrics.overdueTotalAmount > 0 ? COLORS.danger : COLORS.success}
-              />
-            </View>
+            <ShieldAlert
+              size={12}
+              color={metrics.overdueTotalAmount > 0 ? '#F87171' : '#34D399'}
+              style={{ marginRight: 4 }}
+            />
+            <Text style={styles.microKpiLabel}>Mora: </Text>
             <Text
               style={[
-                styles.bentoSmallAmount,
-                metrics.overdueTotalAmount > 0
-                  ? { color: COLORS.danger }
-                  : { color: COLORS.success },
+                styles.microKpiValue,
+                metrics.overdueTotalAmount > 0 && { color: '#FCA5A5' },
               ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
             >
               {maskIfPrivate(metrics.overdueTotalAmount)}
             </Text>
-            <Text style={styles.bentoSmallHint} numberOfLines={1}>
-              {counts.MORA > 0 ? `${counts.MORA} cliente(s) por cobrar` : '0 clientes vencidos'}
-            </Text>
           </TouchableOpacity>
 
-          {/* Tarjeta Bento Inferior Derecha: Bloque Lavanda Suave (#F5F3FF) */}
-          <TouchableOpacity
-            style={styles.bentoCardLavender}
-            activeOpacity={0.88}
-            onPress={onOpenNewLoan}
-          >
-            <View style={styles.bentoSmallTopRow}>
-              <Text style={styles.bentoLavenderLabel} numberOfLines={1}>
-                DESEMBOLSO RÁPIDO
-              </Text>
-              <Sparkles size={15} color={COLORS.purple} />
-            </View>
-            <Text style={styles.bentoLavenderTitle} numberOfLines={1}>
-              + Crear Préstamo
+          <View style={styles.microKpiDivider} />
+
+          <View style={styles.microKpiItem}>
+            <Text style={styles.microKpiLabel}>Cobrados: </Text>
+            <Text style={styles.microKpiValue}>
+              {metrics.visitedCustomersCount}/{metrics.expectedCustomersCount}
             </Text>
-            <Text style={styles.bentoLavenderHint} numberOfLines={1}>
-              Hoy: {maskIfPrivate(metrics.disbursedToday)}
-            </Text>
-          </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      {/* 3. ACCIONES RÁPIDAS HORIZONTALES (Píldoras Soft UI con Micro-Borde) */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.quickActionsScroll}
-        contentContainerStyle={styles.quickActionsContainer}
-      >
+      {/* 2. ACCIONES RÁPIDAS COMPACTAS (Micro-píldoras en 1 fila) */}
+      <View style={styles.compactActionsRow}>
         <TouchableOpacity
-          style={styles.quickActionPill}
+          style={[styles.compactActionBtn, { backgroundColor: COLORS.successLight, borderColor: COLORS.successBorder }]}
           onPress={handleQuickPayFirstPending}
         >
-          <View style={[styles.quickIconCircle, { backgroundColor: COLORS.successLight }]}>
-            <PlusCircle size={15} color={COLORS.success} />
-          </View>
-          <Text style={styles.quickActionText}>Abono 1-Toque</Text>
+          <PlusCircle size={13} color={COLORS.success} />
+          <Text style={[styles.compactActionText, { color: COLORS.success }]}>Abono 1-Toque</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.quickActionPill} onPress={onOpenNewCustomer}>
-          <View style={[styles.quickIconCircle, { backgroundColor: COLORS.purpleLight }]}>
-            <UserPlus size={15} color={COLORS.purple} />
-          </View>
-          <Text style={styles.quickActionText}>+ Cliente</Text>
+        <TouchableOpacity
+          style={styles.compactActionBtn}
+          onPress={onOpenNewCustomer}
+        >
+          <UserPlus size={13} color={COLORS.purple} />
+          <Text style={[styles.compactActionText, { color: COLORS.purple }]}>+ Cliente</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.quickActionPill} onPress={onOpenNewLoan}>
-          <View style={[styles.quickIconCircle, { backgroundColor: COLORS.infoLight }]}>
-            <FilePlus2 size={15} color={COLORS.primary} />
-          </View>
-          <Text style={styles.quickActionText}>+ Préstamo</Text>
+        <TouchableOpacity
+          style={styles.compactActionBtn}
+          onPress={onOpenNewLoan}
+        >
+          <FilePlus2 size={13} color={COLORS.primary} />
+          <Text style={[styles.compactActionText, { color: COLORS.primary }]}>+ Préstamo</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.quickActionPill} onPress={onOpenSettlement}>
-          <View style={[styles.quickIconCircle, { backgroundColor: COLORS.warningLight }]}>
-            <Landmark size={15} color={COLORS.warning} />
-          </View>
-          <Text style={styles.quickActionText}>Arqueo Caja</Text>
+        <TouchableOpacity
+          style={styles.compactActionBtn}
+          onPress={onOpenSettlement}
+        >
+          <Landmark size={13} color={COLORS.warning} />
+          <Text style={[styles.compactActionText, { color: COLORS.warning }]}>Arqueo</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </View>
 
-      {/* 4. BUSCADOR ESTILO FILLED INPUT CON FLOATING LABEL INTERNO + BOTÓN LIMPIAR (✕) */}
-      <View style={styles.filledSearchContainer}>
-        <Search size={18} color={COLORS.textMuted} style={{ marginRight: 10 }} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.filledSearchFloatingLabel}>FILTRAR DIRECTORIO DE RUTA</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Nombre, cédula, negocio o barrio..."
-            placeholderTextColor={COLORS.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
+      {/* 3. BUSCADOR COMPACTO Y LIMPIO */}
+      <View style={styles.compactSearchContainer}>
+        <Search size={15} color={COLORS.textMuted} style={{ marginRight: 8 }} />
+        <TextInput
+          style={styles.compactSearchInput}
+          placeholder="Buscar por cliente, cédula o barrio..."
+          placeholderTextColor={COLORS.textMuted}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
         {searchQuery.length > 0 && (
           <TouchableOpacity
             onPress={() => setSearchQuery('')}
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: 12,
-              backgroundColor: COLORS.surfaceSoft,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginLeft: 6,
-            }}
+            style={styles.clearSearchBtn}
           >
-            <X size={14} color={COLORS.textSecondary} />
+            <X size={12} color={COLORS.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
@@ -789,302 +676,161 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 112, // Espacio amplio para el Floating Bottom Dock con FAB central
   },
-  // 1. HERO BALANCE CARD (.hero-card)
-  heroCard: {
+  // 1. HERO COMPACTO FINTECH (.compactHeroCard)
+  compactHeroCard: {
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 12,
-    padding: 20,
-    borderRadius: 24,
-    backgroundColor: COLORS.dockBg, // Índigo/púrpura profundo de alto contraste Fintech
+    marginTop: 8,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    borderRadius: 20,
+    backgroundColor: COLORS.dockBg, // Índigo profundo Fintech
     shadowColor: '#1E1B4B',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  heroTopRow: {
+  compactHeroTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
+    alignItems: 'center',
+    marginBottom: 4,
   },
-  heroLabel: {
+  compactHeroLabel: {
     color: '#A5B4FC',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
-  heroMainAmount: {
-    color: '#FFFFFF',
-    fontSize: 32,
-    fontWeight: '900',
-    letterSpacing: -0.8,
-    marginTop: 4,
+  compactEyeBtn: {
+    padding: 3,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
   },
-  heroGoalSubtitle: {
-    color: '#C7D2FE',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  heroPercentPill: {
+  compactPercentPill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    paddingHorizontal: 11,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 9999,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
-  heroPercentText: {
+  compactPercentText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '800',
   },
-  heroProgressTrack: {
-    height: 8,
+  compactAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginBottom: 6,
+  },
+  compactMainAmount: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  compactGoalText: {
+    color: '#C7D2FE',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  compactProgressTrack: {
+    height: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
     borderRadius: 9999,
     overflow: 'hidden',
+    marginBottom: 8,
   },
-  heroProgressFill: {
+  compactProgressFill: {
     height: '100%',
     backgroundColor: COLORS.heroBarFill,
     borderRadius: 9999,
   },
-  heroProgressMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  heroProgressMetaText: {
-    color: '#E0E7FF',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-
-  // 2. CUADRÍCULA BENTO ASIMÉTRICA (Patrón #2 de Gemini Share + Mejora IA #1 anti-overflow)
-  bentoGridContainer: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    gap: 10,
-  },
-  bentoCardPrimary: {
-    flex: 1.08,
-    backgroundColor: COLORS.bgSecondary,
-    borderRadius: 22,
-    padding: 15,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
-    overflow: 'hidden', // Crítico (Mejora IA #1): evita que píldoras o montos se salgan del borde
-    justifyContent: 'space-between',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  bentoTopHeader: {
+  microKpiStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  microKpiItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  microKpiLabel: {
+    color: '#CBD5E1',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  microKpiValue: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  microKpiDivider: {
+    width: 1,
+    height: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+
+  // 2. ACCIONES RÁPIDAS COMPACTAS (Micro-píldoras en 1 fila)
+  compactActionsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 8,
     gap: 6,
   },
-  bentoIconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: COLORS.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  bentoPillTag: {
+  compactActionBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceSoft,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
+    justifyContent: 'center',
+    backgroundColor: COLORS.bgSecondary,
+    paddingVertical: 7,
     borderRadius: 9999,
     borderWidth: 1,
     borderColor: COLORS.microBorder,
-    flexShrink: 1,
-    gap: 3,
+    gap: 4,
   },
-  bentoPillTagText: {
-    color: COLORS.primary,
+  compactActionText: {
     fontSize: 11,
     fontWeight: '800',
   },
-  bentoMutedLabel: {
-    color: COLORS.textMuted,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  bentoBigAmount: {
-    color: COLORS.textPrimary,
-    fontSize: 21,
-    fontWeight: '900',
-    letterSpacing: -0.6,
-    marginTop: 2,
-  },
-  bentoDivider: {
-    height: 1,
-    backgroundColor: COLORS.bgTertiary,
-    marginVertical: 10,
-  },
-  bentoMiniRow: {
-    flexDirection: 'column',
-  },
-  bentoMiniLabel: {
-    color: COLORS.textMuted,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  bentoMiniValue: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 1,
-  },
-  bentoRightCol: {
-    flex: 1,
-    gap: 10,
-  },
-  bentoCardSmall: {
-    flex: 1,
-    backgroundColor: COLORS.bgSecondary,
-    borderRadius: 20,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
-    overflow: 'hidden',
-    justifyContent: 'space-between',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  bentoCardMoraSurface: {
-    backgroundColor: '#FFFDFD',
-    borderColor: COLORS.dangerBorder,
-  },
-  bentoSmallTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 4,
-  },
-  bentoSmallLabel: {
-    color: COLORS.textMuted,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    flexShrink: 1,
-  },
-  bentoSmallAmount: {
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-    marginVertical: 2,
-  },
-  bentoSmallHint: {
-    color: COLORS.textSecondary,
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  bentoCardLavender: {
-    flex: 1,
-    backgroundColor: COLORS.surfaceLavender,
-    borderRadius: 20,
-    padding: 13,
-    borderWidth: 1,
-    borderColor: COLORS.purpleBorder,
-    overflow: 'hidden',
-    justifyContent: 'space-between',
-  },
-  bentoLavenderLabel: {
-    color: COLORS.purple,
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    flexShrink: 1,
-  },
-  bentoLavenderTitle: {
-    color: '#2E1065',
-    fontSize: 14,
-    fontWeight: '800',
-    marginVertical: 2,
-  },
-  bentoLavenderHint: {
-    color: COLORS.purple,
-    fontSize: 10,
-    fontWeight: '700',
-  },
 
-  // 3. QUICK ACTION PILLS (.quick-action-btn)
-  quickActionsScroll: {
-    marginBottom: 12,
-  },
-  quickActionsContainer: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  quickActionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.bgSecondary,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 9999,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
-  },
-  quickIconCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 7,
-  },
-  quickActionText: {
-    color: COLORS.textPrimary,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-
-  // 4. FILLED INPUT SEARCH BAR CON FLOATING LABEL (Patrón #5 + Mejora IA #3)
-  filledSearchContainer: {
+  // 3. BUSCADOR COMPACTO Y LIMPIO
+  compactSearchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.bgSecondary,
     marginHorizontal: 16,
-    marginBottom: 10,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    marginBottom: 8,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 38,
     borderWidth: 1,
     borderColor: COLORS.inputBorder,
   },
-  filledSearchFloatingLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: COLORS.textMuted,
-    letterSpacing: 0.5,
-    marginBottom: 1,
-  },
-  searchInput: {
+  compactSearchInput: {
+    flex: 1,
     color: COLORS.textPrimary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     paddingVertical: 0,
+  },
+  clearSearchBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.surfaceSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
   },
 
   // 5. FILTER CHIPS (.filter-chip con borderRadius: 9999)

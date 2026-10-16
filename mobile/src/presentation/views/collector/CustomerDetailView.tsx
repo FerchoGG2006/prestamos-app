@@ -30,6 +30,7 @@ import {
   Navigation,
   Receipt,
   Calendar,
+  FileText,
 } from 'lucide-react-native';
 
 interface CustomerDetailViewProps {
@@ -43,6 +44,7 @@ interface CustomerDetailViewProps {
   onBack: () => void;
   onPayLoan: (customer: Customer, loan: Loan) => void;
   onRenewLoan: (customer: Customer, loan: Loan) => void;
+  onOpenCreditHistory?: (customer: Customer) => void;
 }
 
 export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
@@ -55,6 +57,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
   onBack,
   onPayLoan,
   onRenewLoan,
+  onOpenCreditHistory,
 }) => {
   const customerLoans = loans.filter((l) => l.customerId === customer.id);
   const activeLoan = customerLoans.find((l) => l.status === 'ACTIVE');
@@ -203,6 +206,21 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 Mapa GPS
               </Text>
             </TouchableOpacity>
+
+            {onOpenCreditHistory && (
+              <TouchableOpacity
+                style={[
+                  styles.contactPillBtn,
+                  { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+                ]}
+                onPress={() => onOpenCreditHistory(customer)}
+              >
+                <FileText size={14} color="#2563EB" />
+                <Text style={[styles.contactPillText, { color: '#2563EB', fontWeight: '800' }]}>
+                  Historial
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 

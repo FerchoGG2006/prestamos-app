@@ -9,6 +9,7 @@ import com.cartera.infrastructure.security.UserSession;
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.ui.views.CashManagementView;
 import com.cartera.ui.views.ConfigurationView;
+import com.cartera.ui.views.CreditHistoryView;
 import com.cartera.ui.views.CustomersView;
 import com.cartera.ui.views.DashboardView;
 import com.cartera.ui.views.LoansView;
@@ -60,6 +61,7 @@ public final class CarteraApplication extends Application {
     private TodayCollectionsView todayCollectionsView;
     private CustomersView customersView;
     private LoansView loansView;
+    private CreditHistoryView creditHistoryView;
     private TreasuryManagementView treasuryManagementView;
     private ReportsView reportsView;
     private ConfigurationView configurationView;
@@ -111,6 +113,13 @@ public final class CarteraApplication extends Application {
         });
 
         customersView = new CustomersView(customerRepository, createCustomerUseCase, loanRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, loansView, stage);
+
+        var creditHistoryService = context.getBean(com.cartera.history.application.CreditHistoryService.class);
+        creditHistoryView = new CreditHistoryView(creditHistoryService, stage);
+        customersView.setOnOpenCreditHistory(doc -> {
+            navigateTo("Historial");
+            creditHistoryView.queryByDocument(doc);
+        });
 
         var cashManagementView = new CashManagementView(cashMovementRepository, auditLogRepository, stage);
         var settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository);
@@ -255,6 +264,7 @@ public final class CarteraApplication extends Application {
             navContainer.getChildren().add(createSectionHeader("OPERACIÓN Y RUTA"));
             navContainer.getChildren().add(createNavButton("Ruta y Liquidación", "Cobros y Rutas"));
             navContainer.getChildren().add(createNavButton("Mis Clientes", "Clientes"));
+            navContainer.getChildren().add(createNavButton("Historial Crediticio", "Historial"));
         } else {
             // Menú Completo para Administrador
             navContainer.getChildren().add(createSectionHeader("GENERAL"));
@@ -263,6 +273,7 @@ public final class CarteraApplication extends Application {
             navContainer.getChildren().add(createSectionHeader("OPERACIÓN Y RUTA"));
             navContainer.getChildren().add(createNavButton("Ruta y Liquidación", "Cobros y Rutas"));
             navContainer.getChildren().add(createNavButton("Clientes y Créditos", "Clientes"));
+            navContainer.getChildren().add(createNavButton("Historial Crediticio", "Historial"));
 
             navContainer.getChildren().add(createSectionHeader("ADMINISTRACIÓN Y CONTROL"));
             navContainer.getChildren().add(createNavButton("Caja y Tesorería", "Tesorería y Cierres"));
@@ -334,6 +345,14 @@ public final class CarteraApplication extends Application {
                 customersView.refresh();
                 customersView.showSection("loans");
                 viewNode = customersView;
+                break;
+            case "Historial":
+            case "Historial Crediticio":
+            case "Historial de Clientes":
+                activeKey = "Historial";
+                effectiveTitle = "Historial Crediticio por Cédula";
+                if (creditHistoryView != null) creditHistoryView.refresh();
+                viewNode = creditHistoryView;
                 break;
             case "Tesorería y Cierres":
             case "Caja":

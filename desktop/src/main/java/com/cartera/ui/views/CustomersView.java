@@ -52,6 +52,11 @@ public class CustomersView extends VBox {
     private VBox detailCard;
     private Button btnTabCustomers;
     private Button btnTabLoans;
+    private java.util.function.Consumer<String> onOpenCreditHistory;
+
+    public void setOnOpenCreditHistory(java.util.function.Consumer<String> onOpenCreditHistory) {
+        this.onOpenCreditHistory = onOpenCreditHistory;
+    }
 
     public CustomersView(CustomerRepository customerRepository,
                          com.cartera.customers.application.CreateCustomerUseCase createCustomerUseCase,
@@ -414,7 +419,17 @@ public class CustomersView extends VBox {
             creditCard.getChildren().addAll(noLoan, btnNewLoan);
         }
 
-        detailCard.getChildren().addAll(header, contactBox, creditCard);
+        Button btnHistory = new Button("📋 Ver Historial y Calificación de Pago");
+        btnHistory.getStyleClass().add("btn-secondary");
+        btnHistory.setMaxWidth(Double.MAX_VALUE);
+        btnHistory.setStyle("-fx-font-size: 11px; -fx-padding: 7 12; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe;");
+        btnHistory.setOnAction(e -> {
+            if (onOpenCreditHistory != null && c.getDocumentNumber() != null) {
+                onOpenCreditHistory.accept(c.getDocumentNumber());
+            }
+        });
+
+        detailCard.getChildren().addAll(header, contactBox, creditCard, btnHistory);
     }
 
     @SuppressWarnings("unchecked")

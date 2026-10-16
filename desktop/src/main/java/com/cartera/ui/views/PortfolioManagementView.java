@@ -12,20 +12,23 @@ import javafx.scene.layout.VBox;
 
 /**
  * Vista unificada de Gestión de Cartera.
- * Agrupa el directorio de Clientes y la cartera de Créditos/Préstamos
- * bajo una interfaz con navegación segmentada rápida.
+ * Agrupa el directorio de Clientes, la cartera de Créditos/Préstamos
+ * y la verificación de Historial Crediticio bajo una navegación segmentada rápida.
  */
 public class PortfolioManagementView extends BorderPane {
 
     private final CustomersView customersView;
     private final LoansView loansView;
+    private final CreditHistoryView creditHistoryView;
     private final Button btnCustomers;
     private final Button btnLoans;
+    private final Button btnHistory;
     private final Label subTitle;
 
-    public PortfolioManagementView(CustomersView customersView, LoansView loansView) {
+    public PortfolioManagementView(CustomersView customersView, LoansView loansView, CreditHistoryView creditHistoryView) {
         this.customersView = customersView;
         this.loansView = loansView;
+        this.creditHistoryView = creditHistoryView;
 
         setPadding(new Insets(0));
         setStyle("-fx-background-color: #f8fafc;");
@@ -59,7 +62,11 @@ public class PortfolioManagementView extends BorderPane {
         btnLoans.getStyleClass().add("segment-btn");
         btnLoans.setOnAction(e -> showSection("loans"));
 
-        segmentBar.getChildren().addAll(btnCustomers, btnLoans);
+        btnHistory = new Button("Historial Crediticio");
+        btnHistory.getStyleClass().add("segment-btn");
+        btnHistory.setOnAction(e -> showSection("history"));
+
+        segmentBar.getChildren().addAll(btnCustomers, btnLoans, btnHistory);
 
         topBar.getChildren().addAll(titleBox, spacer, segmentBar);
         setTop(topBar);
@@ -69,19 +76,22 @@ public class PortfolioManagementView extends BorderPane {
     }
 
     public void showSection(String section) {
+        btnCustomers.getStyleClass().remove("segment-btn-active");
+        btnLoans.getStyleClass().remove("segment-btn-active");
+        btnHistory.getStyleClass().remove("segment-btn-active");
+
         if ("loans".equalsIgnoreCase(section)) {
-            btnCustomers.getStyleClass().remove("segment-btn-active");
-            if (!btnLoans.getStyleClass().contains("segment-btn-active")) {
-                btnLoans.getStyleClass().add("segment-btn-active");
-            }
+            btnLoans.getStyleClass().add("segment-btn-active");
             subTitle.setText("Administración, cronogramas y saldos de créditos");
             loansView.refresh();
             setCenter(loansView);
+        } else if ("history".equalsIgnoreCase(section)) {
+            btnHistory.getStyleClass().add("segment-btn-active");
+            subTitle.setText("Consulta por cédula de solvencia y calificación de pago");
+            if (creditHistoryView != null) creditHistoryView.refresh();
+            setCenter(creditHistoryView);
         } else {
-            btnLoans.getStyleClass().remove("segment-btn-active");
-            if (!btnCustomers.getStyleClass().contains("segment-btn-active")) {
-                btnCustomers.getStyleClass().add("segment-btn-active");
-            }
+            btnCustomers.getStyleClass().add("segment-btn-active");
             subTitle.setText("Directorio de Clientes registrados en el sistema");
             customersView.refresh();
             setCenter(customersView);
@@ -91,6 +101,8 @@ public class PortfolioManagementView extends BorderPane {
     public void refresh() {
         if (getCenter() == loansView) {
             loansView.refresh();
+        } else if (getCenter() == creditHistoryView && creditHistoryView != null) {
+            creditHistoryView.refresh();
         } else {
             customersView.refresh();
         }
