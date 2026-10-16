@@ -421,8 +421,8 @@ export default function App() {
               style={styles.dockNavBtn}
               onPress={() => setSettlementModalVisible(true)}
             >
-              <Landmark size={20} color="#34D399" />
-              <Text style={[styles.dockNavText, { color: '#34D399', fontWeight: '800' }]}>
+              <Landmark size={20} color={COLORS.dockInactive} />
+              <Text style={styles.dockNavText}>
                 Mi Caja
               </Text>
             </TouchableOpacity>

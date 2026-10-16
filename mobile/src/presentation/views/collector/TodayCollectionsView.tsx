@@ -271,15 +271,15 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             <Text style={styles.compactHeroLabel}>RECAUDO DE HOY</Text>
             <TouchableOpacity onPress={togglePrivacy} style={styles.compactEyeBtn}>
               {privacyMode ? (
-                <EyeOff size={11} color="#C7D2FE" />
+                <EyeOff size={11} color="#94A3B8" />
               ) : (
-                <Eye size={11} color="#C7D2FE" />
+                <Eye size={11} color="#94A3B8" />
               )}
             </TouchableOpacity>
           </View>
 
           <View style={styles.compactPercentPill}>
-            <TrendingUp size={11} color="#34D399" style={{ marginRight: 3 }} />
+            <TrendingUp size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
             <Text style={styles.compactPercentText}>{metrics.progressPercentage}%</Text>
           </View>
         </View>
@@ -311,7 +311,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             activeOpacity={0.7}
             onPress={onOpenSettlement}
           >
-            <Wallet size={12} color="#34D399" style={{ marginRight: 4 }} />
+            <Wallet size={12} color="#94A3B8" style={{ marginRight: 4 }} />
             <Text style={styles.microKpiLabel}>En Caja: </Text>
             <Text style={styles.microKpiValue}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
           </TouchableOpacity>
@@ -325,14 +325,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           >
             <ShieldAlert
               size={12}
-              color={metrics.overdueTotalAmount > 0 ? '#F87171' : '#34D399'}
+              color={metrics.overdueTotalAmount > 0 ? '#EF4444' : '#94A3B8'}
               style={{ marginRight: 4 }}
             />
             <Text style={styles.microKpiLabel}>Mora: </Text>
             <Text
               style={[
                 styles.microKpiValue,
-                metrics.overdueTotalAmount > 0 && { color: '#FCA5A5' },
+                metrics.overdueTotalAmount > 0 && { color: '#EF4444' },
               ]}
             >
               {maskIfPrivate(metrics.overdueTotalAmount)}
@@ -353,19 +353,19 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       {/* 2. ACCIONES RÁPIDAS COMPACTAS (Micro-píldoras en 1 fila) */}
       <View style={styles.compactActionsRow}>
         <TouchableOpacity
-          style={[styles.compactActionBtn, { backgroundColor: COLORS.successLight, borderColor: COLORS.successBorder }]}
+          style={styles.compactActionBtn}
           onPress={handleQuickPayFirstPending}
         >
-          <PlusCircle size={13} color={COLORS.success} />
-          <Text style={[styles.compactActionText, { color: COLORS.success }]}>Abono 1-Toque</Text>
+          <PlusCircle size={13} color={COLORS.primary} />
+          <Text style={[styles.compactActionText, { color: COLORS.textPrimary }]}>Abono Rápido</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.compactActionBtn}
           onPress={onOpenNewCustomer}
         >
-          <UserPlus size={13} color={COLORS.purple} />
-          <Text style={[styles.compactActionText, { color: COLORS.purple }]}>+ Cliente</Text>
+          <UserPlus size={13} color={COLORS.primary} />
+          <Text style={[styles.compactActionText, { color: COLORS.textPrimary }]}>+ Cliente</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -373,15 +373,15 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           onPress={onOpenNewLoan}
         >
           <FilePlus2 size={13} color={COLORS.primary} />
-          <Text style={[styles.compactActionText, { color: COLORS.primary }]}>+ Préstamo</Text>
+          <Text style={[styles.compactActionText, { color: COLORS.textPrimary }]}>+ Préstamo</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.compactActionBtn}
           onPress={onOpenSettlement}
         >
-          <Landmark size={13} color={COLORS.warning} />
-          <Text style={[styles.compactActionText, { color: COLORS.warning }]}>Arqueo</Text>
+          <Landmark size={13} color={COLORS.primary} />
+          <Text style={[styles.compactActionText, { color: COLORS.textPrimary }]}>Arqueo</Text>
         </TouchableOpacity>
       </View>
 
@@ -416,8 +416,8 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           style={[
             styles.filterChip,
             prioritizeOverdue && {
-              backgroundColor: COLORS.surfaceLavender,
-              borderColor: COLORS.purpleBorder,
+              backgroundColor: COLORS.primaryLight,
+              borderColor: COLORS.primaryBorder,
             },
             { flexDirection: 'row', alignItems: 'center', gap: 4 },
           ]}
@@ -425,12 +425,12 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         >
           <ArrowUpDown
             size={12}
-            color={prioritizeOverdue ? COLORS.purple : COLORS.textSecondary}
+            color={prioritizeOverdue ? COLORS.primary : COLORS.textSecondary}
           />
           <Text
             style={[
               styles.filterChipText,
-              prioritizeOverdue && { color: COLORS.purple, fontWeight: '800' },
+              prioritizeOverdue && { color: COLORS.primary, fontWeight: '800' },
             ]}
           >
             {prioritizeOverdue ? '⚡ Mora 1°' : '📍 Orden Ruta'}
@@ -479,22 +479,22 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               remainingBalance,
             } = item;
 
-            // Selección de Píldora Semántica (borderRadius: 9999)
+            // Selección de Píldora Semántica: Estados discretos (Neutro para normal, Verde para pagado, Rojo para mora)
             let badgeStyle = styles.badgeHoy;
             let badgeTextStyle = styles.badgeHoyText;
             let badgeLabel = 'Cobrar hoy';
 
             if (item.isPaidToday) {
-              badgeStyle = styles.badgeAlDia;
-              badgeTextStyle = styles.badgeAlDiaText;
-              badgeLabel = '✓ Aprobado hoy';
+              badgeStyle = styles.badgePagado;
+              badgeTextStyle = styles.badgePagadoText;
+              badgeLabel = '✓ Cobrado hoy';
             } else if (delinquency.hasDelinquency) {
               badgeStyle = styles.badgeMora;
               badgeTextStyle = styles.badgeMoraText;
               badgeLabel = `En mora (${delinquency.overdueDays}d)`;
             } else if (todayInstallment?.status === 'PARCIAL') {
-              badgeStyle = styles.badgeWarning;
-              badgeTextStyle = styles.badgeWarningText;
+              badgeStyle = styles.badgeParcial;
+              badgeTextStyle = styles.badgeParcialText;
               badgeLabel = 'Abono parcial';
             } else if (!item.isDueToday) {
               badgeStyle = styles.badgeAlDia;
@@ -593,8 +593,8 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                         {
                           width: `${Math.min(100, Math.max(4, amortizationPercentage))}%`,
                           backgroundColor: delinquency.hasDelinquency
-                            ? COLORS.warning
-                            : COLORS.successBright,
+                            ? COLORS.danger
+                            : COLORS.primary,
                         },
                       ]}
                     />
@@ -604,7 +604,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 {/* Promesa activa si existe */}
                 {todayPromise && (
                   <View style={styles.promiseBanner}>
-                    <Calendar size={14} color={COLORS.warning} style={{ marginRight: 6 }} />
+                    <Calendar size={14} color={COLORS.primary} style={{ marginRight: 6 }} />
                     <Text style={styles.promiseBannerText}>
                       Promesa para el {todayPromise.promisedDate}:{' '}
                       {formatCOP(todayPromise.promisedAmount)}
@@ -613,7 +613,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                   </View>
                 )}
 
-                {/* Botones de Acción Directa */}
+                {/* Botones de Acción Directa: 1 Principal + Secundarios Uniformes */}
                 <View style={styles.cardActions}>
                   <TouchableOpacity
                     style={[
@@ -635,11 +635,10 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={styles.whatsappBtn}
+                    style={styles.secondaryActionBtn}
                     onPress={() => handleSendWhatsApp(item)}
                   >
-                    <MessageCircle size={15} color={COLORS.success} />
-                    <Text style={styles.whatsappBtnText}>Recibo</Text>
+                    <MessageCircle size={15} color={COLORS.textSecondary} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -650,13 +649,10 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[
-                      styles.secondaryActionBtn,
-                      { backgroundColor: COLORS.purpleLight, borderColor: COLORS.purpleBorder },
-                    ]}
+                    style={styles.secondaryActionBtn}
                     onPress={() => onSelectCustomerToRenew(customer, activeLoan)}
                   >
-                    <RefreshCw size={14} color={COLORS.purple} />
+                    <RefreshCw size={14} color={COLORS.textSecondary} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -685,8 +681,8 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 10,
     borderRadius: 20,
-    backgroundColor: COLORS.dockBg, // Índigo profundo Fintech
-    shadowColor: '#1E1B4B',
+    backgroundColor: COLORS.dockBg,
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 10,
@@ -699,7 +695,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   compactHeroLabel: {
-    color: '#A5B4FC',
+    color: '#94A3B8',
     fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.8,
@@ -735,7 +731,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   compactGoalText: {
-    color: '#C7D2FE',
+    color: '#94A3B8',
     fontSize: 11,
     fontWeight: '600',
   },
@@ -883,18 +879,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   avatarCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: COLORS.surfaceLavender,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surfaceSoft,
     borderWidth: 1,
-    borderColor: COLORS.purpleBorder,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    color: COLORS.purple,
-    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontSize: 13,
     fontWeight: '800',
   },
   nameRow: {
@@ -923,7 +919,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // PÍLDORAS DE ESTADO SEMÁNTICAS (borderRadius: 9999 — Patrón #6 de Gemini Share)
+  // PÍLDORAS DE ESTADO SEMÁNTICAS (Diseño discreto y disciplinado)
   pastelBadge: {
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -935,18 +931,25 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   badgeAlDia: {
+    backgroundColor: COLORS.surfaceSoft,
+    borderColor: COLORS.border,
+  },
+  badgeAlDiaText: {
+    color: COLORS.textSecondary,
+  },
+  badgeHoy: {
+    backgroundColor: COLORS.surfaceSoft,
+    borderColor: COLORS.border,
+  },
+  badgeHoyText: {
+    color: COLORS.textSecondary,
+  },
+  badgePagado: {
     backgroundColor: COLORS.successLight,
     borderColor: COLORS.successBorder,
   },
-  badgeAlDiaText: {
+  badgePagadoText: {
     color: COLORS.success,
-  },
-  badgeHoy: {
-    backgroundColor: COLORS.infoLight,
-    borderColor: COLORS.infoBorder,
-  },
-  badgeHoyText: {
-    color: COLORS.info,
   },
   badgeMora: {
     backgroundColor: COLORS.dangerLight,
@@ -955,15 +958,15 @@ const styles = StyleSheet.create({
   badgeMoraText: {
     color: COLORS.danger,
   },
-  badgeWarning: {
-    backgroundColor: COLORS.warningLight,
-    borderColor: COLORS.warningBorder,
+  badgeParcial: {
+    backgroundColor: COLORS.surfaceSoft,
+    borderColor: COLORS.border,
   },
-  badgeWarningText: {
-    color: COLORS.warning,
+  badgeParcialText: {
+    color: COLORS.textSecondary,
   },
 
-  // CAJA DE KPIS FINANCIEROS (Bloque #F4F5F7 con Micro-borde 1px y Jerarquía Tipográfica Agresiva)
+  // CAJA DE KPIS FINANCIEROS (Valores oscuros nítidos, mora en rojo cuando aplica)
   cardFinancialsBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -994,7 +997,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: -0.4,
-    color: COLORS.success,
+    color: COLORS.textPrimary,
     marginTop: 2,
   },
   kpiValueDark: {
@@ -1051,16 +1054,16 @@ const styles = StyleSheet.create({
   promiseBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.warningLight,
+    backgroundColor: COLORS.surfaceSoft,
     borderWidth: 1,
-    borderColor: COLORS.warningBorder,
+    borderColor: COLORS.border,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
     marginBottom: 10,
   },
   promiseBannerText: {
-    color: COLORS.warning,
+    color: COLORS.textSecondary,
     fontSize: 11,
     fontWeight: '700',
     flex: 1,
@@ -1088,22 +1091,6 @@ const styles = StyleSheet.create({
   payBtnText: {
     color: '#FFFFFF',
     fontSize: 13,
-    fontWeight: '800',
-  },
-  whatsappBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: COLORS.successLight,
-    borderWidth: 1,
-    borderColor: COLORS.successBorder,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-  },
-  whatsappBtnText: {
-    color: COLORS.success,
-    fontSize: 12,
     fontWeight: '800',
   },
   secondaryActionBtn: {

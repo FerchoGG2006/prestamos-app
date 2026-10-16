@@ -543,8 +543,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.microBorder,
   },
   amountPillActive: {
-    backgroundColor: COLORS.surfaceLavender,
-    borderColor: COLORS.purple,
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primary,
   },
   amountPillTitle: {
     color: COLORS.textSecondary,
@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   amountPillTitleActive: {
-    color: COLORS.purple,
+    color: COLORS.primary,
   },
   amountPillValue: {
     color: COLORS.textPrimary,
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   amountPillValueActive: {
-    color: '#2E1065',
+    color: COLORS.primary,
   },
   methodsRow: {
     flexDirection: 'row',

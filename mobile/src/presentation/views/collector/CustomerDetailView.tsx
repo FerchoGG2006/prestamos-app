@@ -197,12 +197,12 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
             <TouchableOpacity
               style={[
                 styles.contactPillBtn,
-                { backgroundColor: COLORS.surfaceLavender, borderColor: COLORS.purpleBorder },
+                { backgroundColor: COLORS.surfaceSoft, borderColor: COLORS.border },
               ]}
               onPress={handleOpenMap}
             >
-              <Navigation size={14} color={COLORS.purple} />
-              <Text style={[styles.contactPillText, { color: COLORS.purple }]}>
+              <Navigation size={14} color={COLORS.textSecondary} />
+              <Text style={[styles.contactPillText, { color: COLORS.textPrimary }]}>
                 Mapa GPS
               </Text>
             </TouchableOpacity>
@@ -211,12 +211,12 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               <TouchableOpacity
                 style={[
                   styles.contactPillBtn,
-                  { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+                  { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder },
                 ]}
                 onPress={() => onOpenCreditHistory(customer)}
               >
-                <FileText size={14} color="#2563EB" />
-                <Text style={[styles.contactPillText, { color: '#2563EB', fontWeight: '800' }]}>
+                <FileText size={14} color={COLORS.primary} />
+                <Text style={[styles.contactPillText, { color: COLORS.primary, fontWeight: '800' }]}>
                   Historial
                 </Text>
               </TouchableOpacity>
@@ -236,18 +236,18 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
             </Text>
           </View>
 
-          <View style={[styles.bentoBox, { backgroundColor: COLORS.surfaceLavender, borderColor: COLORS.purpleBorder }]}>
-            <Text style={[styles.bentoLabel, { color: COLORS.purple }]}>
+          <View style={[styles.bentoBox, { backgroundColor: COLORS.surfaceSoft, borderColor: COLORS.border }]}>
+            <Text style={[styles.bentoLabel, { color: COLORS.textSecondary }]}>
               TOTAL ABONADO HISTÓRICO
             </Text>
             <Text
-              style={[styles.bentoAmountDark, { color: '#2E1065' }]}
+              style={[styles.bentoAmountDark, { color: COLORS.textPrimary }]}
               numberOfLines={1}
               adjustsFontSizeToFit
             >
               {formatCOP(totalPaid)}
             </Text>
-            <Text style={[styles.bentoSub, { color: COLORS.purple }]}>
+            <Text style={[styles.bentoSub, { color: COLORS.textSecondary }]}>
               Capital prestado: {formatCOP(totalBorrowed)}
             </Text>
           </View>

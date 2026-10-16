@@ -268,20 +268,20 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               <View
                 style={[
                   styles.splitCard,
-                  { backgroundColor: COLORS.surfaceLavender, borderColor: COLORS.purpleBorder },
+                  { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder },
                 ]}
               >
-                <Text style={[styles.splitLabel, { color: COLORS.purple }]}>
+                <Text style={[styles.splitLabel, { color: COLORS.primary }]}>
                   📲 DIGITAL (NEQUI / TRANSF.)
                 </Text>
                 <Text
-                  style={[styles.splitValue, { color: '#2E1065' }]}
+                  style={[styles.splitValue, { color: COLORS.primary }]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
                 >
                   {formatCOP(collectedDigital)}
                 </Text>
-                <Text style={[styles.splitSub, { color: COLORS.purple }]}>
+                <Text style={[styles.splitSub, { color: COLORS.textSecondary }]}>
                   Directo en cuenta bancaria
                 </Text>
               </View>
