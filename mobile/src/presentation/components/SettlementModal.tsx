@@ -29,6 +29,8 @@ import {
   Upload,
   RotateCcw,
   ShieldCheck,
+  Download,
+  FileText,
 } from 'lucide-react-native';
 
 interface SettlementModalProps {
@@ -180,6 +182,41 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       onSuccess();
     } catch (err: any) {
       Alert.alert('Error al importar', err.message || 'Formato JSON inválido');
+    }
+  };
+
+  const handleFilePick = () => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json,application/json';
+      input.onchange = async (e: any) => {
+        const file = e.target?.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = async (evt) => {
+            const content = evt.target?.result as string;
+            if (content) {
+              try {
+                const res = await localStore.importMobileSyncPackage(content);
+                Alert.alert(
+                  '¡Ruta Importada Exitosamente!',
+                  `Archivo: ${file.name}\nClientes cargados: ${res.importedCustomers}\nPréstamos cargados: ${res.importedLoans}`
+                );
+                setShowImportPanel(false);
+                setImportJsonText('');
+                onSuccess();
+              } catch (err: any) {
+                Alert.alert('Error al importar archivo', err.message || 'JSON inválido');
+              }
+            }
+          };
+          reader.readAsText(file);
+        }
+      };
+      input.click();
+    } else {
+      setShowImportPanel(true);
     }
   };
 
@@ -405,35 +442,94 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               )}
             </View>
 
-            {/* 4. TICKET DE SINCRONIZACIÓN OFFLINE-FIRST CON CARTERA.DB (Mejora #5) */}
+            {/* 4. TICKET DE CIERRE DIARIO Y PUENTE OFFLINE-FIRST (Mejora #5) */}
             <View style={styles.syncTicketCard}>
               <View style={styles.syncHeaderRow}>
-                <ShieldCheck size={16} color={COLORS.success} />
+                <FileText size={16} color={COLORS.primary} />
                 <Text style={styles.syncTicketTitle}>
-                  PUENTE OFFLINE-FIRST (mobile/ ↔ cartera.db)
+                  TICKET DE CIERRE DIARIO Y ARQUEO
                 </Text>
               </View>
-              <Text style={styles.syncHashText}>
-                Hash de Integridad: {verificationHash}
+              <Text style={styles.syncTicketSubtitle}>
+                Ruta: {session.routeId} • Jornada: {todayStr} • {session.status}
               </Text>
 
               <View style={styles.dashedDivider} />
 
+              {/* Desglose Térmico de Operaciones de Calle */}
+              <View style={styles.ticketLineRow}>
+                <Text style={styles.ticketLabel}>Recaudo Total ({payments.length} recibos):</Text>
+                <Text style={[styles.ticketValue, { color: COLORS.success }]}>
+                  +{formatCOP(totalCollected)}
+                </Text>
+              </View>
+              <View style={styles.ticketLineRow}>
+                <Text style={styles.ticketLabelSub}>• Efectivo entregado en mano:</Text>
+                <Text style={styles.ticketValue}>{formatCOP(cashHandedOver)}</Text>
+              </View>
+              <View style={styles.ticketLineRow}>
+                <Text style={styles.ticketLabelSub}>• Digital (Nequi / Bancos):</Text>
+                <Text style={styles.ticketValue}>{formatCOP(collectedDigital)}</Text>
+              </View>
+              <View style={styles.ticketLineRow}>
+                <Text style={styles.ticketLabel}>Desembolsos de préstamos hoy:</Text>
+                <Text style={[styles.ticketValue, { color: COLORS.primary }]}>
+                  -{formatCOP(disbursedToday)}
+                </Text>
+              </View>
+
+              <View style={styles.dashedDivider} />
+
+              <View style={styles.ticketLineRow}>
+                <Text style={[styles.ticketLabel, { fontWeight: '800', color: COLORS.textPrimary }]}>
+                  Diferencia Arqueo Físico:
+                </Text>
+                <Text
+                  style={[
+                    styles.ticketValue,
+                    {
+                      color: cashDifference === 0 ? COLORS.success : COLORS.danger,
+                      fontWeight: '900',
+                    },
+                  ]}
+                >
+                  {cashDifference === 0 ? '✓ Cuadre Exacto ($0)' : formatCOP(cashDifference)}
+                </Text>
+              </View>
+
+              <View style={styles.verificationHashBox}>
+                <ShieldCheck size={13} color={COLORS.success} style={{ marginRight: 6 }} />
+                <Text style={styles.verificationHashText}>
+                  Hash SHA: {verificationHash}
+                </Text>
+              </View>
+
+              <View style={styles.dashedDivider} />
+
+              {/* Botones de acción Offline-First */}
               <View style={styles.syncButtonsRow}>
                 <TouchableOpacity
                   style={styles.syncExportBtn}
                   onPress={handleExportSyncPackage}
                 >
-                  <Share2 size={15} color={COLORS.primary} style={{ marginRight: 6 }} />
-                  <Text style={styles.syncExportBtnText}>Exportar JSON</Text>
+                  <Download size={13} color={COLORS.primary} style={{ marginRight: 5 }} />
+                  <Text style={styles.syncExportBtnText}>Descargar .json</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.syncFilePickBtn}
+                  onPress={handleFilePick}
+                >
+                  <Upload size={13} color={COLORS.purple} style={{ marginRight: 5 }} />
+                  <Text style={styles.syncFilePickBtnText}>Subir Archivo</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={styles.syncImportToggleBtn}
                   onPress={() => setShowImportPanel(!showImportPanel)}
                 >
-                  <Upload size={15} color={COLORS.purple} style={{ marginRight: 6 }} />
-                  <Text style={styles.syncImportToggleText}>Importar Ruta</Text>
+                  <Share2 size={13} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
+                  <Text style={styles.syncImportToggleText}>Pegar</Text>
                 </TouchableOpacity>
               </View>
 
@@ -455,7 +551,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     onPress={handleImportPackage}
                   >
                     <Text style={styles.applyImportBtnText}>
-                      Cargar Paquete en Teléfono
+                      Procesar Paquete JSON
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -723,9 +819,54 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   syncTicketTitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '900',
     color: COLORS.textPrimary,
+    letterSpacing: 0.3,
+  },
+  syncTicketSubtitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  ticketLineRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  ticketLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  ticketLabelSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    paddingLeft: 8,
+  },
+  ticketValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+  },
+  verificationHashBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+  },
+  verificationHashText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.textSecondary,
     letterSpacing: 0.3,
   },
   syncHashText: {
@@ -743,7 +884,7 @@ const styles = StyleSheet.create({
   },
   syncButtonsRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
     marginBottom: 8,
   },
   syncExportBtn: {
@@ -754,15 +895,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.infoLight,
     borderWidth: 1,
     borderColor: COLORS.infoBorder,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
   },
   syncExportBtnText: {
     color: COLORS.primary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '800',
   },
-  syncImportToggleBtn: {
+  syncFilePickBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -770,12 +911,28 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceLavender,
     borderWidth: 1,
     borderColor: COLORS.purpleBorder,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  syncFilePickBtnText: {
+    color: COLORS.purple,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  syncImportToggleBtn: {
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceSoft,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+    paddingVertical: 9,
+    borderRadius: 10,
   },
   syncImportToggleText: {
-    color: COLORS.purple,
-    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontSize: 11,
     fontWeight: '800',
   },
   importBox: {
