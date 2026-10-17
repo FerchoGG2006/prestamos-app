@@ -178,12 +178,19 @@ export interface DailySettlement {
   routeId: string;
   collectorId: string;
 
-  // Cobro
+  // Cobro Pleno (Recaudo puro de cuotas, sin salidas de renovación)
+  plenoCollection: number;
   expectedCollection: number;
-  actualCollection: number;
+  actualCollection: number; // Alias retrocompatible con plenoCollection
   pendingCollection: number;
 
-  // Colocaciones & Renovaciones
+  // Salidas / Salientes (Préstamos Paridos y Renovaciones)
+  salidasCount: number;
+  salidasCapitalPlaced: number;
+  salidasRefinancedBalance: number; // Cruce de cartera (los $150k que van a Salidas y NO al Pleno)
+  salidasNetCashDisbursed: number;
+
+  // Colocaciones & Renovaciones (detalle histórico)
   newLoansCount: number;
   newLoansCapitalPlaced: number;
   renewalsCount: number;
@@ -247,7 +254,8 @@ export interface AuditLog {
  * Métricas agregadas en tiempo real para el Hero Balance Card y Gráficos de Ruta (Figma 7020-3430)
  */
 export interface DailyRouteMetrics {
-  collectedToday: number;
+  plenoCollected: number;        // Cobro Pleno de la ruta (recaudo puro de cuotas sin salidas)
+  collectedToday: number;        // Alias retrocompatible
   expectedDailyGoal: number;
   progressRatio: number;         // 0.0 .. 1.0
   progressPercentage: number;    // 0 .. 100
@@ -260,6 +268,12 @@ export interface DailyRouteMetrics {
   cashAvailableInHand: number;   // Efectivo físico en mano del cobrador
   visitedCustomersCount: number;
   expectedCustomersCount: number;
+
+  // Desglose de Salidas / Salientes (Préstamos Paridos & Renovaciones)
+  salidasCount: number;             // Préstamos paridos + renovaciones de hoy
+  salidasCapitalPlaced: number;     // Capital total saliente colocado
+  salidasRefinancedBalance: number; // Saldo anterior refinanciado / cruzado (los $150k que van a Salidas y NO al Pleno)
+  salidasNetCashDisbursed: number;  // Efectivo neto desembolsado en mano
 }
 
 /**

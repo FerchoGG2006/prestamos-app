@@ -67,7 +67,7 @@ export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
 
         <View style={styles.metricsGrid}>
           <View style={styles.metricBox}>
-            <Text style={styles.metricLabel}>Cobro Total</Text>
+            <Text style={styles.metricLabel}>Cobro Pleno</Text>
             <Text style={[styles.metricVal, { color: COLORS.success }]}>
               {formatCOP(weeklyConsolidated.totalCollections)}
             </Text>
@@ -166,7 +166,7 @@ export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
                   <Text style={styles.bVal}>{formatCOP(s.expectedCollection)}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.bLabel}>Cobro Realizado:</Text>
+                  <Text style={styles.bLabel}>Cobro Pleno:</Text>
                   <Text style={[styles.bVal, { color: COLORS.success }]}>{formatCOP(s.actualCollection)}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -174,6 +174,20 @@ export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
                   <Text style={styles.bVal}>{formatCOP(s.cashHandedOver)}</Text>
                 </View>
               </View>
+
+              {/* Salidas / Salientes (Préstamos Paridos & Renovaciones) */}
+              {((s.salidasCount && s.salidasCount > 0) || s.renewalsCount > 0) && (
+                <View style={{ marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: COLORS.microBorder, flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 11, color: COLORS.textSecondary, fontWeight: '700' }}>
+                    Salidas: {s.salidasCount || (s.newLoansCount + s.renewalsCount)} ({formatCOP(s.salidasCapitalPlaced || (s.newLoansCapitalPlaced + s.renewalsCapitalPlaced))})
+                  </Text>
+                  {(s.salidasRefinancedBalance || 0) > 0 && (
+                    <Text style={{ fontSize: 11, color: '#B45309', fontWeight: '700' }}>
+                      Refinanciado: {formatCOP(s.salidasRefinancedBalance)} (Saliente)
+                    </Text>
+                  )}
+                </View>
+              )}
 
               {/* Resultado del Arqueo */}
               <View style={styles.arqueoResultRow}>

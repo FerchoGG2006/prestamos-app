@@ -306,7 +306,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                         { backgroundColor: COLORS.successBright },
                       ]}
                     />
-                    <Text style={styles.barLabel}>Recaudo Total Hoy</Text>
+                    <Text style={styles.barLabel}>Cobro Pleno (Recaudo Cuotas)</Text>
                   </View>
                   <Text style={[styles.barAmount, { color: COLORS.success }]}>
                     {formatCOP(totalCollected)}
@@ -332,7 +332,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     <View
                       style={[styles.legendDot, { backgroundColor: COLORS.primary }]}
                     />
-                    <Text style={styles.barLabel}>Desembolsos / Renovaciones</Text>
+                    <Text style={styles.barLabel}>Salidas / Salientes (Paridos & Renovados)</Text>
                   </View>
                   <Text style={[styles.barAmount, { color: COLORS.primary }]}>
                     {formatCOP(disbursedToday)}
@@ -458,21 +458,42 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
 
               {/* Desglose Térmico de Operaciones de Calle */}
               <View style={styles.ticketLineRow}>
-                <Text style={styles.ticketLabel}>Recaudo Total ({payments.length} recibos):</Text>
+                <Text style={styles.ticketLabel}>Cobro Pleno ({payments.length} cuotas cobradas):</Text>
                 <Text style={[styles.ticketValue, { color: COLORS.success }]}>
                   +{formatCOP(totalCollected)}
                 </Text>
               </View>
               <View style={styles.ticketLineRow}>
-                <Text style={styles.ticketLabelSub}>• Efectivo entregado en mano:</Text>
-                <Text style={styles.ticketValue}>{formatCOP(cashHandedOver)}</Text>
+                <Text style={styles.ticketLabelSub}>• Efectivo cobrado en mano:</Text>
+                <Text style={styles.ticketValue}>{formatCOP(collectedCash)}</Text>
               </View>
               <View style={styles.ticketLineRow}>
                 <Text style={styles.ticketLabelSub}>• Digital (Nequi / Bancos):</Text>
                 <Text style={styles.ticketValue}>{formatCOP(collectedDigital)}</Text>
               </View>
+
+              <View style={styles.dashedDivider} />
+
               <View style={styles.ticketLineRow}>
-                <Text style={styles.ticketLabel}>Desembolsos de préstamos hoy:</Text>
+                <Text style={styles.ticketLabel}>
+                  Salidas / Salientes ({metrics.salidasCount} préstamos paridos/renovados):
+                </Text>
+                <Text style={[styles.ticketValue, { color: COLORS.primary }]}>
+                  {formatCOP(metrics.salidasCapitalPlaced)}
+                </Text>
+              </View>
+              {metrics.salidasRefinancedBalance > 0 && (
+                <View style={styles.ticketLineRow}>
+                  <Text style={styles.ticketLabelSub}>
+                    • Saldo refinanciado / saliente (no va al pleno):
+                  </Text>
+                  <Text style={[styles.ticketValue, { color: '#B45309', fontWeight: '800' }]}>
+                    {formatCOP(metrics.salidasRefinancedBalance)}
+                  </Text>
+                </View>
+              )}
+              <View style={styles.ticketLineRow}>
+                <Text style={styles.ticketLabelSub}>• Desembolso neto entregado en mano:</Text>
                 <Text style={[styles.ticketValue, { color: COLORS.primary }]}>
                   -{formatCOP(disbursedToday)}
                 </Text>

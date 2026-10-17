@@ -286,6 +286,27 @@ class LocalStore {
       )
       .reduce((sum, cm) => sum + cm.amount, 0);
 
+    // Desglose de Salidas / Salientes (Préstamos Paridos & Renovaciones)
+    const todayNewLoans = this.loans.filter(
+      (l) => l.createdAt.startsWith(todayStr) && !l.previousLoanId
+    );
+    const todayRenewals = this.renewals.filter((r) => r.createdAt.startsWith(todayStr));
+
+    const salidasCount = todayNewLoans.length + todayRenewals.length;
+    const salidasCapitalPlaced =
+      todayNewLoans.reduce((sum, l) => sum + l.principal, 0) +
+      todayRenewals.reduce((sum, r) => sum + r.newPrincipal, 0);
+
+    // Saldo anterior refinanciado / saliente (los $150.000 que van a Salidas y NO al Pleno)
+    const salidasRefinancedBalance = todayRenewals.reduce(
+      (sum, r) => sum + r.previousBalanceDeducted,
+      0
+    );
+
+    const salidasNetCashDisbursed =
+      todayRenewals.reduce((sum, r) => sum + r.actualCashDisbursed, 0) +
+      todayNewLoans.reduce((sum, l) => sum + l.principal, 0);
+
     // Base inicial de caja + efectivo cobrado - desembolsos en efectivo
     const initialCashBase = this.cashMovements
       .filter((cm) => cm.type === 'INCOME' && cm.category === 'ADJUSTMENT')
@@ -296,6 +317,7 @@ class LocalStore {
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
 
     return {
+      plenoCollected: collectedToday,
       collectedToday,
       expectedDailyGoal,
       progressRatio,
@@ -309,6 +331,12 @@ class LocalStore {
       cashAvailableInHand,
       visitedCustomersCount: visitedCustomerIds.size,
       expectedCustomersCount: activeLoans.length,
+
+      // Desglose de Salidas / Salientes
+      salidasCount,
+      salidasCapitalPlaced,
+      salidasRefinancedBalance,
+      salidasNetCashDisbursed,
     };
   }
 
@@ -801,8 +829,21 @@ class LocalStore {
     }
 
     const todayNewLoans = this.loans.filter(
-      (l) => l.createdAt === session.date && !l.previousLoanId
+      (l) => l.createdAt.startsWith(session.date) && !l.previousLoanId
     );
+    const todayRenewals = this.renewals.filter((r) => r.createdAt.startsWith(session.date));
+
+    const salidasCount = todayNewLoans.length + todayRenewals.length;
+    const salidasCapitalPlaced =
+      todayNewLoans.reduce((sum, l) => sum + l.principal, 0) +
+      todayRenewals.reduce((sum, r) => sum + r.newPrincipal, 0);
+    const salidasRefinancedBalance = todayRenewals.reduce(
+      (sum, r) => sum + r.previousBalanceDeducted,
+      0
+    );
+    const salidasNetCashDisbursed =
+      todayRenewals.reduce((sum, r) => sum + r.actualCashDisbursed, 0) +
+      todayNewLoans.reduce((sum, l) => sum + (l.principal - calculatePaperworkFee(l.principal)), 0);
 
     const settlement: DailySettlement = {
       id: `set-${Date.now()}`,
@@ -810,16 +851,19 @@ class LocalStore {
       date: session.date,
       routeId: session.routeId,
       collectorId: session.collectorId,
+      plenoCollection: actualCollection,
       expectedCollection: session.expectedCollection,
       actualCollection,
       pendingCollection,
+      salidasCount,
+      salidasCapitalPlaced,
+      salidasRefinancedBalance,
+      salidasNetCashDisbursed,
       newLoansCount: todayNewLoans.length,
       newLoansCapitalPlaced: todayNewLoans.reduce((sum, l) => sum + l.principal, 0),
-      renewalsCount: this.renewals.length,
-      renewalsCapitalPlaced: this.renewals.reduce((sum, r) => sum + r.newPrincipal, 0),
-      actualCashDisbursedTotal:
-        this.renewals.reduce((sum, r) => sum + r.actualCashDisbursed, 0) +
-        todayNewLoans.reduce((sum, l) => sum + (l.principal - calculatePaperworkFee(l.principal)), 0),
+      renewalsCount: todayRenewals.length,
+      renewalsCapitalPlaced: todayRenewals.reduce((sum, r) => sum + r.newPrincipal, 0),
+      actualCashDisbursedTotal: salidasNetCashDisbursed,
       recoveredDelinquency: 0,
       collectedCash,
       collectedTransfers,

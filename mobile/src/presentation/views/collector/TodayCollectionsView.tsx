@@ -314,7 +314,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         {/* Fila Superior: Título, Modo Privacidad y Porcentaje */}
         <View style={styles.compactHeroTopRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={styles.compactHeroLabel}>RECAUDO DE HOY</Text>
+            <Text style={styles.compactHeroLabel}>COBRO PLENO (RECAUDO DE HOY)</Text>
             <TouchableOpacity onPress={togglePrivacy} style={styles.compactEyeBtn}>
               {privacyMode ? (
                 <EyeOff size={11} color="#94A3B8" />
@@ -350,7 +350,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           />
         </View>
 
-        {/* Tira de Micro-KPIs Integrados (Reemplaza la cuadrícula pesada Bento) */}
+        {/* Tira de Micro-KPIs Integrados (Con Salidas / Salientes separadas del Pleno) */}
         <View style={styles.microKpiStrip}>
           <TouchableOpacity
             style={styles.microKpiItem}
@@ -360,6 +360,20 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             <Wallet size={12} color="#94A3B8" style={{ marginRight: 4 }} />
             <Text style={styles.microKpiLabel}>En Caja: </Text>
             <Text style={styles.microKpiValue}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
+          </TouchableOpacity>
+
+          <View style={styles.microKpiDivider} />
+
+          <TouchableOpacity
+            style={styles.microKpiItem}
+            activeOpacity={0.7}
+            onPress={onOpenSettlement}
+          >
+            <RefreshCw size={11} color="#94A3B8" style={{ marginRight: 4 }} />
+            <Text style={styles.microKpiLabel}>Salidas: </Text>
+            <Text style={styles.microKpiValue}>
+              {metrics.salidasCount > 0 ? `${metrics.salidasCount}` : '0'}
+            </Text>
           </TouchableOpacity>
 
           <View style={styles.microKpiDivider} />
@@ -394,6 +408,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             </Text>
           </View>
         </View>
+
+        {metrics.salidasRefinancedBalance > 0 && (
+          <View style={styles.salidasBannerRow}>
+            <Text style={styles.salidasBannerText}>
+              🔄 Salidas/Renovaciones: {formatCOP(metrics.salidasRefinancedBalance)} refinanciado (cruce de saldo, no va al Pleno)
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* 2. ACCIONES RÁPIDAS COMPACTAS (Micro-píldoras en 1 fila) */}
@@ -791,6 +813,18 @@ const styles = StyleSheet.create({
     width: 1,
     height: 12,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  salidasBannerRow: {
+    marginTop: 6,
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  salidasBannerText: {
+    color: '#FDE68A',
+    fontSize: 9.5,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 
   // 2. ACCIONES RÁPIDAS COMPACTAS (Micro-píldoras en 1 fila)
