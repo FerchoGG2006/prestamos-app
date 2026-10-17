@@ -23,6 +23,7 @@ import {
   PaymentPromise,
   CashMovement,
   DailyRouteMetrics,
+  NonPaymentVisit,
 } from './src/core/domain/types';
 import { COLORS } from './src/presentation/theme/colors';
 import { TodayCollectionsView } from './src/presentation/views/collector/TodayCollectionsView';
@@ -35,6 +36,8 @@ import { PromiseModal } from './src/presentation/components/PromiseModal';
 import { SettlementModal } from './src/presentation/components/SettlementModal';
 import { NewCustomerModal } from './src/presentation/components/NewCustomerModal';
 import { NewLoanModal } from './src/presentation/components/NewLoanModal';
+import { NonPaymentModal } from './src/presentation/components/NonPaymentModal';
+import { ExpenseModal } from './src/presentation/components/ExpenseModal';
 import {
   Smartphone,
   DollarSign,
@@ -94,7 +97,14 @@ export default function App() {
   const [settlementModalVisible, setSettlementModalVisible] = useState(false);
   const [newCustomerModalVisible, setNewCustomerModalVisible] = useState(false);
   const [newLoanModalVisible, setNewLoanModalVisible] = useState(false);
+  const [expenseModalVisible, setExpenseModalVisible] = useState(false);
+  const [nonPaymentModalData, setNonPaymentModalData] = useState<{
+    visible: boolean;
+    customer: Customer | null;
+    loan: Loan | null;
+  }>({ visible: false, customer: null, loan: null });
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
+  const [nonPaymentVisits, setNonPaymentVisits] = useState<NonPaymentVisit[]>([]);
 
   const todayStr = '2026-09-19'; // Fecha operativa de trabajo en ruta
 
@@ -109,6 +119,7 @@ export default function App() {
     setSession(localStore.getActiveSession());
     setPromises([...localStore.getPromises()]);
     setCashMovements([...localStore.getCashMovements()]);
+    setNonPaymentVisits([...localStore.getNonPaymentVisits()]);
   };
 
   useEffect(() => {
@@ -246,6 +257,7 @@ export default function App() {
             promises={promises}
             metrics={routeMetrics}
             todayStr={todayStr}
+            nonPaymentVisits={nonPaymentVisits}
             onSelectCustomerToPay={(customer, loan) =>
               setPaymentModalData({ visible: true, customer, loan })
             }
@@ -255,9 +267,13 @@ export default function App() {
             onSelectCustomerPromise={(customer, loan) =>
               setPromiseModalData({ visible: true, customer, loan })
             }
+            onSelectCustomerNonPayment={(customer, loan) =>
+              setNonPaymentModalData({ visible: true, customer, loan })
+            }
             onViewCustomerDetail={(customer) => setDetailCustomer(customer)}
             onOpenNewCustomer={() => setNewCustomerModalVisible(true)}
             onOpenNewLoan={() => setNewLoanModalVisible(true)}
+            onOpenExpense={() => setExpenseModalVisible(true)}
             onOpenSettlement={() => setSettlementModalVisible(true)}
           />
         ) : collectorTab === 'CLIENTES' ? (
@@ -489,6 +505,24 @@ export default function App() {
         loans={loans}
         todayStr={todayStr}
         onClose={() => setNewLoanModalVisible(false)}
+        onSuccess={syncFromStore}
+      />
+
+      <NonPaymentModal
+        visible={nonPaymentModalData.visible}
+        customer={nonPaymentModalData.customer}
+        loan={nonPaymentModalData.loan}
+        todayStr={todayStr}
+        onClose={() =>
+          setNonPaymentModalData({ visible: false, customer: null, loan: null })
+        }
+        onSuccess={syncFromStore}
+      />
+
+      <ExpenseModal
+        visible={expenseModalVisible}
+        todayStr={todayStr}
+        onClose={() => setExpenseModalVisible(false)}
         onSuccess={syncFromStore}
       />
     </SafeAreaView>

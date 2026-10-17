@@ -52,6 +52,8 @@ public class CreateLoanDialog extends Stage {
     private final Label lblSummaryTotal = new Label("$ 360.000");
     private final Label lblSummaryInstallment = new Label("$ 15.000");
     private final Label lblSummaryInterest = new Label("$ 60.000");
+    private final Label lblSummaryCartulina = new Label("- $ 15.000");
+    private final Label lblSummaryNet = new Label("$ 285.000");
     private final Label lblFeedback = new Label();
 
     private final TableView<InstallmentPlanItem> planTable = new TableView<>();
@@ -158,15 +160,18 @@ public class CreateLoanDialog extends Stage {
         sumMetrics.setAlignment(Pos.CENTER_LEFT);
 
         VBox mTotal = new VBox(2, new Label("Total a Cobrar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px;"); }}, lblSummaryTotal);
-        lblSummaryTotal.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 16px; -fx-font-weight: bold;");
+        lblSummaryTotal.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 15px; -fx-font-weight: bold;");
 
         VBox mCuota = new VBox(2, new Label("Valor Cuota") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px;"); }}, lblSummaryInstallment);
-        lblSummaryInstallment.setStyle("-fx-text-fill: #059669; -fx-font-size: 16px; -fx-font-weight: bold;");
+        lblSummaryInstallment.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
 
-        VBox mInteres = new VBox(2, new Label("Ganancia") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px;"); }}, lblSummaryInterest);
-        lblSummaryInterest.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
+        VBox mCart = new VBox(2, new Label("Cartulina ($5k/$100k)") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px;"); }}, lblSummaryCartulina);
+        lblSummaryCartulina.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 14px; -fx-font-weight: bold;");
 
-        sumMetrics.getChildren().addAll(mTotal, mCuota, mInteres);
+        VBox mNet = new VBox(2, new Label("💵 Neto a Entregar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px; -fx-font-weight: bold;"); }}, lblSummaryNet);
+        lblSummaryNet.setStyle("-fx-text-fill: #059669; -fx-font-size: 16px; -fx-font-weight: bold;");
+
+        sumMetrics.getChildren().addAll(mTotal, mCuota, mCart, mNet);
         summaryCard.getChildren().addAll(sumTitle, sumMetrics);
 
         // Tabla previa
@@ -290,6 +295,12 @@ public class CreateLoanDialog extends Stage {
             if (!plan.isEmpty()) {
                 lblSummaryInstallment.setText(CURRENCY.format(plan.get(0).amount()));
             }
+
+            var paperworkMoney = com.cartera.loans.domain.LoanCalculator.calculatePaperworkFee(new com.cartera.domain.money.Money(principal));
+            BigDecimal cartulina = paperworkMoney.amount();
+            BigDecimal netCash = principal.subtract(cartulina);
+            lblSummaryCartulina.setText("- " + CURRENCY.format(cartulina));
+            lblSummaryNet.setText(CURRENCY.format(netCash));
 
             btnDisburse.setDisable(false);
             lblFeedback.setVisible(false);

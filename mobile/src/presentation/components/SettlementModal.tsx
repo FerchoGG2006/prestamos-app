@@ -93,7 +93,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
     100,
     Math.round((disbursedToday / maxBarValue) * 100)
   );
-  const metaRatio = Math.min(
+  const programadoRatio = Math.min(
     100,
     Math.round((metrics.expectedDailyGoal / maxBarValue) * 100)
   );
@@ -351,7 +351,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 </View>
               </View>
 
-              {/* Barra 3: Meta Diaria */}
+              {/* Barra 3: Programado a Cobrar Hoy */}
               <View style={styles.barGroup}>
                 <View style={styles.barLabelRow}>
                   <View style={styles.legendRow}>
@@ -361,7 +361,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                         { backgroundColor: COLORS.textMuted },
                       ]}
                     />
-                    <Text style={styles.barLabel}>Meta Diaria Esperada</Text>
+                    <Text style={styles.barLabel}>Programado a Cobrar Hoy</Text>
                   </View>
                   <Text style={styles.barAmount}>
                     {formatCOP(metrics.expectedDailyGoal)}
@@ -372,7 +372,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     style={[
                       styles.barFill,
                       {
-                        width: `${Math.max(6, metaRatio)}%`,
+                        width: `${Math.max(6, programadoRatio)}%`,
                         backgroundColor: COLORS.textMuted,
                       },
                     ]}

@@ -15,6 +15,7 @@ import {
   Installment,
   PaymentPromise,
   DailyRouteMetrics,
+  NonPaymentVisit,
 } from '../../../core/domain/types';
 import { formatCOP } from '../../../core/config/business-rules';
 import { calculateDelinquencyMetrics } from '../../../core/domain/calculator';
@@ -41,6 +42,9 @@ import {
   EyeOff,
   ArrowUpDown,
   X,
+  Fuel,
+  MapPin,
+  AlertCircle,
 } from 'lucide-react-native';
 
 type FilterType = 'TODOS' | 'COBRAR_HOY' | 'MORA' | 'AL_DIA' | 'PAGADOS' | 'PROMESAS';
@@ -52,12 +56,15 @@ interface TodayCollectionsViewProps {
   promises: PaymentPromise[];
   metrics: DailyRouteMetrics;
   todayStr: string;
+  nonPaymentVisits?: NonPaymentVisit[];
   onSelectCustomerToPay: (customer: Customer, loan: Loan) => void;
   onSelectCustomerToRenew: (customer: Customer, loan: Loan) => void;
   onSelectCustomerPromise: (customer: Customer, loan: Loan) => void;
+  onSelectCustomerNonPayment?: (customer: Customer, loan: Loan) => void;
   onViewCustomerDetail: (customer: Customer) => void;
   onOpenNewCustomer: () => void;
   onOpenNewLoan: () => void;
+  onOpenExpense?: () => void;
   onOpenSettlement: () => void;
 }
 
@@ -68,18 +75,22 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   promises,
   metrics,
   todayStr,
+  nonPaymentVisits = [],
   onSelectCustomerToPay,
   onSelectCustomerToRenew,
   onSelectCustomerPromise,
+  onSelectCustomerNonPayment,
   onViewCustomerDetail,
   onOpenNewCustomer,
   onOpenNewLoan,
+  onOpenExpense,
   onOpenSettlement,
 }) => {
   const [activeFilter, setActiveFilter] = useState<FilterType>('TODOS');
   const [searchQuery, setSearchQuery] = useState('');
   const [privacyMode, setPrivacyMode] = useState(false); // Mejora #3: Modo Privacidad en Calle (Ocultar Saldos)
   const [prioritizeOverdue, setPrioritizeOverdue] = useState(true); // Mejora #6: Ordenar Mora primero
+  const [frequencyFilter, setFrequencyFilter] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY'>('ALL');
 
   useEffect(() => {
     safeStorage.getItem('@prestamos_privacy_mode_v1').then((val) => {
@@ -189,7 +200,15 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     PROMESAS: customerCardsData.filter((i) => i.hasPromise).length,
   };
 
-  // Filtrado combinado (Chip + Buscador instantáneo + Ordenamiento Inteligente)
+  const freqCounts = {
+    ALL: customerCardsData.length,
+    DAILY: customerCardsData.filter((i) => (i.activeLoan.frequency || 'DAILY') === 'DAILY').length,
+    WEEKLY: customerCardsData.filter((i) => i.activeLoan.frequency === 'WEEKLY').length,
+    BIWEEKLY: customerCardsData.filter((i) => i.activeLoan.frequency === 'BIWEEKLY').length,
+    MONTHLY: customerCardsData.filter((i) => i.activeLoan.frequency === 'MONTHLY').length,
+  };
+
+  // Filtrado combinado (Estado + Modalidad de Pago + Buscador + Ordenamiento)
   const filteredCards = customerCardsData
     .filter((item) => {
       if (searchQuery.trim()) {
@@ -199,6 +218,11 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         const matchBiz = item.customer.businessName?.toLowerCase().includes(q);
         const matchNeighborhood = item.customer.neighborhood.toLowerCase().includes(q);
         if (!matchName && !matchDoc && !matchBiz && !matchNeighborhood) return false;
+      }
+
+      if (frequencyFilter !== 'ALL') {
+        const f = item.activeLoan.frequency || 'DAILY';
+        if (f !== frequencyFilter) return false;
       }
 
       if (activeFilter === 'COBRAR_HOY') return item.isDueToday || item.isOverdue;
@@ -215,6 +239,20 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       if (!a.isOverdue && b.isOverdue) return 1;
       return b.delinquency.overdueDays - a.delinquency.overdueDays;
     });
+
+  const getFrequencyLabel = (freq?: string): string => {
+    switch (freq) {
+      case 'WEEKLY':
+        return 'Semanal';
+      case 'BIWEEKLY':
+        return 'Quincenal';
+      case 'MONTHLY':
+        return 'Mensual';
+      case 'DAILY':
+      default:
+        return 'Diario';
+    }
+  };
 
   const getInitials = (fullName: string): string => {
     const parts = fullName.trim().split(/\s+/);
@@ -234,6 +272,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(message)}`;
     Linking.openURL(url).catch(() => {
       Alert.alert('Comprobante WhatsApp', message);
+    });
+  };
+
+  const handleOpenMap = (c: Customer) => {
+    const loc = `${c.address}, ${c.neighborhood}, ${c.city || 'Colombia'}`;
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Dirección', loc);
     });
   };
 
@@ -284,13 +330,13 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           </View>
         </View>
 
-        {/* Monto Principal y Meta en una sola línea armónica */}
+        {/* Monto Principal y Programado del Día */}
         <View style={styles.compactAmountRow}>
           <Text style={styles.compactMainAmount} numberOfLines={1} adjustsFontSizeToFit>
             {maskIfPrivate(metrics.collectedToday)}
           </Text>
           <Text style={styles.compactGoalText}>
-            de {maskIfPrivate(metrics.expectedDailyGoal)}
+            de {maskIfPrivate(metrics.expectedDailyGoal)} programado
           </Text>
         </View>
 
@@ -383,6 +429,16 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           <Landmark size={13} color={COLORS.primary} />
           <Text style={[styles.compactActionText, { color: COLORS.textPrimary }]}>Arqueo</Text>
         </TouchableOpacity>
+
+        {onOpenExpense && (
+          <TouchableOpacity
+            style={styles.compactActionBtn}
+            onPress={onOpenExpense}
+          >
+            <Fuel size={13} color="#D97706" />
+            <Text style={[styles.compactActionText, { color: COLORS.textPrimary }]}>+ Gasto</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* 3. BUSCADOR COMPACTO Y LIMPIO */}
@@ -455,6 +511,42 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         })}
       </ScrollView>
 
+      {/* 5.1 FILTRO POR MODALIDAD DE PAGO (Diario, Semanal, Quincenal, Mensual) */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.freqTabs}
+        contentContainerStyle={{ paddingRight: 16 }}
+      >
+        {(
+          [
+            { key: 'ALL', label: `Todas (${freqCounts.ALL})` },
+            { key: 'DAILY', label: `Diario (${freqCounts.DAILY})` },
+            { key: 'WEEKLY', label: `Semanal (${freqCounts.WEEKLY})` },
+            { key: 'BIWEEKLY', label: `Quincenal (${freqCounts.BIWEEKLY})` },
+            { key: 'MONTHLY', label: `Mensual (${freqCounts.MONTHLY})` },
+          ] as const
+        ).map((item) => {
+          const isActive = frequencyFilter === item.key;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.freqChip, isActive && styles.freqChipActive]}
+              onPress={() => setFrequencyFilter(item.key)}
+            >
+              <Text
+                style={[
+                  styles.freqChipText,
+                  isActive && styles.freqChipTextActive,
+                ]}
+              >
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
       {/* 6. TARJETAS DE PRÉSTAMO / RUTA DE COBRO (.loan-card / Soft UI + Píldoras Semánticas 9999) */}
       <View style={styles.cardsList}>
         {filteredCards.length === 0 ? (
@@ -479,7 +571,11 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               remainingBalance,
             } = item;
 
-            // Selección de Píldora Semántica: Estados discretos (Neutro para normal, Verde para pagado, Rojo para mora)
+            const todayNonPayment = nonPaymentVisits.find(
+              (v) => v.customerId === customer.id && v.date === todayStr
+            );
+
+            // Selección de Píldora Semántica: Estados discretos (Neutro para normal, Verde para pagado, Rojo para mora, Ámbar para no pago)
             let badgeStyle = styles.badgeHoy;
             let badgeTextStyle = styles.badgeHoyText;
             let badgeLabel = 'Cobrar hoy';
@@ -488,6 +584,10 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               badgeStyle = styles.badgePagado;
               badgeTextStyle = styles.badgePagadoText;
               badgeLabel = '✓ Cobrado hoy';
+            } else if (todayNonPayment) {
+              badgeStyle = { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' };
+              badgeTextStyle = { color: '#B45309' };
+              badgeLabel = `⚠️ ${todayNonPayment.reasonLabel}`;
             } else if (delinquency.hasDelinquency) {
               badgeStyle = styles.badgeMora;
               badgeTextStyle = styles.badgeMoraText;
@@ -519,6 +619,11 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                         {customer.fullName}
                       </Text>
                       <Text style={styles.loanNumberTag}>{activeLoan.loanNumber}</Text>
+                      <View style={styles.frequencyTag}>
+                        <Text style={styles.frequencyTagText}>
+                          {getFrequencyLabel(activeLoan.frequency)}
+                        </Text>
+                      </View>
                     </View>
                     <Text style={styles.customerDetails} numberOfLines={1}>
                       {customer.businessName ? `${customer.businessName} • ` : ''}
@@ -541,7 +646,9 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 {/* Bloque Soft UI (#F4F5F7) con Micro-Borde de 1px y Jerarquía Tipográfica Agresiva */}
                 <View style={styles.cardFinancialsBox}>
                   <View style={styles.kpiCol}>
-                    <Text style={styles.kpiLabel}>COBRO HOY</Text>
+                    <Text style={styles.kpiLabel}>
+                      COBRO {activeLoan.frequency === 'WEEKLY' ? 'SEMANAL' : activeLoan.frequency === 'BIWEEKLY' ? 'QUINCENAL' : activeLoan.frequency === 'MONTHLY' ? 'MENSUAL' : 'HOY'}
+                    </Text>
                     <Text style={styles.kpiValueGreen} numberOfLines={1} adjustsFontSizeToFit>
                       {formatCOP(item.expectedToday)}
                     </Text>
@@ -579,7 +686,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 <View style={styles.amortizationSection}>
                   <View style={styles.amortizationHeader}>
                     <Text style={styles.amortizationText}>
-                      Cuota {paidInstallmentsCount} de {totalInstallmentsCount} •{' '}
+                      Cuota {paidInstallmentsCount} de {totalInstallmentsCount} ({getFrequencyLabel(activeLoan.frequency)}) •{' '}
                       {amortizationPercentage}% amortizado
                     </Text>
                     <Text style={styles.amortizationSubText}>
@@ -654,6 +761,22 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                   >
                     <RefreshCw size={14} color={COLORS.textSecondary} />
                   </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.secondaryActionBtn}
+                    onPress={() => handleOpenMap(customer)}
+                  >
+                    <MapPin size={14} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+
+                  {onSelectCustomerNonPayment && !item.isPaidToday && (
+                    <TouchableOpacity
+                      style={styles.secondaryActionBtn}
+                      onPress={() => onSelectCustomerNonPayment(customer, activeLoan)}
+                    >
+                      <AlertCircle size={14} color="#D97706" />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             );
@@ -856,6 +979,34 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
+  // 5.1 FREQUENCY CHIPS (Modalidad de pago)
+  freqTabs: {
+    paddingLeft: 16,
+    marginBottom: 10,
+  },
+  freqChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 9999,
+    backgroundColor: COLORS.surfaceSoft,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+  },
+  freqChipActive: {
+    backgroundColor: COLORS.dockBg,
+    borderColor: COLORS.dockBg,
+  },
+  freqChipText: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  freqChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+
   // 6. LOAN CARDS (.loan-card con Soft UI + Micro-Borde)
   cardsList: {
     paddingHorizontal: 16,
@@ -912,6 +1063,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
+  },
+  frequencyTag: {
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primaryBorder,
+  },
+  frequencyTagText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontWeight: '800',
   },
   customerDetails: {
     fontSize: 12,

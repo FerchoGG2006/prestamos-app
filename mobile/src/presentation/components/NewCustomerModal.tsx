@@ -11,7 +11,10 @@ import {
 } from 'react-native';
 import { COLORS } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
-import { UserPlus, X } from 'lucide-react-native';
+import { LoanFrequency } from '../../core/domain/types';
+import { calculateLoanSummary, calculatePaperworkFee } from '../../core/domain/calculator';
+import { formatCOP } from '../../core/config/business-rules';
+import { UserPlus, X, Zap, Check } from 'lucide-react-native';
 
 interface NewCustomerModalProps {
   visible: boolean;
@@ -26,6 +29,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  // Datos del Cliente
   const [fullName, setFullName] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
   const [phone, setPhone] = useState('');
@@ -34,7 +38,39 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const [businessName, setBusinessName] = useState('');
   const [referenceName, setReferenceName] = useState('');
   const [referencePhone, setReferencePhone] = useState('');
+
+  // Datos del Préstamo Inmediato
+  const [withLoan, setWithLoan] = useState(true);
+  const [principalStr, setPrincipalStr] = useState('300000');
+  const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
+  const [installmentCountStr, setInstallmentCountStr] = useState('24');
+  const [interestPercentStr, setInterestPercentStr] = useState('20');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const principal = parseInt(principalStr.replace(/\D/g, ''), 10) || 0;
+  const installmentCount = parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 24;
+  const interestRate = (parseFloat(interestPercentStr) || 20) / 100;
+
+  const summary =
+    principal > 0 && installmentCount > 0
+      ? calculateLoanSummary(principal, interestRate, installmentCount)
+      : null;
+  const paperwork = principal > 0 ? calculatePaperworkFee(principal) : 0;
+  const netCashToDeliver = Math.max(0, principal - paperwork);
+
+  const quickPrincipals = [150000, 200000, 300000, 500000];
+
+  const frequencies: Array<{ key: LoanFrequency; label: string; defaultCount: number }> = [
+    { key: 'DAILY', label: 'Diario', defaultCount: 24 },
+    { key: 'WEEKLY', label: 'Semanal', defaultCount: 4 },
+    { key: 'BIWEEKLY', label: 'Quincenal', defaultCount: 2 },
+    { key: 'MONTHLY', label: 'Mensual', defaultCount: 1 },
+  ];
+
+  const handleSelectFrequency = (freq: LoanFrequency, defaultCount: number) => {
+    setFrequency(freq);
+    setInstallmentCountStr(String(defaultCount));
+  };
 
   const resetForm = () => {
     setFullName('');
@@ -45,17 +81,27 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setBusinessName('');
     setReferenceName('');
     setReferencePhone('');
+    setPrincipalStr('300000');
+    setFrequency('DAILY');
+    setInstallmentCountStr('24');
+    setWithLoan(true);
   };
 
-  const handleSaveCustomer = async () => {
+  const handleSaveCustomerAndLoan = async () => {
     if (!fullName.trim() || !documentNumber.trim()) {
-      Alert.alert('Campos requeridos', 'Ingrese el nombre completo y número de cédula.');
+      Alert.alert('Campos requeridos', 'Ingrese el nombre completo y número de cédula del cliente.');
+      return;
+    }
+
+    if (withLoan && principal <= 0) {
+      Alert.alert('Capital requerido', 'Ingrese un monto de capital válido para desembolsar.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await localStore.createCustomer({
+      // 1. Crear el cliente
+      const newCustomer = await localStore.createCustomer({
         fullName,
         documentNumber,
         phone,
@@ -67,12 +113,35 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
         todayStr,
       });
 
-      Alert.alert('Cliente Creado', `${fullName} fue agregado a la ruta.`);
+      // 2. Si tiene préstamo inmediato, originarlo y desembolsarlo en la misma operación
+      if (withLoan && principal > 0) {
+        const loanRes = await localStore.createLoan({
+          customerId: newCustomer.id,
+          principal,
+          interestRate,
+          installmentCount,
+          frequency,
+          todayStr,
+        });
+
+        Alert.alert(
+          '¡Cliente y Crédito Registrados!',
+          `Se registró a ${fullName} y se generó el crédito ${loanRes.loan.loanNumber}.\n\n` +
+          `• Modalidad: ${frequency}\n` +
+          `• Capital: ${formatCOP(principal)}\n` +
+          `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
+          `• Efectivo neto entregado: ${formatCOP(netCashToDeliver)}\n` +
+          `• Cuota: ${formatCOP(loanRes.loan.installmentAmount)}`
+        );
+      } else {
+        Alert.alert('Cliente Creado', `${fullName} fue agregado con éxito.`);
+      }
+
       resetForm();
       onSuccess();
       onClose();
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'No se pudo registrar el cliente');
+      Alert.alert('Error al registrar', err.message || 'No se pudo completar el registro');
     } finally {
       setIsSubmitting(false);
     }
@@ -83,11 +152,12 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
+
           <View style={styles.header}>
             <View>
-              <Text style={styles.title}>Datos del Cliente</Text>
+              <Text style={styles.title}>Nuevo Cliente</Text>
               <Text style={styles.subtitle}>
-                Filled Inputs con Floating Labels • Offline-First
+                Ficha personal con desembolso de préstamo inmediato
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -96,7 +166,9 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
           </View>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-            {/* Patrón #5 de Gemini Share: Filled Inputs con etiqueta flotante interna + micro-borde 1px */}
+            {/* SECCIÓN 1: DATOS PERSONALES */}
+            <Text style={styles.sectionHeader}>1. DATOS PERSONALES Y CONTACTO</Text>
+
             <View style={styles.filledInputBlock}>
               <Text style={styles.floatingLabel}>NOMBRE COMPLETO DEL TITULAR *</Text>
               <TextInput
@@ -110,12 +182,12 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
             <View style={styles.row2}>
               <View style={[styles.filledInputBlock, { flex: 1 }]}>
-                <Text style={styles.floatingLabel}>CÉDULA / NIT *</Text>
+                <Text style={styles.floatingLabel}>CÉDULA / NIT (SOLO NÚMEROS) *</Text>
                 <TextInput
                   style={styles.filledTextInput}
                   keyboardType="numeric"
                   value={documentNumber}
-                  onChangeText={setDocumentNumber}
+                  onChangeText={(text) => setDocumentNumber(text.replace(/\D/g, ''))}
                   placeholder="1045..."
                   placeholderTextColor={COLORS.textMuted}
                 />
@@ -157,7 +229,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
             </View>
 
             <View style={styles.filledInputBlock}>
-              <Text style={styles.floatingLabel}>DIRECCIÓN DE COBRO DIARIO</Text>
+              <Text style={styles.floatingLabel}>DIRECCIÓN DE COBRO</Text>
               <TextInput
                 style={styles.filledTextInput}
                 value={address}
@@ -190,16 +262,182 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                 />
               </View>
             </View>
+
+            {/* SECCIÓN 2: TOGGLE DE PRÉSTAMO INMEDIATO */}
+            <TouchableOpacity
+              style={[styles.loanToggleCard, withLoan && styles.loanToggleCardActive]}
+              activeOpacity={0.8}
+              onPress={() => setWithLoan(!withLoan)}
+            >
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Zap size={15} color={withLoan ? COLORS.primary : COLORS.textMuted} />
+                  <Text style={[styles.loanToggleTitle, withLoan && { color: COLORS.primary }]}>
+                    Desembolsar Préstamo Inmediato
+                  </Text>
+                </View>
+                <Text style={styles.loanToggleSubtitle}>
+                  Crea el cliente y entrega el crédito en un solo paso sin doble trabajo
+                </Text>
+              </View>
+
+              <View style={[styles.togglePill, withLoan && styles.togglePillActive]}>
+                <Text style={[styles.togglePillText, withLoan && styles.togglePillTextActive]}>
+                  {withLoan ? 'SÍ' : 'NO'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* FORMULARIO DE ORIGINACIÓN DEL PRÉSTAMO */}
+            {withLoan && (
+              <View style={styles.loanSection}>
+                <Text style={styles.sectionHeader}>2. PARÁMETROS DEL PRIMER PRÉSTAMO</Text>
+
+                {/* Capital y Botones Rápidos */}
+                <View style={styles.filledInputBlock}>
+                  <Text style={styles.floatingLabel}>CAPITAL A DESEMBOLSAR ($) *</Text>
+                  <TextInput
+                    style={[styles.filledTextInput, { fontSize: 18, fontWeight: '800' }]}
+                    keyboardType="numeric"
+                    value={principal > 0 ? formatCOP(principal) : ''}
+                    onChangeText={(t) => setPrincipalStr(t.replace(/\D/g, ''))}
+                    placeholder="$ 0"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+
+                <View style={styles.quickPillsRow}>
+                  {quickPrincipals.map((val) => (
+                    <TouchableOpacity
+                      key={val}
+                      style={[
+                        styles.quickPill,
+                        principal === val && styles.quickPillActive,
+                      ]}
+                      onPress={() => setPrincipalStr(String(val))}
+                    >
+                      <Text
+                        style={[
+                          styles.quickPillText,
+                          principal === val && styles.quickPillTextActive,
+                        ]}
+                      >
+                        {formatCOP(val)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Modalidad / Frecuencia de Pago */}
+                <Text style={[styles.floatingLabel, { marginTop: 10, marginBottom: 6 }]}>
+                  MODALIDAD DE PAGO
+                </Text>
+                <View style={styles.freqRow}>
+                  {frequencies.map((f) => (
+                    <TouchableOpacity
+                      key={f.key}
+                      style={[
+                        styles.freqBtn,
+                        frequency === f.key && styles.freqBtnActive,
+                      ]}
+                      onPress={() => handleSelectFrequency(f.key, f.defaultCount)}
+                    >
+                      <Text
+                        style={[
+                          styles.freqBtnText,
+                          frequency === f.key && styles.freqBtnTextActive,
+                        ]}
+                      >
+                        {f.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Plazo y Tasa */}
+                <View style={styles.row2}>
+                  <View style={[styles.filledInputBlock, { flex: 1 }]}>
+                    <Text style={styles.floatingLabel}>NÚMERO DE CUOTAS</Text>
+                    <TextInput
+                      style={styles.filledTextInput}
+                      keyboardType="numeric"
+                      value={installmentCountStr}
+                      onChangeText={(t) => setInstallmentCountStr(t.replace(/\D/g, ''))}
+                    />
+                  </View>
+                  <View style={[styles.filledInputBlock, { flex: 1 }]}>
+                    <Text style={styles.floatingLabel}>INTERÉS PACTADO (%)</Text>
+                    <TextInput
+                      style={styles.filledTextInput}
+                      keyboardType="numeric"
+                      value={interestPercentStr}
+                      onChangeText={setInterestPercentStr}
+                    />
+                  </View>
+                </View>
+
+                {/* Resumen Financiero en Vivo */}
+                {summary && (
+                  <View style={styles.summaryCard}>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Capital Solicitado:</Text>
+                      <Text style={styles.summaryValue}>{formatCOP(principal)}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>
+                        Cartulina / Papelería (aprox. $1.000):
+                      </Text>
+                      <Text style={styles.summaryValueMuted}>- {formatCOP(paperwork)}</Text>
+                    </View>
+
+                    <View style={styles.summaryDivider} />
+
+                    <View style={styles.summaryRowHighlight}>
+                      <Text style={styles.summaryLabelHighlight}>
+                        💵 EFECTIVO NETO A ENTREGAR:
+                      </Text>
+                      <Text style={styles.summaryValueHighlight}>
+                        {formatCOP(netCashToDeliver)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.summaryDivider} />
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Total a Cobrar:</Text>
+                      <Text style={styles.summaryValueDark}>
+                        {formatCOP(summary.totalAgreed)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>
+                        Valor Cuota ({installmentCount} cuotas {frequency.toLowerCase()}s):
+                      </Text>
+                      <Text style={styles.summaryValueGreen}>
+                        {formatCOP(summary.installmentAmount)}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
           </ScrollView>
 
+          {/* Botón Principal */}
           <TouchableOpacity
             style={[styles.saveBtn, isSubmitting && { opacity: 0.5 }]}
-            onPress={handleSaveCustomer}
+            onPress={handleSaveCustomerAndLoan}
             disabled={isSubmitting}
           >
             <UserPlus size={18} color="#ffffff" style={{ marginRight: 8 }} />
             <Text style={styles.saveBtnText}>
-              {isSubmitting ? 'Guardando...' : 'Guardar Cliente en Ruta'}
+              {isSubmitting
+                ? 'Procesando...'
+                : withLoan
+                ? 'Registrar Cliente y Desembolsar'
+                : 'Guardar Solo Cliente'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -221,7 +459,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 24,
-    maxHeight: '90%',
+    maxHeight: '92%',
     borderTopWidth: 1,
     borderColor: COLORS.microBorder,
   },
@@ -240,9 +478,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: -0.4,
+    fontSize: 18,
+    fontWeight: '800',
     color: COLORS.textPrimary,
   },
   subtitle: {
@@ -251,58 +488,231 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: COLORS.surfaceSoft,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   body: {
-    marginBottom: 12,
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+    letterSpacing: 0.6,
+    marginTop: 8,
+    marginBottom: 8,
   },
   row2: {
     flexDirection: 'row',
     gap: 10,
   },
-  // FILLED INPUTS CON FLOATING LABELS INTERNOS (Patrón #5 + Mejora IA #3)
   filledInputBlock: {
     backgroundColor: COLORS.surfaceSoft,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingTop: 9,
-    paddingBottom: 8,
-    marginBottom: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.inputBorder,
+    borderColor: COLORS.microBorder,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
+    marginBottom: 10,
   },
   floatingLabel: {
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    letterSpacing: 0.4,
   },
   filledTextInput: {
-    height: 28,
-    fontSize: 14,
-    fontWeight: '700',
     color: COLORS.textPrimary,
-    paddingVertical: 0,
+    fontSize: 14,
+    fontWeight: '600',
+    paddingVertical: 2,
+  },
+  // TOGGLE CARD
+  loanToggleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  loanToggleCardActive: {
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primaryBorder,
+  },
+  loanToggleTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+  },
+  loanToggleSubtitle: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  togglePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 9999,
+    backgroundColor: COLORS.bgSecondary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  togglePillActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  togglePillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.textSecondary,
+  },
+  togglePillTextActive: {
+    color: '#FFFFFF',
+  },
+  // LOAN SECTION
+  loanSection: {
+    marginTop: 2,
+  },
+  quickPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  quickPill: {
+    backgroundColor: COLORS.surfaceSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+  },
+  quickPillActive: {
+    backgroundColor: COLORS.dockBg,
+    borderColor: COLORS.dockBg,
+  },
+  quickPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  quickPillTextActive: {
+    color: '#FFFFFF',
+  },
+  freqRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 12,
+  },
+  freqBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceSoft,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+  },
+  freqBtnActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  freqBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  freqBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  // SUMMARY CARD
+  summaryCard: {
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  summaryRowHighlight: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  summaryLabel: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  summaryLabelHighlight: {
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    fontWeight: '800',
+  },
+  summaryValue: {
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
+  },
+  summaryValueMuted: {
+    fontSize: 12,
+    color: COLORS.danger,
+    fontWeight: '700',
+  },
+  summaryValueHighlight: {
+    fontSize: 15,
+    color: COLORS.success,
+    fontWeight: '900',
+  },
+  summaryValueDark: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: '800',
+  },
+  summaryValueGreen: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: '800',
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 6,
   },
   saveBtn: {
     flexDirection: 'row',
-    height: 52,
-    borderRadius: 16,
     backgroundColor: COLORS.dockBg,
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 3,
   },
   saveBtnText: {
-    color: '#ffffff',
-    fontSize: 15,
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '800',
   },
 });

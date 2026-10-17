@@ -13,6 +13,7 @@ import {
   PaymentBreakdownItem,
   PaymentMethod,
   Renewal,
+  LoanFrequency,
 } from './types';
 import {
   DEFAULT_BUSINESS_CONFIG,
@@ -58,8 +59,14 @@ export function calculateLoanSummary(
 }
 
 /**
- * Calcula el valor de papelería para un crédito o renovación.
- * Regla actual: $5.000 por cada $100.000.
+ * Calcula el valor de papelería / cartulina para un crédito o renovación.
+ * Regla de negocio oficial: $5.000 por cada $100.000.
+ * Si el resultado contiene fracciones intermedias (ej. $13.500, $15.500, $17.500),
+ * se aproxima hacia arriba al valor siguiente en millares ($1.000):
+ * $350.000 -> 5% = $17.500 -> $18.000
+ * $270.000 -> 5% = $13.500 -> $14.000
+ * $310.000 -> 5% = $15.500 -> $16.000
+ * $200.000 -> 5% = $10.000 -> $10.000
  */
 export function calculatePaperworkFee(
   principal: number,
@@ -67,16 +74,9 @@ export function calculatePaperworkFee(
 ): number {
   if (principal <= 0) return 0;
   
-  switch (config.calculationMode) {
-    case 'PROPORTIONAL':
-      return Math.round((principal / config.base) * config.rate);
-    case 'STEP_CEIL':
-      return Math.ceil(principal / config.base) * config.rate;
-    case 'STEP_FLOOR':
-      return Math.floor(principal / config.base) * config.rate;
-    default:
-      return Math.round((principal / config.base) * config.rate);
-  }
+  const rawFee = (principal / config.base) * config.rate;
+  // Redondeo hacia arriba al siguiente millar ($1.000)
+  return Math.ceil(rawFee / 1000) * 1000;
 }
 
 /**
@@ -114,13 +114,14 @@ export function calculateRenewalDisbursement(
 }
 
 /**
- * Genera el plan de cuotas para un crédito.
+ * Genera el plan de cuotas para un crédito según su modalidad (DIARIO, SEMANAL, QUINCENAL, MENSUAL).
  * Excluye domingos si excludeSundays está habilitado.
  */
 export function generateInstallments(
   loanId: string,
   summary: LoanCalculationSummary,
   startDateStr: string, // YYYY-MM-DD
+  frequency: LoanFrequency = 'DAILY',
   config: LoanBusinessConfig = DEFAULT_BUSINESS_CONFIG.loan
 ): Installment[] {
   const installments: Installment[] = [];
@@ -155,7 +156,22 @@ export function generateInstallments(
       status: 'PENDIENTE',
     });
 
-    currentDate.setDate(currentDate.getDate() + 1);
+    // Avanzar a la siguiente fecha según la frecuencia acordada
+    switch (frequency) {
+      case 'WEEKLY':
+        currentDate.setDate(currentDate.getDate() + 7);
+        break;
+      case 'BIWEEKLY':
+        currentDate.setDate(currentDate.getDate() + 15);
+        break;
+      case 'MONTHLY':
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        break;
+      case 'DAILY':
+      default:
+        currentDate.setDate(currentDate.getDate() + 1);
+        break;
+    }
   }
 
   return installments;

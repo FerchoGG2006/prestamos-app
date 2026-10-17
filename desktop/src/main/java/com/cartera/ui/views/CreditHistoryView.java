@@ -68,14 +68,20 @@ public class CreditHistoryView extends VBox {
         VBox searchCard = new VBox(10);
         searchCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-padding: 16 20; -fx-border-color: #e2e8f0; -fx-border-radius: 12; -fx-border-width: 1;");
 
-        Label lblSearchPrompt = new Label("Ingrese la Cédula o Documento del Cliente:");
+        Label lblSearchPrompt = new Label("Ingrese la Cédula del Cliente (solo números):");
         lblSearchPrompt.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 13px; -fx-font-weight: bold;");
 
         HBox searchRow = new HBox(12);
         searchRow.setAlignment(Pos.CENTER_LEFT);
 
         txtDocument = new TextField();
-        txtDocument.setPromptText("Ej: 1098765432 o nombre...");
+        txtDocument.setPromptText("Ej: 1098765432");
+        txtDocument.setTextFormatter(new TextFormatter<>(change -> {
+            if (change.getControlNewText().matches("\\d*")) {
+                return change;
+            }
+            return null;
+        }));
         txtDocument.getStyleClass().add("search-field");
         txtDocument.setPrefWidth(280);
         txtDocument.setOnAction(e -> handleSearch());
@@ -382,6 +388,10 @@ public class CreditHistoryView extends VBox {
         colDate.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().loan().getStartDate()));
         colDate.setPrefWidth(95);
 
+        TableColumn<LoanHistoryItem, String> colFreq = new TableColumn<>("MODALIDAD");
+        colFreq.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().loan().getFrequency() != null ? d.getValue().loan().getFrequency() : "DIARIO"));
+        colFreq.setPrefWidth(95);
+
         TableColumn<LoanHistoryItem, String> colPrincipal = new TableColumn<>("PRESTADO");
         colPrincipal.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().loan().getPrincipal())));
         colPrincipal.setPrefWidth(100);
@@ -471,7 +481,7 @@ public class CreditHistoryView extends VBox {
         });
         colActions.setPrefWidth(110);
 
-        table.getColumns().addAll(colId, colDate, colPrincipal, colAgreed, colPaid, colBal, colStatus, colVerdict, colActions);
+        table.getColumns().addAll(colId, colDate, colFreq, colPrincipal, colAgreed, colPaid, colBal, colStatus, colVerdict, colActions);
         table.setItems(FXCollections.observableArrayList(report.loans()));
 
         card.getChildren().addAll(tableHeader, table);
@@ -497,7 +507,8 @@ public class CreditHistoryView extends VBox {
         VBox mTitle = new VBox(2);
         Label title = new Label("Desglose de Cuotas — Crédito #" + item.loan().getId());
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
-        Label sub = new Label("Prestado: " + CURRENCY.format(item.loan().getPrincipal()) + " • Total: " + CURRENCY.format(item.totalAgreed()) + " • " + item.behaviorVerdict());
+        String freqStr = item.loan().getFrequency() != null ? item.loan().getFrequency() : "DIARIO";
+        Label sub = new Label("Prestado: " + CURRENCY.format(item.loan().getPrincipal()) + " • Total: " + CURRENCY.format(item.totalAgreed()) + " • Modalidad: " + freqStr + " • " + item.behaviorVerdict());
         sub.setStyle("-fx-text-fill: " + item.behaviorColor() + "; -fx-font-size: 12px; -fx-font-weight: bold;");
         mTitle.getChildren().addAll(title, sub);
 

@@ -294,4 +294,24 @@ export interface MobileSyncPackage {
   newLoans: Loan[];
   renewals: Renewal[];
   settlements: DailySettlement[];
+  cashMovements?: CashMovement[];
+  nonPaymentVisits?: NonPaymentVisit[];
+}
+
+export type NonPaymentReason =
+  | 'NO_ESTABA'       // No se encontraba en el domicilio
+  | 'LOCAL_CERRADO'   // Negocio / local cerrado
+  | 'PASAR_TARDE'     // Pidió pasar más tarde
+  | 'SIN_DINERO'      // Sin dinero hoy
+  | 'OTRO';           // Otro motivo
+
+export interface NonPaymentVisit {
+  id: string;
+  customerId: string;
+  loanId: string;
+  reason: NonPaymentReason;
+  reasonLabel: string;
+  notes?: string;
+  date: string;       // YYYY-MM-DD
+  createdAt: string;  // ISO
 }

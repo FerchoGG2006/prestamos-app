@@ -64,7 +64,8 @@ public class TodayCollectionsService {
             BigDecimal installmentPending,
             String statusText,
             boolean isPaidToday,
-            BigDecimal overdueTotal
+            BigDecimal overdueTotal,
+            String frequency
     ) {}
 
     public DailyMetrics getDailyMetrics(LocalDate date) {
@@ -179,7 +180,8 @@ public class TodayCollectionsService {
                     todayOrPending.getPendingAmount(),
                     statusText,
                     isPaidToday,
-                    overdueTotal
+                    overdueTotal,
+                    loan.getFrequency() != null ? loan.getFrequency() : "DIARIO"
             ));
         }
 

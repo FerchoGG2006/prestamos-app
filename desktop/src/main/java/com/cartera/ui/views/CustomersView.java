@@ -121,7 +121,10 @@ public class CustomersView extends VBox {
         btnNewCustomer.getStyleClass().add("btn-primary");
         btnNewCustomer.setOnAction(e -> {
             if (createCustomerUseCase != null) {
-                new CustomerDialog(createCustomerUseCase, ownerStage, c -> refresh()).showAndWait();
+                new CustomerDialog(createCustomerUseCase, createLoanUseCase, ownerStage, c -> {
+                    refresh();
+                    if (loansView != null) loansView.refresh();
+                }).showAndWait();
             }
         });
 

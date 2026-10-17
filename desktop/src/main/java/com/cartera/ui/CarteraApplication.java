@@ -100,7 +100,7 @@ public final class CarteraApplication extends Application {
 
         dashboardView = new DashboardView(collectionsService, () -> navigateTo("Cobros y Rutas"));
 
-        todayCollectionsView = new TodayCollectionsView(collectionsService, paymentUseCase, settlementUseCase, dailySettlementRepository, stage, () -> {
+        todayCollectionsView = new TodayCollectionsView(collectionsService, paymentUseCase, settlementUseCase, dailySettlementRepository, cashMovementRepository, stage, () -> {
             dashboardView.refresh();
             if (loansView != null) loansView.refresh();
             if (customersView != null) customersView.refresh();
@@ -164,6 +164,8 @@ public final class CarteraApplication extends Application {
         stage.setScene(scene);
         stage.setMaximized(true);
         stage.show();
+        stage.toFront();
+        stage.requestFocus();
     }
 
     private VBox navContainer;

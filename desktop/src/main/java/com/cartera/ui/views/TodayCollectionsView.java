@@ -5,6 +5,7 @@ import com.cartera.collections.application.TodayCollectionsService.CollectionIte
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.settlement.application.SettlementUseCase;
 import com.cartera.infrastructure.persistence.repository.DailySettlementRepository;
+import com.cartera.infrastructure.persistence.repository.CashMovementRepository;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -30,6 +31,7 @@ public class TodayCollectionsView extends VBox {
     private final RecordPaymentUseCase paymentUseCase;
     private final SettlementUseCase settlementUseCase;
     private final DailySettlementRepository settlementRepository;
+    private final CashMovementRepository cashMovementRepository;
     private final Stage primaryStage;
     private final Runnable onDataUpdated;
 
@@ -52,7 +54,7 @@ public class TodayCollectionsView extends VBox {
                                 RecordPaymentUseCase paymentUseCase,
                                 Stage primaryStage,
                                 Runnable onDataUpdated) {
-        this(collectionsService, paymentUseCase, null, null, primaryStage, onDataUpdated);
+        this(collectionsService, paymentUseCase, null, null, null, primaryStage, onDataUpdated);
     }
 
     public TodayCollectionsView(TodayCollectionsService collectionsService,
@@ -61,10 +63,21 @@ public class TodayCollectionsView extends VBox {
                                 DailySettlementRepository settlementRepository,
                                 Stage primaryStage,
                                 Runnable onDataUpdated) {
+        this(collectionsService, paymentUseCase, settlementUseCase, settlementRepository, null, primaryStage, onDataUpdated);
+    }
+
+    public TodayCollectionsView(TodayCollectionsService collectionsService,
+                                RecordPaymentUseCase paymentUseCase,
+                                SettlementUseCase settlementUseCase,
+                                DailySettlementRepository settlementRepository,
+                                CashMovementRepository cashMovementRepository,
+                                Stage primaryStage,
+                                Runnable onDataUpdated) {
         this.collectionsService = collectionsService;
         this.paymentUseCase = paymentUseCase;
         this.settlementUseCase = settlementUseCase;
         this.settlementRepository = settlementRepository;
+        this.cashMovementRepository = cashMovementRepository;
         this.primaryStage = primaryStage;
         this.onDataUpdated = onDataUpdated;
 
@@ -143,11 +156,24 @@ public class TodayCollectionsView extends VBox {
         searchField.getStyleClass().add("search-field");
         searchField.setPrefWidth(380);
 
+        Label lblFreq = new Label("Modalidad:");
+        lblFreq.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px; -fx-font-weight: bold;");
+
+        ComboBox<String> cmbFreqFilter = new ComboBox<>();
+        cmbFreqFilter.getItems().addAll("TODAS", "DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
+        cmbFreqFilter.setValue("TODAS");
+        cmbFreqFilter.getStyleClass().add("search-field");
+        cmbFreqFilter.setPrefWidth(140);
+
         FilteredList<CollectionItem> filtered = new FilteredList<>(masterData, p -> true);
-        searchField.textProperty().addListener((obs, oldVal, newVal) -> {
+        Runnable applyFilter = () -> {
+            String q = searchField.getText() != null ? searchField.getText().toLowerCase().trim() : "";
+            String selectedFreq = cmbFreqFilter.getValue();
             filtered.setPredicate(item -> {
-                if (newVal == null || newVal.isBlank()) return true;
-                String q = newVal.toLowerCase().trim();
+                boolean matchesFreq = selectedFreq == null || "TODAS".equalsIgnoreCase(selectedFreq)
+                        || selectedFreq.equalsIgnoreCase(item.frequency());
+                if (!matchesFreq) return false;
+                if (q.isBlank()) return true;
                 return item.fullName().toLowerCase().contains(q)
                         || item.documentNumber().toLowerCase().contains(q)
                         || item.address().toLowerCase().contains(q)
@@ -155,10 +181,23 @@ public class TodayCollectionsView extends VBox {
                         || item.businessName().toLowerCase().contains(q);
             });
             updateStats(filtered.size());
-        });
-        table.setItems(filtered);
+        };
 
-        searchRow.getChildren().add(searchField);
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> applyFilter.run());
+        cmbFreqFilter.valueProperty().addListener((obs, oldVal, newVal) -> applyFilter.run());
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button btnSyncMobile = new Button("📥 Importar Móvil (JSON)");
+        btnSyncMobile.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 7 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnSyncMobile.setOnAction(e -> {
+            new ImportMobileSyncDialog(primaryStage, paymentUseCase, cashMovementRepository, () -> {
+                refreshData();
+                if (onDataUpdated != null) onDataUpdated.run();
+            }).show();
+        });
+
+        searchRow.getChildren().addAll(searchField, lblFreq, cmbFreqFilter, spacer, btnSyncMobile);
         routeContainer.getChildren().addAll(searchRow, buildTableCard());
 
         // Contenedor de Liquidación
@@ -232,13 +271,22 @@ public class TodayCollectionsView extends VBox {
                 } else {
                     VBox box = new VBox(2);
                     box.setAlignment(Pos.CENTER_LEFT);
+
+                    HBox addrRow = new HBox(6);
+                    addrRow.setAlignment(Pos.CENTER_LEFT);
                     Label address = new Label(item.address());
                     address.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 13px; -fx-font-weight: 500;");
+
+                    Button btnMap = new Button("📍");
+                    btnMap.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 0 4; -fx-font-size: 11px;");
+                    btnMap.setTooltip(new Tooltip("Ver en Google Maps"));
+                    btnMap.setOnAction(e -> openMap(item.address(), item.neighborhood()));
+                    addrRow.getChildren().addAll(address, btnMap);
 
                     Label neighborhood = new Label("Barrio " + item.neighborhood());
                     neighborhood.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
-                    box.getChildren().addAll(address, neighborhood);
+                    box.getChildren().addAll(addrRow, neighborhood);
                     setGraphic(box);
                     setText(null);
                 }
@@ -266,10 +314,17 @@ public class TodayCollectionsView extends VBox {
                             ? "-fx-text-fill: #059669; -fx-font-weight: bold; -fx-font-size: 13px;"
                             : "-fx-text-fill: #94a3b8; -fx-font-weight: bold; -fx-font-size: 13px;");
 
+                    HBox tagBox = new HBox(6);
+                    tagBox.setAlignment(Pos.CENTER_LEFT);
+
                     Label tag = new Label("Cuota #" + item.installmentNumber());
                     tag.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
-                    box.getChildren().addAll(amount, tag);
+                    Label freqTag = new Label(item.frequency());
+                    freqTag.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-font-size: 9px; -fx-font-weight: bold; -fx-padding: 1 5 1 5; -fx-background-radius: 4; -fx-border-color: #bfdbfe; -fx-border-radius: 4;");
+
+                    tagBox.getChildren().addAll(tag, freqTag);
+                    box.getChildren().addAll(amount, tagBox);
                     setGraphic(box);
                     setText(null);
                 }
@@ -360,19 +415,36 @@ public class TodayCollectionsView extends VBox {
                 } else {
                     CollectionItem item = getTableView().getItems().get(getIndex());
                     if (item.isPaidToday()) {
-                        btnPay.setText("Al día");
-                        btnPay.setDisable(true);
-                        btnPay.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #94a3b8; -fx-font-size: 12px; -fx-font-weight: 500; -fx-padding: 6 14; -fx-background-radius: 6; -fx-border-color: #e2e8f0; -fx-border-radius: 6;");
+                        HBox actBox = new HBox(6);
+                        actBox.setAlignment(Pos.CENTER);
+
+                        Button btnExtra = new Button("Abonar +");
+                        btnExtra.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 10; -fx-background-radius: 6; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-cursor: hand;");
+                        btnExtra.setOnAction(e -> {
+                            PaymentDialog.show(primaryStage, item, paymentUseCase, success -> {
+                                if (success) {
+                                    refreshData();
+                                    if (onDataUpdated != null) onDataUpdated.run();
+                                }
+                            });
+                        });
+
+                        Button btnReceipt = new Button("Recibo");
+                        btnReceipt.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 10; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-cursor: hand;");
+                        btnReceipt.setOnAction(e -> showReceiptFor(item));
+
+                        actBox.getChildren().addAll(btnExtra, btnReceipt);
+                        setGraphic(actBox);
                     } else {
                         btnPay.setText("Cobrar");
                         btnPay.setDisable(false);
                         btnPay.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 6 16; -fx-background-radius: 6; -fx-cursor: hand; -fx-effect: dropshadow(gaussian, rgba(5,150,105,0.2), 4, 0, 0, 1);");
+                        setGraphic(btnPay);
                     }
-                    setGraphic(btnPay);
                 }
             }
         });
-        colAction.setPrefWidth(120);
+        colAction.setPrefWidth(160);
 
         table.getColumns().addAll(colCustomer, colAddress, colCuota, colBalance, colStatus, colAction);
 
@@ -428,5 +500,31 @@ public class TodayCollectionsView extends VBox {
             return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
         }
         return fullName.substring(0, Math.min(2, fullName.length())).toUpperCase();
+    }
+
+    private void openMap(String address, String neighborhood) {
+        try {
+            String query = java.net.URLEncoder.encode(address + ", " + neighborhood + ", Colombia", java.nio.charset.StandardCharsets.UTF_8);
+            if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                java.awt.Desktop.getDesktop().browse(new java.net.URI("https://www.google.com/maps/search/?api=1&query=" + query));
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void showReceiptFor(CollectionItem item) {
+        ReceiptDialog.ReceiptData rData = new ReceiptDialog.ReceiptData(
+                "REC-" + (item.loanId().length() > 8 ? item.loanId().substring(0, 8) : item.loanId()),
+                item.fullName(),
+                item.documentNumber(),
+                item.loanId(),
+                item.installmentAmount(),
+                item.loanBalance(),
+                1,
+                "Cobrador de Ruta",
+                "EFECTIVO",
+                "SISTEMA DE CARTERA",
+                item.phone()
+        );
+        new ReceiptDialog(rData, primaryStage).show();
     }
 }

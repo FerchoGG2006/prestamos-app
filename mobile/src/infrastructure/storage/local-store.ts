@@ -24,6 +24,7 @@ import {
   LoanFrequency,
   DailyRouteMetrics,
   MobileSyncPackage,
+  NonPaymentVisit,
 } from '../../core/domain/types';
 import {
   INITIAL_USERS,
@@ -56,6 +57,7 @@ const STORAGE_KEYS = {
   SETTLEMENTS: '@prestamos_mobile_settlements_v1',
   PROMISES: '@prestamos_mobile_promises_v1',
   CASH_MOVEMENTS: '@prestamos_mobile_cash_v1',
+  NON_PAYMENT_VISITS: '@prestamos_mobile_non_payments_v1',
   AUDIT_LOGS: '@prestamos_mobile_audit_v1',
 };
 
@@ -122,6 +124,7 @@ class LocalStore {
   private settlements: DailySettlement[] = [];
   private promises: PaymentPromise[] = [...INITIAL_PROMISES];
   private cashMovements: CashMovement[] = [...INITIAL_CASH_MOVEMENTS];
+  private nonPaymentVisits: NonPaymentVisit[] = [];
   private auditLogs: AuditLog[] = [];
 
   private isInitialized = false;
@@ -154,6 +157,7 @@ class LocalStore {
         savedSettlements,
         savedPromises,
         savedCash,
+        savedNonPayments,
         savedAudit,
       ] = await Promise.all([
         safeStorage.getItem(STORAGE_KEYS.USERS),
@@ -167,6 +171,7 @@ class LocalStore {
         safeStorage.getItem(STORAGE_KEYS.SETTLEMENTS),
         safeStorage.getItem(STORAGE_KEYS.PROMISES),
         safeStorage.getItem(STORAGE_KEYS.CASH_MOVEMENTS),
+        safeStorage.getItem(STORAGE_KEYS.NON_PAYMENT_VISITS),
         safeStorage.getItem(STORAGE_KEYS.AUDIT_LOGS),
       ]);
 
@@ -181,6 +186,7 @@ class LocalStore {
       if (savedSettlements) this.settlements = JSON.parse(savedSettlements);
       if (savedPromises) this.promises = JSON.parse(savedPromises);
       if (savedCash) this.cashMovements = JSON.parse(savedCash);
+      if (savedNonPayments) this.nonPaymentVisits = JSON.parse(savedNonPayments);
       if (savedAudit) this.auditLogs = JSON.parse(savedAudit);
 
       this.isInitialized = true;
@@ -533,7 +539,12 @@ class LocalStore {
     const collectorId = params.collectorId || customer.assignedCollectorId || 'usr-col-1';
     const routeId = params.routeId || customer.routeId || 'route-norte';
 
-    const generatedInstallments = generateInstallments(loanId, summary, params.todayStr);
+    const generatedInstallments = generateInstallments(
+      loanId,
+      summary,
+      params.todayStr,
+      params.frequency || 'DAILY'
+    );
     const endDate =
       generatedInstallments.length > 0
         ? generatedInstallments[generatedInstallments.length - 1].dueDate
@@ -851,6 +862,55 @@ class LocalStore {
     return settlement;
   }
 
+  public getNonPaymentVisits(date?: string): NonPaymentVisit[] {
+    if (!date) return [...this.nonPaymentVisits];
+    return this.nonPaymentVisits.filter((v) => v.date === date);
+  }
+
+  public async recordNonPaymentVisit(visit: Omit<NonPaymentVisit, 'id' | 'createdAt'>): Promise<NonPaymentVisit> {
+    const newRecord: NonPaymentVisit = {
+      ...visit,
+      id: `npv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: new Date().toISOString(),
+    };
+    // Reemplaza si ya existía para el mismo cliente en la misma fecha
+    this.nonPaymentVisits = this.nonPaymentVisits.filter(
+      (v) => !(v.customerId === visit.customerId && v.date === visit.date)
+    );
+    this.nonPaymentVisits.unshift(newRecord);
+
+    await safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify(this.nonPaymentVisits));
+    this.notify();
+    return newRecord;
+  }
+
+  public async recordRouteExpense(params: {
+    amount: number;
+    category: string;
+    description: string;
+    todayStr: string;
+  }): Promise<CashMovement> {
+    const routeId = this.activeSession?.routeId || 'route-norte';
+    const collectorId = this.activeSession?.collectorId || 'usr-col-1';
+
+    const movement: CashMovement = {
+      id: `csm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      routeId,
+      collectorId,
+      sessionId: this.activeSession?.id,
+      type: 'EXPENSE',
+      category: 'EXPENSE',
+      amount: Math.round(params.amount),
+      description: `${params.category}: ${params.description}`.trim(),
+      createdAt: `${params.todayStr}T${new Date().toTimeString().split(' ')[0]}Z`,
+    };
+
+    this.cashMovements.unshift(movement);
+    await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
+    this.notify();
+    return movement;
+  }
+
   /**
    * Exporta el paquete de sincronización móvil en formato JSON exacto para cartera.db (BigDecimal string safe)
    */
@@ -887,6 +947,8 @@ class LocalStore {
       newLoans: this.loans,
       renewals: this.renewals,
       settlements: this.settlements,
+      cashMovements: this.cashMovements,
+      nonPaymentVisits: this.nonPaymentVisits,
     };
   }
 

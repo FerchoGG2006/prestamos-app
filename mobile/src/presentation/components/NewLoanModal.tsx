@@ -9,7 +9,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { Customer, Loan } from '../../core/domain/types';
+import { Customer, Loan, LoanFrequency } from '../../core/domain/types';
 import { formatCOP } from '../../core/config/business-rules';
 import {
   calculateLoanSummary,
@@ -38,6 +38,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
 }) => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [principalStr, setPrincipalStr] = useState('200000');
+  const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
   const [installmentCountStr, setInstallmentCountStr] = useState('30');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -52,6 +53,18 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   const netCashToDeliver = Math.max(0, principal - paperwork);
 
   const quickPrincipals = [100000, 150000, 200000, 300000, 500000];
+
+  const frequencies: Array<{ key: LoanFrequency; label: string; defaultCount: number }> = [
+    { key: 'DAILY', label: 'Diario', defaultCount: 24 },
+    { key: 'WEEKLY', label: 'Semanal', defaultCount: 4 },
+    { key: 'BIWEEKLY', label: 'Quincenal', defaultCount: 2 },
+    { key: 'MONTHLY', label: 'Mensual', defaultCount: 1 },
+  ];
+
+  const handleSelectFrequency = (freq: LoanFrequency, defaultCount: number) => {
+    setFrequency(freq);
+    setInstallmentCountStr(String(defaultCount));
+  };
 
   const handleCreateLoan = async () => {
     if (!selectedCustomerId) {
@@ -70,14 +83,17 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         principal,
         interestRate: 0.2,
         installmentCount,
+        frequency,
         todayStr,
       });
 
       Alert.alert(
         '¡Crédito Desembolsado!',
-        `Crédito ${res.loan.loanNumber} creado.\nCuota diaria: ${formatCOP(
-          res.loan.installmentAmount
-        )}\nEfectivo neto a entregar: ${formatCOP(netCashToDeliver)}`
+        `Crédito ${res.loan.loanNumber} creado exitosamente.\n\n` +
+        `• Modalidad: ${frequency}\n` +
+        `• Cuota: ${formatCOP(res.loan.installmentAmount)}\n` +
+        `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
+        `• Efectivo neto a entregar: ${formatCOP(netCashToDeliver)}`
       );
       onSuccess();
       onClose();
@@ -173,7 +189,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   <Text
                     style={[
                       styles.quickAmtText,
-                      principal === amt && { color: COLORS.purple, fontWeight: '800' },
+                      principal === amt && { color: COLORS.primary, fontWeight: '800' },
                     ]}
                   >
                     {formatCOP(amt)}
@@ -182,9 +198,33 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               ))}
             </ScrollView>
 
-            <Text style={styles.label}>3. Plazo de Amortización (Cuotas Diarias)</Text>
+            <Text style={styles.label}>3. Modalidad de Pago</Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+              {frequencies.map((f) => (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[
+                    styles.cntPill,
+                    { flex: 1, paddingVertical: 8 },
+                    frequency === f.key && styles.cntPillActive,
+                  ]}
+                  onPress={() => handleSelectFrequency(f.key, f.defaultCount)}
+                >
+                  <Text
+                    style={[
+                      styles.cntPillText,
+                      frequency === f.key && { color: '#ffffff', fontWeight: '800' },
+                    ]}
+                  >
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>4. Plazo de Amortización ({installmentCount} cuotas {frequency.toLowerCase()}s)</Text>
             <View style={styles.installmentsRow}>
-              {[20, 24, 30, 40].map((cnt) => (
+              {[12, 20, 24, 30, 40].map((cnt) => (
                 <TouchableOpacity
                   key={cnt}
                   style={[
@@ -199,7 +239,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       installmentCount === cnt && { color: '#ffffff' },
                     ]}
                   >
-                    {cnt} días
+                    {cnt}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -224,24 +264,24 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </View>
                 <View style={styles.calcRow}>
                   <Text style={styles.calcLabel}>
-                    Valor Cuota Diaria ({installmentCount}):
+                    Valor Cuota ({installmentCount} cuotas {frequency.toLowerCase()}s):
                   </Text>
-                  <Text style={[styles.calcVal, { color: COLORS.success, fontSize: 16 }]}>
-                    {formatCOP(summary.installmentAmount)} / día
+                  <Text style={[styles.calcVal, { color: COLORS.textPrimary, fontSize: 16 }]}>
+                    {formatCOP(summary.installmentAmount)}
                   </Text>
                 </View>
                 <View style={styles.dashedDivider} />
                 <View style={styles.calcRow}>
-                  <Text style={styles.calcLabel}>Papelería descontada:</Text>
-                  <Text style={[styles.calcVal, { color: COLORS.warning }]}>
+                  <Text style={styles.calcLabel}>Cartulina / Papelería (aprox. $1.000):</Text>
+                  <Text style={[styles.calcVal, { color: COLORS.danger }]}>
                     - {formatCOP(paperwork)}
                   </Text>
                 </View>
                 <View style={styles.calcRow}>
-                  <Text style={[styles.calcLabel, { fontWeight: '800' }]}>
-                    Efectivo Neto a Entregar:
+                  <Text style={[styles.calcLabel, { fontWeight: '800', color: COLORS.textPrimary }]}>
+                    💵 Efectivo Neto a Entregar:
                   </Text>
-                  <Text style={[styles.calcVal, { fontSize: 17 }]}>
+                  <Text style={[styles.calcVal, { fontSize: 17, color: COLORS.success }]}>
                     {formatCOP(netCashToDeliver)}
                   </Text>
                 </View>

@@ -72,15 +72,11 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
 
   const [modalLoanItem, setModalLoanItem] = useState<LoanHistoryRecord | null>(null);
 
-  // Clientes filtrados para sugerencias en tiempo real
+  // Clientes filtrados para sugerencias en tiempo real (ESTRICTAMENTE POR CÉDULA NUMÉRICA)
   const filteredSuggestions = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase().trim();
-    return customers.filter(
-      (c) =>
-        c.documentNumber.toLowerCase().includes(q) ||
-        c.fullName.toLowerCase().includes(q)
-    );
+    const q = searchQuery.trim();
+    return customers.filter((c) => c.documentNumber.includes(q));
   }, [customers, searchQuery]);
 
   // Cliente seleccionado
@@ -133,6 +129,20 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
     return (p[0][0] + p[1][0]).toUpperCase();
   };
 
+  const getFrequencyLabel = (freq?: string) => {
+    switch (freq) {
+      case 'WEEKLY':
+        return 'Semanal';
+      case 'BIWEEKLY':
+        return 'Quincenal';
+      case 'MONTHLY':
+        return 'Mensual';
+      case 'DAILY':
+      default:
+        return 'Diario';
+    }
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -150,21 +160,22 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
 
       {/* Buscador de Cédula */}
       <View style={styles.searchCard}>
-        <Text style={styles.searchPrompt}>Cédula o Documento del Cliente:</Text>
+        <Text style={styles.searchPrompt}>Cédula del Cliente (solo números):</Text>
         <View style={styles.searchInputRow}>
           <Search size={18} color={COLORS.textSecondary} style={{ marginLeft: 12 }} />
           <TextInput
             style={styles.textInput}
-            placeholder="Ej: 1098765432 o nombre..."
+            placeholder="Ej: 1045892301"
             placeholderTextColor={COLORS.textMuted}
             value={searchQuery}
             onChangeText={(text) => {
-              setSearchQuery(text);
-              if (selectedCustomerId && text !== selectedCustomer?.documentNumber) {
+              const digitsOnly = text.replace(/\D/g, '');
+              setSearchQuery(digitsOnly);
+              if (selectedCustomerId && digitsOnly !== selectedCustomer?.documentNumber) {
                 setSelectedCustomerId(null);
               }
             }}
-            keyboardType="default"
+            keyboardType="number-pad"
             autoCapitalize="none"
           />
           {searchQuery.length > 0 && (
@@ -410,7 +421,7 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
                     </View>
                     <View style={{ flex: 1, marginLeft: 8 }}>
                       <Text style={styles.loanDateText}>
-                        Inicio: {item.loan.startDate}
+                        Inicio: {item.loan.startDate} • Modalidad: {getFrequencyLabel(item.loan.frequency)}
                       </Text>
                     </View>
                     <View
@@ -527,7 +538,7 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
                   Plan de Pagos — {modalLoanItem?.loan.loanNumber || `#${modalLoanItem?.loan.id.substring(0, 6)}`}
                 </Text>
                 <Text style={styles.modalSub}>
-                  Prestado: {formatCOP(modalLoanItem?.loan.principal || 0)} • Total: {formatCOP(modalLoanItem?.totalAgreed || 0)}
+                  Prestado: {formatCOP(modalLoanItem?.loan.principal || 0)} • Total: {formatCOP(modalLoanItem?.totalAgreed || 0)} • {getFrequencyLabel(modalLoanItem?.loan.frequency)}
                 </Text>
               </View>
               <TouchableOpacity
