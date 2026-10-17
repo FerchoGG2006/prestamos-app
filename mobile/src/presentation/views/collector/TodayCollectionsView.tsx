@@ -603,182 +603,77 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             }
 
             return (
-              <View key={customer.id} style={styles.loanCard}>
-                {/* Cabecera: Avatar + Cliente + Píldora Semántica */}
-                <TouchableOpacity
-                  style={styles.cardHeader}
-                  onPress={() => onViewCustomerDetail(customer)}
+              <TouchableOpacity
+                key={customer.id}
+                style={styles.chatListItem}
+                activeOpacity={0.7}
+                onPress={() => onViewCustomerDetail(customer)}
+              >
+                {/* 1. Avatar circular con iniciales y micro-indicador de estado */}
+                <View
+                  style={[
+                    styles.avatarCircle,
+                    delinquency.hasDelinquency && styles.avatarMora,
+                    item.isPaidToday && styles.avatarPagado,
+                  ]}
                 >
-                  <View style={styles.avatarCircle}>
-                    <Text style={styles.avatarText}>{getInitials(customer.fullName)}</Text>
-                  </View>
+                  <Text
+                    style={[
+                      styles.avatarText,
+                      delinquency.hasDelinquency && { color: COLORS.danger },
+                      item.isPaidToday && { color: COLORS.success },
+                    ]}
+                  >
+                    {getInitials(customer.fullName)}
+                  </Text>
+                  {delinquency.hasDelinquency && <View style={styles.avatarMoraDot} />}
+                </View>
 
-                  <View style={{ flex: 1, marginLeft: 12, marginRight: 6 }}>
-                    <View style={styles.nameRow}>
-                      <Text style={styles.customerName} numberOfLines={1}>
-                        {customer.fullName}
-                      </Text>
-                      <Text style={styles.loanNumberTag}>{activeLoan.loanNumber}</Text>
-                      <View style={styles.frequencyTag}>
-                        <Text style={styles.frequencyTagText}>
-                          {getFrequencyLabel(activeLoan.frequency)}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={styles.customerDetails} numberOfLines={1}>
-                      {customer.businessName ? `${customer.businessName} • ` : ''}
-                      {customer.neighborhood} • {customer.address}
+                {/* 2. Info Central del Chat: Nombre + ID + Modalidad | Dirección y Barrio | Teléfono y Negocio */}
+                <View style={styles.chatInfoCol}>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.customerName} numberOfLines={1}>
+                      {customer.fullName}
                     </Text>
+                    <Text style={styles.loanNumberTag}>#{activeLoan.loanNumber}</Text>
+                    <View style={styles.frequencyTag}>
+                      <Text style={styles.frequencyTagText}>
+                        {getFrequencyLabel(activeLoan.frequency)}
+                      </Text>
+                    </View>
                   </View>
 
+                  <Text style={styles.chatAddressLine} numberOfLines={1}>
+                    📍 {customer.neighborhood} • {customer.address}
+                  </Text>
+
+                  <View style={styles.chatContactLine}>
+                    <Text style={styles.chatPhoneText}>📞 {customer.phone}</Text>
+                    {customer.businessName ? (
+                      <Text style={styles.chatBizText} numberOfLines={1}>
+                        {' '}• {customer.businessName}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                {/* 3. Columna Derecha: Píldora Semántica + Valor Hoy / Chevron */}
+                <View style={styles.chatRightCol}>
                   <View style={[styles.pastelBadge, badgeStyle]}>
                     <Text style={[styles.pastelBadgeText, badgeTextStyle]}>
                       {badgeLabel}
                     </Text>
                   </View>
-                  <ChevronRight
-                    size={16}
-                    color={COLORS.textMuted}
-                    style={{ marginLeft: 2 }}
-                  />
-                </TouchableOpacity>
-
-                {/* Bloque Soft UI (#F4F5F7) con Micro-Borde de 1px y Jerarquía Tipográfica Agresiva */}
-                <View style={styles.cardFinancialsBox}>
-                  <View style={styles.kpiCol}>
-                    <Text style={styles.kpiLabel}>
-                      COBRO {activeLoan.frequency === 'WEEKLY' ? 'SEMANAL' : activeLoan.frequency === 'BIWEEKLY' ? 'QUINCENAL' : activeLoan.frequency === 'MONTHLY' ? 'MENSUAL' : 'HOY'}
-                    </Text>
-                    <Text style={styles.kpiValueGreen} numberOfLines={1} adjustsFontSizeToFit>
-                      {formatCOP(item.expectedToday)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.kpiDivider} />
-
-                  <View style={styles.kpiCol}>
-                    <Text style={styles.kpiLabel}>SALDO PENDIENTE</Text>
-                    <Text style={styles.kpiValueDark} numberOfLines={1} adjustsFontSizeToFit>
-                      {formatCOP(remainingBalance)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.kpiDivider} />
-
-                  <View style={styles.kpiCol}>
-                    <Text style={styles.kpiLabel}>MORA ACUMULADA</Text>
-                    <Text
-                      style={[
-                        styles.kpiValueMuted,
-                        delinquency.hasDelinquency && styles.kpiValueRed,
-                      ]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                    >
-                      {delinquency.hasDelinquency
-                        ? formatCOP(delinquency.overdueAmount)
-                        : '$ 0'}
-                    </Text>
+                  <View style={styles.chatAmountRow}>
+                    {!item.isPaidToday && (
+                      <Text style={styles.chatExpectedAmount}>
+                        {formatCOP(item.expectedToday)}
+                      </Text>
+                    )}
+                    <ChevronRight size={15} color={COLORS.textMuted} />
                   </View>
                 </View>
-
-                {/* Barra de Progreso de Amortización */}
-                <View style={styles.amortizationSection}>
-                  <View style={styles.amortizationHeader}>
-                    <Text style={styles.amortizationText}>
-                      Cuota {paidInstallmentsCount} de {totalInstallmentsCount} ({getFrequencyLabel(activeLoan.frequency)}) •{' '}
-                      {amortizationPercentage}% amortizado
-                    </Text>
-                    <Text style={styles.amortizationSubText}>
-                      Cuota base: {formatCOP(activeLoan.installmentAmount)}
-                    </Text>
-                  </View>
-                  <View style={styles.amortizationTrack}>
-                    <View
-                      style={[
-                        styles.amortizationBarFill,
-                        {
-                          width: `${Math.min(100, Math.max(4, amortizationPercentage))}%`,
-                          backgroundColor: delinquency.hasDelinquency
-                            ? COLORS.danger
-                            : COLORS.primary,
-                        },
-                      ]}
-                    />
-                  </View>
-                </View>
-
-                {/* Promesa activa si existe */}
-                {todayPromise && (
-                  <View style={styles.promiseBanner}>
-                    <Calendar size={14} color={COLORS.primary} style={{ marginRight: 6 }} />
-                    <Text style={styles.promiseBannerText}>
-                      Promesa para el {todayPromise.promisedDate}:{' '}
-                      {formatCOP(todayPromise.promisedAmount)}
-                      {todayPromise.notes ? ` — "${todayPromise.notes}"` : ''}
-                    </Text>
-                  </View>
-                )}
-
-                {/* Botones de Acción Directa: 1 Principal + Secundarios Uniformes */}
-                <View style={styles.cardActions}>
-                  <TouchableOpacity
-                    style={[
-                      styles.payBtn,
-                      item.isPaidToday && styles.payBtnCompleted,
-                    ]}
-                    onPress={() => onSelectCustomerToPay(customer, activeLoan)}
-                  >
-                    <CheckCircle
-                      size={16}
-                      color="#ffffff"
-                      style={{ marginRight: 6 }}
-                    />
-                    <Text style={styles.payBtnText} numberOfLines={1}>
-                      {item.isPaidToday
-                        ? 'Abonar Extra'
-                        : `Cobrar ${formatCOP(item.expectedToday)}`}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.secondaryActionBtn}
-                    onPress={() => handleSendWhatsApp(item)}
-                  >
-                    <MessageCircle size={15} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.secondaryActionBtn}
-                    onPress={() => onSelectCustomerPromise(customer, activeLoan)}
-                  >
-                    <Clock size={14} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.secondaryActionBtn}
-                    onPress={() => onSelectCustomerToRenew(customer, activeLoan)}
-                  >
-                    <RefreshCw size={14} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.secondaryActionBtn}
-                    onPress={() => handleOpenMap(customer)}
-                  >
-                    <MapPin size={14} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-
-                  {onSelectCustomerNonPayment && !item.isPaidToday && (
-                    <TouchableOpacity
-                      style={styles.secondaryActionBtn}
-                      onPress={() => onSelectCustomerNonPayment(customer, activeLoan)}
-                    >
-                      <AlertCircle size={14} color="#D97706" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -1007,42 +902,67 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // 6. LOAN CARDS (.loan-card con Soft UI + Micro-Borde)
+  // 6. LISTA DE CLIENTES EN RUTA (Estilo chat de WhatsApp: limpio, compacto y ágil)
   cardsList: {
     paddingHorizontal: 16,
+    paddingBottom: 24,
   },
-  loanCard: {
+  chatListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.bgSecondary,
-    borderRadius: 22,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: COLORS.microBorder,
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 1,
   },
   avatarCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: COLORS.surfaceSoft,
     borderWidth: 1,
     borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   avatarText: {
     color: COLORS.textSecondary,
     fontSize: 13,
     fontWeight: '800',
+  },
+  avatarMora: {
+    backgroundColor: COLORS.dangerLight,
+    borderColor: COLORS.dangerBorder,
+  },
+  avatarPagado: {
+    backgroundColor: COLORS.successLight,
+    borderColor: COLORS.successBorder,
+  },
+  avatarMoraDot: {
+    position: 'absolute',
+    top: 1,
+    right: 1,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: COLORS.danger,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  chatInfoCol: {
+    flex: 1,
+    marginLeft: 12,
+    marginRight: 8,
+    justifyContent: 'center',
   },
   nameRow: {
     flexDirection: 'row',
@@ -1050,43 +970,75 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   customerName: {
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '800',
     color: COLORS.textPrimary,
     flexShrink: 1,
   },
   loanNumberTag: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '700',
     color: COLORS.textMuted,
     backgroundColor: COLORS.surfaceSoft,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
   },
   frequencyTag: {
     backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 5,
     borderWidth: 1,
     borderColor: COLORS.primaryBorder,
   },
   frequencyTagText: {
     color: COLORS.primary,
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
   },
-  customerDetails: {
+  chatAddressLine: {
     fontSize: 12,
     color: COLORS.textSecondary,
+    fontWeight: '500',
     marginTop: 2,
+    marginBottom: 2,
+  },
+  chatContactLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chatPhoneText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: '600',
+  },
+  chatBizText: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+    flexShrink: 1,
+  },
+  chatRightCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  chatAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  chatExpectedAmount: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
   },
 
   // PÍLDORAS DE ESTADO SEMÁNTICAS (Diseño discreto y disciplinado)
   pastelBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: 9999,
     borderWidth: 1,
   },
@@ -1128,144 +1080,6 @@ const styles = StyleSheet.create({
   },
   badgeParcialText: {
     color: COLORS.textSecondary,
-  },
-
-  // CAJA DE KPIS FINANCIEROS (Valores oscuros nítidos, mora en rojo cuando aplica)
-  cardFinancialsBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceSoft,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
-    marginBottom: 12,
-  },
-  kpiCol: {
-    flex: 1,
-  },
-  kpiDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: COLORS.border,
-    marginHorizontal: 8,
-  },
-  kpiLabel: {
-    fontSize: 9,
-    color: COLORS.textMuted,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-  },
-  kpiValueGreen: {
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-    color: COLORS.textPrimary,
-    marginTop: 2,
-  },
-  kpiValueDark: {
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-    color: COLORS.textPrimary,
-    marginTop: 2,
-  },
-  kpiValueRed: {
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: -0.4,
-    color: COLORS.danger,
-    marginTop: 2,
-  },
-  kpiValueMuted: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-
-  // BARRA DE AMORTIZACIÓN
-  amortizationSection: {
-    marginBottom: 12,
-  },
-  amortizationHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  amortizationText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-  },
-  amortizationSubText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-  },
-  amortizationTrack: {
-    height: 7,
-    backgroundColor: COLORS.bgTertiary,
-    borderRadius: 9999,
-    overflow: 'hidden',
-  },
-  amortizationBarFill: {
-    height: '100%',
-    borderRadius: 9999,
-  },
-
-  promiseBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceSoft,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  promiseBannerText: {
-    color: COLORS.textSecondary,
-    fontSize: 11,
-    fontWeight: '700',
-    flex: 1,
-  },
-
-  // ACCIONES DE LA TARJETA
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  payBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: COLORS.dockBg,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  payBtnCompleted: {
-    backgroundColor: COLORS.success,
-  },
-  payBtnText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  secondaryActionBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: COLORS.surfaceSoft,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   emptyState: {

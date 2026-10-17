@@ -31,6 +31,8 @@ import {
   Receipt,
   Calendar,
   FileText,
+  Clock,
+  AlertCircle,
 } from 'lucide-react-native';
 
 interface CustomerDetailViewProps {
@@ -44,6 +46,8 @@ interface CustomerDetailViewProps {
   onBack: () => void;
   onPayLoan: (customer: Customer, loan: Loan) => void;
   onRenewLoan: (customer: Customer, loan: Loan) => void;
+  onPromiseLoan?: (customer: Customer, loan: Loan) => void;
+  onNonPayment?: (customer: Customer, loan: Loan) => void;
   onOpenCreditHistory?: (customer: Customer) => void;
 }
 
@@ -57,6 +61,8 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
   onBack,
   onPayLoan,
   onRenewLoan,
+  onPromiseLoan,
+  onNonPayment,
   onOpenCreditHistory,
 }) => {
   const customerLoans = loans.filter((l) => l.customerId === customer.id);
@@ -257,12 +263,26 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
         {activeLoan && (
           <View style={styles.loanDetailCard}>
             <View style={styles.rowBetween}>
-              <View>
-                <Text style={styles.cardSectionTag}>CRÉDITO EN CURSO</Text>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                  <Text style={styles.cardSectionTag}>CRÉDITO ACTIVO #{activeLoan.loanNumber}</Text>
+                  <View style={styles.frequencyTag}>
+                    <Text style={styles.frequencyTagText}>
+                      {activeLoan.frequency === 'WEEKLY'
+                        ? 'Semanal'
+                        : activeLoan.frequency === 'BIWEEKLY'
+                        ? 'Quincenal'
+                        : activeLoan.frequency === 'MONTHLY'
+                        ? 'Mensual'
+                        : 'Diario'}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={styles.loanNumberBig}>
-                  {activeLoan.loanNumber} • Cuota {formatCOP(activeLoan.installmentAmount)}
+                  Cuota {formatCOP(activeLoan.installmentAmount)}
                 </Text>
               </View>
+
               <View style={styles.actionBtnsInline}>
                 <TouchableOpacity
                   style={styles.payNowBtn}
@@ -272,12 +292,67 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                   <Text style={styles.payNowBtnText}>Cobrar</Text>
                 </TouchableOpacity>
 
+                {onPromiseLoan && (
+                  <TouchableOpacity
+                    style={styles.actionIconBtn}
+                    onPress={() => onPromiseLoan(customer, activeLoan)}
+                  >
+                    <Clock size={14} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                )}
+
+                {onNonPayment && (
+                  <TouchableOpacity
+                    style={[styles.actionIconBtn, { borderColor: '#FDE68A', backgroundColor: '#FEF3C7' }]}
+                    onPress={() => onNonPayment(customer, activeLoan)}
+                  >
+                    <AlertCircle size={14} color="#D97706" />
+                  </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                   style={styles.renewNowBtn}
                   onPress={() => onRenewLoan(customer, activeLoan)}
                 >
                   <RefreshCw size={14} color={COLORS.purple} />
                 </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Micro-bloque de estado de cobro */}
+            <View style={styles.financialMiniBox}>
+              <View style={styles.financialMiniCol}>
+                <Text style={styles.financialMiniLabel}>MODALIDAD</Text>
+                <Text style={styles.financialMiniVal}>
+                  {activeLoan.frequency === 'WEEKLY'
+                    ? 'Semanal'
+                    : activeLoan.frequency === 'BIWEEKLY'
+                    ? 'Quincenal'
+                    : activeLoan.frequency === 'MONTHLY'
+                    ? 'Mensual'
+                    : 'Diario'}
+                </Text>
+              </View>
+              <View style={styles.financialMiniDivider} />
+              <View style={styles.financialMiniCol}>
+                <Text style={styles.financialMiniLabel}>SALDO RESTANTE</Text>
+                <Text style={styles.financialMiniVal}>
+                  {formatCOP(currentRemainingBalance)}
+                </Text>
+              </View>
+              <View style={styles.financialMiniDivider} />
+              <View style={styles.financialMiniCol}>
+                <Text style={styles.financialMiniLabel}>MORA ACUMULADA</Text>
+                <Text
+                  style={[
+                    styles.financialMiniVal,
+                    delinquency.hasDelinquency && { color: COLORS.danger },
+                  ]}
+                >
+                  {delinquency.hasDelinquency
+                    ? `${formatCOP(delinquency.overdueAmount)} (${delinquency.overdueDays}d)`
+                    : 'Al día'}
+                </Text>
               </View>
             </View>
 
@@ -568,6 +643,61 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purpleBorder,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  actionIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.surfaceSoft,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  frequencyTag: {
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.primaryBorder,
+  },
+  frequencyTagText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  financialMiniBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+  },
+  financialMiniCol: {
+    flex: 1,
+  },
+  financialMiniLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+    letterSpacing: 0.3,
+  },
+  financialMiniVal: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginTop: 2,
+  },
+  financialMiniDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: COLORS.border,
+    marginHorizontal: 8,
   },
   dashedDivider: {
     height: 1,

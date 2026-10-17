@@ -228,6 +228,12 @@ export default function App() {
             onRenewLoan={(cust, loan) =>
               setRenewalModalData({ visible: true, customer: cust, loan })
             }
+            onPromiseLoan={(cust, loan) =>
+              setPromiseModalData({ visible: true, customer: cust, loan })
+            }
+            onNonPayment={(cust, loan) =>
+              setNonPaymentModalData({ visible: true, customer: cust, loan })
+            }
             onOpenCreditHistory={(cust) => {
               setDetailCustomer(null);
               setHistoryInitialDoc(cust.documentNumber);
