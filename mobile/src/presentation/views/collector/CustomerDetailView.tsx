@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,8 @@ import {
   FileText,
   Clock,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 
 interface CustomerDetailViewProps {
@@ -91,6 +93,47 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const customerPromises = promises.filter((p) => p.customerId === customer.id);
+
+  const [showAllInstallments, setShowAllInstallments] = useState(false);
+
+  const getInstallmentPaymentDetails = (inst: Installment) => {
+    const isPaid = inst.pendingAmount <= 0;
+    const isPartial = inst.paidAmount > 0 && inst.pendingAmount > 0;
+
+    // Buscar pago en customerPayments que contenga esta cuota
+    const matchingPayment = customerPayments.find(
+      (p) =>
+        p.status === 'COMPLETED' &&
+        p.installmentsBreakdown?.some((b) => b.installmentId === inst.id)
+    );
+
+    const paymentDate = inst.lastPaymentDate || (matchingPayment ? matchingPayment.createdAt.split('T')[0] : null);
+
+    let delayDays = 0;
+    if (paymentDate && inst.dueDate) {
+      const due = new Date(inst.dueDate + 'T00:00:00');
+      const paid = new Date(paymentDate + 'T00:00:00');
+      delayDays = Math.round((paid.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    let overduePendingDays = 0;
+    if (!isPaid && inst.dueDate < todayStr) {
+      const due = new Date(inst.dueDate + 'T00:00:00');
+      const today = new Date(todayStr + 'T00:00:00');
+      overduePendingDays = Math.max(0, Math.round((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+
+    return {
+      isPaid,
+      isPartial,
+      paymentDate,
+      delayDays,
+      isDelayed: isPaid && delayDays > 0,
+      isOnTime: isPaid && delayDays === 0,
+      isEarly: isPaid && delayDays < 0,
+      overduePendingDays,
+    };
+  };
 
   const handleCall = (phoneNumber: string) => {
     Linking.openURL(`tel:${phoneNumber}`).catch(() => {});
@@ -274,6 +317,8 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                         ? 'Quincenal'
                         : activeLoan.frequency === 'MONTHLY'
                         ? 'Mensual'
+                        : activeLoan.frequency === 'FIXED_DATE'
+                        ? `Fecha Fija (${activeLoan.fixedDueDate || activeLoan.endDate})`
                         : 'Diario'}
                     </Text>
                   </View>
@@ -358,34 +403,133 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
 
             <View style={styles.dashedDivider} />
 
-            <Text style={styles.subHeaderLabel}>
-              PLAN DE CUOTAS ({activeInstallments.filter((i) => i.pendingAmount === 0).length} /{' '}
-              {activeInstallments.length} PAGADAS)
-            </Text>
+            <View style={styles.planHeaderRow}>
+              <Text style={styles.subHeaderLabel}>
+                PLAN DE CUOTAS ({activeInstallments.filter((i) => i.pendingAmount === 0).length} /{' '}
+                {activeInstallments.length} PAGADAS)
+              </Text>
+              {activeInstallments.length > 6 && (
+                <TouchableOpacity
+                  onPress={() => setShowAllInstallments(!showAllInstallments)}
+                  style={styles.expandToggleBtn}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.expandToggleText}>
+                    {showAllInstallments ? 'Ver menos' : `Ver todas (${activeInstallments.length})`}
+                  </Text>
+                  {showAllInstallments ? (
+                    <ChevronUp size={13} color={COLORS.primary} />
+                  ) : (
+                    <ChevronDown size={13} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
 
-            <View style={styles.installmentsGrid}>
-              {activeInstallments.slice(0, 12).map((inst) => {
-                const isPaid = inst.pendingAmount === 0;
-                const isOverdue = !isPaid && inst.dueDate < todayStr;
+            <View style={styles.installmentsList}>
+              {(showAllInstallments ? activeInstallments : activeInstallments.slice(0, 8)).map((inst) => {
+                const details = getInstallmentPaymentDetails(inst);
+                const isOverdue = !details.isPaid && inst.dueDate < todayStr;
                 return (
                   <View
                     key={inst.id}
                     style={[
-                      styles.instChip,
-                      isPaid && styles.instChipPaid,
-                      isOverdue && styles.instChipOverdue,
+                      styles.instCardItem,
+                      details.isPaid && styles.instCardItemPaid,
+                      isOverdue && styles.instCardItemOverdue,
+                      details.isPartial && styles.instCardItemPartial,
                     ]}
                   >
-                    <Text style={styles.instNum}>#{inst.installmentNumber}</Text>
-                    <Text
-                      style={[
-                        styles.instAmt,
-                        isPaid && { color: COLORS.success },
-                        isOverdue && { color: COLORS.danger },
-                      ]}
-                    >
-                      {isPaid ? '✓ Pagada' : formatCOP(inst.pendingAmount)}
-                    </Text>
+                    {/* Fila Superior: Cuota, Vencimiento y Monto */}
+                    <View style={styles.instCardTopRow}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View
+                          style={[
+                            styles.instNumBadge,
+                            details.isPaid && { backgroundColor: '#dcfce7' },
+                            isOverdue && { backgroundColor: '#fee2e2' },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.instNumBadgeText,
+                              details.isPaid && { color: '#15803d' },
+                              isOverdue && { color: '#b91c1c' },
+                            ]}
+                          >
+                            #{inst.installmentNumber}
+                          </Text>
+                        </View>
+                        <Text style={styles.instCardDueDate}>
+                          Vence: <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{inst.dueDate}</Text>
+                        </Text>
+                      </View>
+
+                      <Text
+                        style={[
+                          styles.instCardAmount,
+                          details.isPaid && { color: '#15803d' },
+                          isOverdue && { color: '#dc2626' },
+                        ]}
+                      >
+                        {formatCOP(inst.expectedAmount)}
+                      </Text>
+                    </View>
+
+                    {/* Fila Inferior: Detalles de Pago y Retraso */}
+                    {details.isPaid ? (
+                      <View style={styles.instPaymentMetaBox}>
+                        <View style={styles.paidDateBadge}>
+                          <CheckCircle size={12} color="#15803d" style={{ marginRight: 4 }} />
+                          <Text style={styles.paidDateBadgeText}>
+                            Pagada el: <Text style={{ fontWeight: '800' }}>{details.paymentDate || 'Registrado'}</Text>
+                          </Text>
+                        </View>
+
+                        {details.isDelayed ? (
+                          <View style={styles.delayBadge}>
+                            <Clock size={11} color="#b45309" style={{ marginRight: 3 }} />
+                            <Text style={styles.delayBadgeText}>
+                              ⚠️ {details.delayDays} {details.delayDays === 1 ? 'día' : 'días'} de retraso
+                            </Text>
+                          </View>
+                        ) : details.isEarly ? (
+                          <View style={styles.earlyBadge}>
+                            <Text style={styles.earlyBadgeText}>
+                              ⚡ Adelantada ({Math.abs(details.delayDays)}d antes)
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={styles.onTimeBadge}>
+                            <Text style={styles.onTimeBadgeText}>✓ A tiempo</Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : details.isPartial ? (
+                      <View style={styles.instPartialMetaBox}>
+                        <Text style={styles.instPartialText}>
+                          Abonado: {formatCOP(inst.paidAmount)} • Saldo: {formatCOP(inst.pendingAmount)}
+                        </Text>
+                        {details.paymentDate && (
+                          <Text style={styles.instPartialDateText}>
+                            Último abono: {details.paymentDate}
+                          </Text>
+                        )}
+                      </View>
+                    ) : isOverdue ? (
+                      <View style={styles.instOverdueMetaBox}>
+                        <AlertCircle size={12} color="#dc2626" style={{ marginRight: 4 }} />
+                        <Text style={styles.instOverdueText}>
+                          Vencida hace {details.overduePendingDays} {details.overduePendingDays === 1 ? 'día' : 'días'} (Mora activa)
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.instPendingMetaBox}>
+                        <Text style={styles.instPendingText}>
+                          {inst.dueDate === todayStr ? '🔔 Cobro programado para hoy' : 'Pendiente de cobro'}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 );
               })}
@@ -713,38 +857,175 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 8,
   },
-  installmentsGrid: {
+  planHeaderRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  instChip: {
-    width: '31%',
-    backgroundColor: COLORS.surfaceSoft,
-    borderRadius: 12,
-    paddingVertical: 7,
+  expandToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
     paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: COLORS.surfaceSoft,
+  },
+  expandToggleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  installmentsList: {
+    gap: 8,
+  },
+  instCardItem: {
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 14,
+    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.microBorder,
   },
-  instChipPaid: {
-    backgroundColor: COLORS.successLight,
-    borderColor: COLORS.successBorder,
+  instCardItemPaid: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
   },
-  instChipOverdue: {
-    backgroundColor: COLORS.dangerLight,
-    borderColor: COLORS.dangerBorder,
+  instCardItemOverdue: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
   },
-  instNum: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.textMuted,
+  instCardItemPartial: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
   },
-  instAmt: {
+  instCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  instNumBadge: {
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  instNumBadgeText: {
     fontSize: 11,
     fontWeight: '800',
+    color: '#334155',
+  },
+  instCardDueDate: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    flex: 1,
+    marginLeft: 8,
+  },
+  instCardAmount: {
+    fontSize: 13,
+    fontWeight: '800',
     color: COLORS.textPrimary,
+  },
+  instPaymentMetaBox: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  paidDateBadge: {
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  paidDateBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  delayBadge: {
+    backgroundColor: '#fef3c7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  delayBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#b45309',
+  },
+  earlyBadge: {
+    backgroundColor: '#e0e7ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+  },
+  earlyBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#4338ca',
+  },
+  onTimeBadge: {
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  onTimeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#15803d',
+  },
+  instPartialMetaBox: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  instPartialText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#b45309',
+  },
+  instPartialDateText: {
+    fontSize: 9,
+    color: COLORS.textMuted,
     marginTop: 2,
+  },
+  instOverdueMetaBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  instOverdueText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#dc2626',
+  },
+  instPendingMetaBox: {
+    marginTop: 6,
+    paddingTop: 4,
+  },
+  instPendingText: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    fontStyle: 'italic',
   },
   receiptHistoryCard: {
     backgroundColor: COLORS.receiptPaper,

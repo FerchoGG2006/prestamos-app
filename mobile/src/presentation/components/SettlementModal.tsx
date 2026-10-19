@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   Download,
   FileText,
+  Check,
 } from 'lucide-react-native';
 
 interface SettlementModalProps {
@@ -57,25 +58,32 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
-
-  useEffect(() => {
-    if (visible) {
-      setCashHandedOverStr(metrics.collectedCashToday.toString());
-      setJustification('');
-      setShowImportPanel(false);
-      setImportJsonText('');
-    }
-  }, [visible, metrics.collectedCashToday]);
-
-  if (!session) return null;
+  const [deductPayroll, setDeductPayroll] = useState(false);
+  const [payrollAmountStr, setPayrollAmountStr] = useState('');
+  const [payrollReason, setPayrollReason] = useState('Consumo personal: gaseosa / almuerzo / agua');
 
   const collectedCash = metrics.collectedCashToday;
+  const expensesToday = metrics.expensesToday || 0;
+  const netCashExpected = Math.max(0, collectedCash - expensesToday);
   const collectedDigital = metrics.collectedDigitalToday;
   const totalCollected = metrics.collectedToday;
   const disbursedToday = metrics.disbursedToday;
 
   const cashHandedOver = parseInt(cashHandedOverStr.replace(/\D/g, ''), 10) || 0;
-  const cashDifference = collectedCash - cashHandedOver;
+  const cashDifference = netCashExpected - cashHandedOver;
+
+  useEffect(() => {
+    if (visible) {
+      setCashHandedOverStr(netCashExpected.toString());
+      setJustification('');
+      setShowImportPanel(false);
+      setImportJsonText('');
+      setDeductPayroll(false);
+      setPayrollAmountStr('');
+    }
+  }, [visible, netCashExpected]);
+
+  if (!session) return null;
 
   // Firma de verificación determinista del paquete de ruta
   const verificationHash = `SYNC-${todayStr.replace(/-/g, '')}-${payments.length}P-${Math.round(
@@ -99,19 +107,25 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   );
 
   const handleCloseSettlement = async () => {
-    if (cashDifference !== 0 && !justification.trim()) {
+    if (cashDifference !== 0 && !justification.trim() && !deductPayroll) {
       Alert.alert(
         'Justificación Requerida',
-        'Existe una diferencia en el arqueo de efectivo. Es obligatorio ingresar una observación.'
+        'Existe una diferencia en el arqueo de efectivo. Es obligatorio ingresar una observación o activar el descuento de nómina.'
       );
       return;
     }
+
+    const payrollNum = deductPayroll
+      ? parseInt(payrollAmountStr.replace(/\D/g, ''), 10) || Math.max(0, cashDifference)
+      : undefined;
 
     setIsSubmitting(true);
     try {
       await localStore.closeDailySettlement({
         cashHandedOver,
         differenceJustification: justification.trim() || undefined,
+        payrollDeductionAmount: payrollNum,
+        payrollDeductionReason: deductPayroll ? payrollReason : undefined,
       });
 
       Alert.alert(
@@ -249,10 +263,10 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
           </View>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
-            {/* 1. CUADRÍCULA BENTO: EFECTIVO EN MANO VS DIGITAL */}
+            {/* 1. CUADRÍCULA BENTO: COBRO EFECTIVO, GASTOS RUTA Y NETO A RENDIR */}
             <View style={styles.splitRow}>
               <View style={styles.splitCard}>
-                <Text style={styles.splitLabel}>💵 EFECTIVO EN MANO</Text>
+                <Text style={styles.splitLabel}>💵 COBRADO EFECTIVO</Text>
                 <Text
                   style={[styles.splitValue, { color: COLORS.success }]}
                   numberOfLines={1}
@@ -261,30 +275,51 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   {formatCOP(collectedCash)}
                 </Text>
                 <Text style={styles.splitSub}>
-                  Caja total: {formatCOP(metrics.cashAvailableInHand)}
+                  Recaudo bruto en calle
                 </Text>
               </View>
 
               <View
                 style={[
                   styles.splitCard,
-                  { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder },
+                  { backgroundColor: '#fff7ed', borderColor: '#fed7aa' },
                 ]}
               >
-                <Text style={[styles.splitLabel, { color: COLORS.primary }]}>
-                  📲 DIGITAL (NEQUI / TRANSF.)
+                <Text style={[styles.splitLabel, { color: '#c2410c' }]}>
+                  🛠️ (-) GASTOS RUTA
                 </Text>
                 <Text
-                  style={[styles.splitValue, { color: COLORS.primary }]}
+                  style={[styles.splitValue, { color: '#ea580c' }]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
                 >
-                  {formatCOP(collectedDigital)}
+                  {formatCOP(expensesToday)}
                 </Text>
-                <Text style={[styles.splitSub, { color: COLORS.textSecondary }]}>
-                  Directo en cuenta bancaria
+                <Text style={[styles.splitSub, { color: '#9a3412' }]}>
+                  Pinchazo, datos, gasolina
                 </Text>
               </View>
+            </View>
+
+            <View
+              style={[
+                styles.splitCard,
+                { marginTop: 8, backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder },
+              ]}
+            >
+              <Text style={[styles.splitLabel, { color: COLORS.primary }]}>
+                💰 (=) EFECTIVO NETO A RENDIR (CAJA OFICINA)
+              </Text>
+              <Text
+                style={[styles.splitValue, { color: COLORS.primary, fontSize: 22 }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatCOP(netCashExpected)}
+              </Text>
+              <Text style={[styles.splitSub, { color: COLORS.textSecondary }]}>
+                Monto que el cobrador debe entregar físicamente a la oficina
+              </Text>
             </View>
 
             {/* 2. STATISTICS CHART: RECAUDO (#10b981) VS DESEMBOLSOS (#2563eb) */}
@@ -421,6 +456,61 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     {cashDifference > 0
                       ? `Faltante en efectivo: ${formatCOP(cashDifference)}`
                       : `Sobrante en efectivo: ${formatCOP(Math.abs(cashDifference))}`}
+                  </Text>
+                </View>
+              )}
+
+              {cashDifference > 0 && (
+                <View style={{ marginTop: 12, padding: 12, backgroundColor: '#fffbeb', borderRadius: 8, borderWidth: 1, borderColor: '#fde68a' }}>
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}
+                    onPress={() => setDeductPayroll(!deductPayroll)}
+                  >
+                    <View style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 4,
+                      borderWidth: 2,
+                      borderColor: deductPayroll ? COLORS.primary : COLORS.textMuted,
+                      backgroundColor: deductPayroll ? COLORS.primary : '#ffffff',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 8,
+                    }}>
+                      {deductPayroll && <Check size={14} color="#ffffff" />}
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#92400e', flex: 1 }}>
+                      Descontar de Nómina al Cobrador (Consumo personal: gaseosa, almuerzo, agua)
+                    </Text>
+                  </TouchableOpacity>
+
+                  {deductPayroll && (
+                    <View style={{ marginTop: 6 }}>
+                      <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#b45309', marginBottom: 4 }}>
+                        VALOR A DEDUCIR DE NÓMINA ($ COP):
+                      </Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: '#ffffff', height: 42, marginBottom: 8 }]}
+                        keyboardType="numeric"
+                        value={payrollAmountStr || String(cashDifference)}
+                        onChangeText={setPayrollAmountStr}
+                        placeholder={String(cashDifference)}
+                        placeholderTextColor={COLORS.textMuted}
+                      />
+                      <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#b45309', marginBottom: 4 }}>
+                        CONCEPTO DE CONSUMO PERSONAL:
+                      </Text>
+                      <TextInput
+                        style={[styles.input, { backgroundColor: '#ffffff', height: 42 }]}
+                        value={payrollReason}
+                        onChangeText={setPayrollReason}
+                        placeholder="Ej: Gaseosa, almuerzo, bolsa de agua..."
+                        placeholderTextColor={COLORS.textMuted}
+                      />
+                    </View>
+                  )}
+                  <Text style={{ fontSize: 10, color: '#b45309', fontStyle: 'italic', marginTop: 8 }}>
+                    💡 Audio 2: El gasto de ruta (pinchazo, datos) se descuenta de la ruta. Los gastos personales del cobrador (gaseosa, almuerzo) se descuentan de la nómina.
                   </Text>
                 </View>
               )}

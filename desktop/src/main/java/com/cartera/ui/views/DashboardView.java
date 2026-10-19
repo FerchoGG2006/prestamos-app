@@ -20,10 +20,12 @@ public class DashboardView extends VBox {
     private final TodayCollectionsService collectionsService;
     private final Runnable onGoToCollections;
 
+    private final Label lblAdministrative = new Label("$ 0");
+    private final Label lblActiveDebt = new Label("$ 0");
+    private final Label lblCash = new Label("$ 0");
     private final Label lblCollected = new Label("$ 0");
     private final Label lblPending = new Label("0");
     private final Label lblOverdue = new Label("$ 0");
-    private final Label lblCash = new Label("$ 0");
 
     public DashboardView(TodayCollectionsService collectionsService, Runnable onGoToCollections) {
         this.collectionsService = collectionsService;
@@ -38,15 +40,23 @@ public class DashboardView extends VBox {
     }
 
     private void buildView() {
-        Label title = new Label("Operación y Métricas de Hoy");
+        Label title = new Label("Operación y Métricas de Ruta");
         title.getStyleClass().add("section-title");
 
+        // Fila 1: Pilares Financieros de la Ruta (Audio 3)
+        HBox pillars = new HBox(16);
+        pillars.getChildren().addAll(
+                createMetricCard("💼 Administrativo (Patrimonio)", lblAdministrative, "metric-value-green"),
+                createMetricCard("📈 Cartera en Calle (Deuda)", lblActiveDebt, "metric-value"),
+                createMetricCard("💵 Base en Caja (Para Prestar)", lblCash, "metric-value")
+        );
+
+        // Fila 2: Métricas de Operación Diaria
         HBox metrics = new HBox(16);
         metrics.getChildren().addAll(
-                createMetricCard("Cobrado hoy", lblCollected, "metric-value-green"),
+                createMetricCard("Cobrado hoy (Pleno)", lblCollected, "metric-value-green"),
                 createMetricCard("Clientes por cobrar", lblPending, "metric-value"),
-                createMetricCard("Cuotas vencidas", lblOverdue, "metric-value-red"),
-                createMetricCard("Caja actual", lblCash, "metric-value")
+                createMetricCard("Cuotas vencidas", lblOverdue, "metric-value-red")
         );
 
         // Action banner
@@ -57,7 +67,7 @@ public class DashboardView extends VBox {
         VBox bannerText = new VBox(6);
         Label bannerTitle = new Label("Ruta de Cobro Activa");
         bannerTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
-        Label bannerDesc = new Label("Los datos financieros están sincronizados con la base de datos local SQLite. Puedes iniciar la jornada de cobros.");
+        Label bannerDesc = new Label("Los datos financieros reflejan el patrimonio total de la ruta (Administrativo = Cartera + Base en Caja).");
         bannerDesc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 13px;");
         bannerText.getChildren().addAll(bannerTitle, bannerDesc);
         HBox.setHgrow(bannerText, Priority.ALWAYS);
@@ -71,7 +81,7 @@ public class DashboardView extends VBox {
 
         banner.getChildren().addAll(bannerText, btnAction);
 
-        getChildren().addAll(title, metrics, banner);
+        getChildren().addAll(title, pillars, metrics, banner);
     }
 
     private VBox createMetricCard(String label, Label valueLabel, String valueStyleClass) {
@@ -80,6 +90,7 @@ public class DashboardView extends VBox {
         card.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(card, Priority.ALWAYS);
         Label lbl = new Label(label);
+        lbl.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #64748b;");
         valueLabel.getStyleClass().add(valueStyleClass);
         card.getChildren().addAll(lbl, valueLabel);
         return card;
@@ -87,9 +98,11 @@ public class DashboardView extends VBox {
 
     public void refresh() {
         var m = collectionsService.getDailyMetrics(LocalDate.now());
+        lblAdministrative.setText(CURRENCY.format(m.totalAdministrativeCapital()));
+        lblActiveDebt.setText(CURRENCY.format(m.totalActiveDebt()));
+        lblCash.setText(CURRENCY.format(m.cashBalance()));
         lblCollected.setText(CURRENCY.format(m.collectedToday()));
         lblPending.setText(m.pendingCustomersCount() + " / " + m.totalCustomersToday());
         lblOverdue.setText(CURRENCY.format(m.overdueAmount()));
-        lblCash.setText(CURRENCY.format(m.cashBalance()));
     }
 }

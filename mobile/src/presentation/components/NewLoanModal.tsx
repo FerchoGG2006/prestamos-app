@@ -17,7 +17,7 @@ import {
 } from '../../core/domain/calculator';
 import { COLORS } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
-import { FilePlus2, X } from 'lucide-react-native';
+import { FilePlus2, X, Calendar } from 'lucide-react-native';
 
 interface NewLoanModalProps {
   visible: boolean;
@@ -27,6 +27,12 @@ interface NewLoanModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
+
+const addDaysToDate = (baseDateStr: string, days: number): string => {
+  const d = new Date(baseDateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+};
 
 export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   visible,
@@ -40,10 +46,12 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   const [principalStr, setPrincipalStr] = useState('200000');
   const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
   const [installmentCountStr, setInstallmentCountStr] = useState('30');
+  const [fixedDueDateStr, setFixedDueDateStr] = useState<string>(() => addDaysToDate(todayStr, 7));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const principal = parseInt(principalStr.replace(/\D/g, ''), 10) || 0;
-  const installmentCount = parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 30;
+  const isFixedDate = frequency === 'FIXED_DATE';
+  const installmentCount = isFixedDate ? 1 : (parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 30);
 
   const summary =
     principal > 0 && installmentCount > 0
@@ -54,16 +62,29 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
 
   const quickPrincipals = [100000, 150000, 200000, 300000, 500000];
 
-  const frequencies: Array<{ key: LoanFrequency; label: string; defaultCount: number }> = [
-    { key: 'DAILY', label: 'Diario', defaultCount: 24 },
-    { key: 'WEEKLY', label: 'Semanal', defaultCount: 4 },
-    { key: 'BIWEEKLY', label: 'Quincenal', defaultCount: 2 },
-    { key: 'MONTHLY', label: 'Mensual', defaultCount: 1 },
+  const frequencies: Array<{
+    key: LoanFrequency;
+    label: string;
+    unitLabel: string;
+    questionLabel: string;
+    defaultCount: number;
+    options: number[];
+  }> = [
+    { key: 'DAILY', label: 'Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles?', defaultCount: 24, options: [12, 20, 24, 30, 40] },
+    { key: 'WEEKLY', label: 'Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
+    { key: 'BIWEEKLY', label: 'Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
+    { key: 'MONTHLY', label: 'Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
+    { key: 'FIXED_DATE', label: '📅 Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
   ];
+
+  const currentFreqConfig = frequencies.find((f) => f.key === frequency) || frequencies[0];
 
   const handleSelectFrequency = (freq: LoanFrequency, defaultCount: number) => {
     setFrequency(freq);
     setInstallmentCountStr(String(defaultCount));
+    if (freq === 'FIXED_DATE' && !fixedDueDateStr) {
+      setFixedDueDateStr(addDaysToDate(todayStr, 7));
+    }
   };
 
   const handleCreateLoan = async () => {
@@ -75,6 +96,10 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       Alert.alert('Capital inválido', 'Ingrese un monto de capital mayor a $0.');
       return;
     }
+    if (isFixedDate && !fixedDueDateStr) {
+      Alert.alert('Fecha inválida', 'Seleccione o ingrese la fecha fija de vencimiento.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -84,13 +109,15 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         interestRate: 0.2,
         installmentCount,
         frequency,
+        fixedDueDate: isFixedDate ? fixedDueDateStr : undefined,
         todayStr,
       });
 
       Alert.alert(
         '¡Crédito Desembolsado!',
         `Crédito ${res.loan.loanNumber} creado exitosamente.\n\n` +
-        `• Modalidad: ${frequency}\n` +
+        `• Modalidad: ${isFixedDate ? `Fecha Fija (Vence: ${fixedDueDateStr})` : `${installmentCount} ${currentFreqConfig.unitLabel}`}\n` +
+        `• Total a recaudar: ${formatCOP(res.loan.totalAgreed)}\n` +
         `• Cuota: ${formatCOP(res.loan.installmentAmount)}\n` +
         `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
         `• Efectivo neto a entregar: ${formatCOP(netCashToDeliver)}`
@@ -199,13 +226,18 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </ScrollView>
 
             <Text style={styles.label}>3. Modalidad de Pago</Text>
-            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 14 }}
+              contentContainerStyle={{ gap: 6 }}
+            >
               {frequencies.map((f) => (
                 <TouchableOpacity
                   key={f.key}
                   style={[
                     styles.cntPill,
-                    { flex: 1, paddingVertical: 8 },
+                    { paddingHorizontal: 12, paddingVertical: 8 },
                     frequency === f.key && styles.cntPillActive,
                   ]}
                   onPress={() => handleSelectFrequency(f.key, f.defaultCount)}
@@ -220,30 +252,81 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
 
-            <Text style={styles.label}>4. Plazo de Amortización ({installmentCount} cuotas {frequency.toLowerCase()}s)</Text>
-            <View style={styles.installmentsRow}>
-              {[12, 20, 24, 30, 40].map((cnt) => (
-                <TouchableOpacity
-                  key={cnt}
-                  style={[
-                    styles.cntPill,
-                    installmentCount === cnt && styles.cntPillActive,
-                  ]}
-                  onPress={() => setInstallmentCountStr(cnt.toString())}
-                >
-                  <Text
-                    style={[
-                      styles.cntPillText,
-                      installmentCount === cnt && { color: '#ffffff' },
-                    ]}
-                  >
-                    {cnt}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {/* 4. Selector de Plazo o Fecha Fija adaptativo */}
+            {isFixedDate ? (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.label}>
+                  4. Fecha de Pago Único Acordada
+                </Text>
+                <View style={styles.fixedDateBox}>
+                  <Calendar size={16} color={COLORS.primary} style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.fixedDateInput}
+                    value={fixedDueDateStr}
+                    onChangeText={setFixedDueDateStr}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                  <Text style={styles.fixedDateHint}>Vencimiento</Text>
+                </View>
+                {/* Atajos de días para fecha fija */}
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+                  {[
+                    { label: '7 días', days: 7 },
+                    { label: '15 días', days: 15 },
+                    { label: '20 días', days: 20 },
+                    { label: '30 días', days: 30 },
+                  ].map((item) => (
+                    <TouchableOpacity
+                      key={item.days}
+                      style={[
+                        styles.quickDaysPill,
+                        fixedDueDateStr === addDaysToDate(todayStr, item.days) && styles.quickDaysPillActive,
+                      ]}
+                      onPress={() => setFixedDueDateStr(addDaysToDate(todayStr, item.days))}
+                    >
+                      <Text
+                        style={[
+                          styles.quickDaysText,
+                          fixedDueDateStr === addDaysToDate(todayStr, item.days) && { color: '#ffffff', fontWeight: '800' },
+                        ]}
+                      >
+                        +{item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.label}>
+                  4. {currentFreqConfig.questionLabel} ({installmentCount} {currentFreqConfig.unitLabel})
+                </Text>
+                <View style={styles.installmentsRow}>
+                  {currentFreqConfig.options.map((cnt) => (
+                    <TouchableOpacity
+                      key={cnt}
+                      style={[
+                        styles.cntPill,
+                        installmentCount === cnt && styles.cntPillActive,
+                      ]}
+                      onPress={() => setInstallmentCountStr(cnt.toString())}
+                    >
+                      <Text
+                        style={[
+                          styles.cntPillText,
+                          installmentCount === cnt && { color: '#ffffff' },
+                        ]}
+                      >
+                        {cnt} {currentFreqConfig.unitLabel}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
 
             {/* Calculadora Financiera en Vivo con línea punteada tipo ticket */}
             {summary && (
@@ -264,7 +347,9 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </View>
                 <View style={styles.calcRow}>
                   <Text style={styles.calcLabel}>
-                    Valor Cuota ({installmentCount} cuotas {frequency.toLowerCase()}s):
+                    {isFixedDate
+                      ? `Modalidad: Pago único el ${fixedDueDateStr}`
+                      : `Valor Cuota (${installmentCount} cuotas ${currentFreqConfig.unitLabel}):`}
                   </Text>
                   <Text style={[styles.calcVal, { color: COLORS.textPrimary, fontSize: 16 }]}>
                     {formatCOP(summary.installmentAmount)}
@@ -497,5 +582,46 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '800',
+  },
+  fixedDateBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 44,
+    borderWidth: 1,
+    borderColor: COLORS.inputBorder,
+  },
+  fixedDateInput: {
+    flex: 1,
+    color: COLORS.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    paddingVertical: 0,
+  },
+  fixedDateHint: {
+    fontSize: 11,
+    color: COLORS.primary,
+    fontWeight: '800',
+  },
+  quickDaysPill: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 9999,
+    backgroundColor: COLORS.surfaceSoft,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickDaysPillActive: {
+    backgroundColor: COLORS.dockBg,
+    borderColor: COLORS.dockBg,
+  },
+  quickDaysText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
   },
 });

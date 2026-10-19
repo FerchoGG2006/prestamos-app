@@ -24,7 +24,7 @@ export type PromiseStatus = 'PENDIENTE' | 'CUMPLIDA' | 'INCUMPLIDA' | 'CANCELADA
 
 export type SessionStatus = 'OPEN' | 'CLOSED';
 
-export type LoanFrequency = 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+export type LoanFrequency = 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'FIXED_DATE';
 
 export type InterestType = 'FLAT_INITIAL_CAPITAL' | 'AMORTIZED';
 
@@ -63,6 +63,7 @@ export interface Customer {
   status: CustomerStatus;
   routeId: string;
   assignedCollectorId: string;
+  orderIndex?: number;    // Secuencia de orden de cobro en ruta (1, 2, 3...)
   createdAt: string;
   updatedAt: string;
 }
@@ -90,9 +91,10 @@ export interface Loan {
   interestType: InterestType;
   interestAmount: number;   // Interés monetario: principal * interestRate
   totalAgreed: number;      // Capital inicial + interés
-  installmentCount: number; // Número de cuotas (ej. 30)
+  installmentCount: number; // Número de cuotas (ej. 30, o 1 en fecha fija)
   installmentAmount: number;// Valor de cada cuota (totalAgreed / installmentCount)
   frequency: LoanFrequency;
+  fixedDueDate?: string;    // Fecha única de vencimiento cuando frequency === 'FIXED_DATE'
 
   startDate: string;        // YYYY-MM-DD
   endDate: string;          // YYYY-MM-DD
@@ -231,7 +233,7 @@ export interface CashMovement {
   collectorId: string;
   sessionId?: string;
   type: 'INCOME' | 'EXPENSE';
-  category: 'COLLECTION' | 'LOAN_DISBURSEMENT' | 'RENEWAL_DISBURSEMENT' | 'EXPENSE' | 'ADJUSTMENT';
+  category: 'COLLECTION' | 'LOAN_DISBURSEMENT' | 'RENEWAL_DISBURSEMENT' | 'EXPENSE' | 'ADJUSTMENT' | 'RECAUDO_OFICINA';
   amount: number;
   referenceId?: string; // loanId, paymentId, etc.
   description: string;
@@ -265,7 +267,10 @@ export interface DailyRouteMetrics {
   collectedCashToday: number;    // Cobrado hoy en CASH
   collectedDigitalToday: number; // Cobrado hoy en NEQUI + TRANSFER
   disbursedToday: number;        // Desembolsos de hoy (préstamos nuevos + renovaciones netas)
-  cashAvailableInHand: number;   // Efectivo físico en mano del cobrador
+  expensesToday: number;         // Gastos operativos de ruta de hoy (pinchazos, datos, gasolina)
+  recaudoRetiradoToday: number;  // Retiros de recaudo de la base a oficina hoy (Audio 3)
+  cashAvailableInHand: number;   // Base en efectivo físico disponible en la ruta (Audio 3)
+  totalAdministrativeCapital: number; // Administrativo de la ruta: Cartera en Calle + Base en Caja (Audio 3)
   visitedCustomersCount: number;
   expectedCustomersCount: number;
 
@@ -329,3 +334,29 @@ export interface NonPaymentVisit {
   date: string;       // YYYY-MM-DD
   createdAt: string;  // ISO
 }
+
+/**
+ * Configuración Integral de la Oficina / Empresa compradora del sistema
+ */
+export interface OfficeCompanyConfig {
+  companyName: string;          // Razón Social / Nombre Comercial
+  taxId: string;                // NIT / Identificación Tributaria
+  city: string;                 // Ciudad sede principal
+  address: string;              // Dirección física de la oficina
+  supportPhone: string;         // Teléfono / WhatsApp oficial de atención
+  receiptFooterMessage: string; // Mensaje oficial en pie de comprobante
+
+  // Reglas comerciales por defecto
+  defaultInterestRate: number;  // Tasa de interés predeterminada (ej. 0.20 = 20%)
+  defaultInstallmentsCount: number; // Plazo predeterminado (ej. 30 días)
+  defaultFrequency: LoanFrequency;  // 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY'
+  excludeSundays: boolean;      // Excluir domingos del calendario
+  paperworkRate: number;        // Cobro de papelería por cada $100.000 (ej. 5.000)
+  graceDays: number;            // Días de gracia antes de marcar mora
+
+  // Reglas operativas para cobradores
+  maxNewLoanLimit: number;      // Límite de crédito inicial para nuevos clientes
+  routeInitialCashBase: number; // Base de efectivo entregada al cobrador en la mañana
+  allowCollectorExpenses: boolean; // ¿Permitir al cobrador registrar gastos de ruta?
+}
+

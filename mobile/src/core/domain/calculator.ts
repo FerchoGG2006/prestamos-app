@@ -122,8 +122,26 @@ export function generateInstallments(
   summary: LoanCalculationSummary,
   startDateStr: string, // YYYY-MM-DD
   frequency: LoanFrequency = 'DAILY',
-  config: LoanBusinessConfig = DEFAULT_BUSINESS_CONFIG.loan
+  config: LoanBusinessConfig = DEFAULT_BUSINESS_CONFIG.loan,
+  fixedDueDate?: string
 ): Installment[] {
+  // Modalidad Pago Único a Fecha Fija
+  if (frequency === 'FIXED_DATE') {
+    const finalDueDate = fixedDueDate || startDateStr;
+    return [
+      {
+        id: `${loanId}-cuota-1`,
+        loanId,
+        installmentNumber: 1,
+        dueDate: finalDueDate,
+        expectedAmount: summary.totalAgreed,
+        paidAmount: 0,
+        pendingAmount: summary.totalAgreed,
+        status: 'PENDIENTE',
+      },
+    ];
+  }
+
   const installments: Installment[] = [];
   const currentDate = new Date(startDateStr + 'T00:00:00');
 

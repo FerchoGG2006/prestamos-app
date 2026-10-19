@@ -25,6 +25,7 @@ import {
   DailyRouteMetrics,
   MobileSyncPackage,
   NonPaymentVisit,
+  OfficeCompanyConfig,
 } from '../../core/domain/types';
 import {
   INITIAL_USERS,
@@ -45,6 +46,24 @@ import {
   generateInstallments,
 } from '../../core/domain/calculator';
 
+export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
+  companyName: 'Inversiones & Cobranzas La Excelencia',
+  taxId: '901.458.789-1',
+  city: 'Barranquilla',
+  address: 'Calle 72 # 48-25, Of. 302',
+  supportPhone: '+57 300 123 4567',
+  receiptFooterMessage: 'Gracias por su puntualidad • Conserve este comprobante',
+  defaultInterestRate: 0.20,
+  defaultInstallmentsCount: 30,
+  defaultFrequency: 'DAILY',
+  excludeSundays: true,
+  paperworkRate: 5000,
+  graceDays: 0,
+  maxNewLoanLimit: 500000,
+  routeInitialCashBase: 200000,
+  allowCollectorExpenses: true,
+};
+
 const STORAGE_KEYS = {
   USERS: '@prestamos_mobile_users_v1',
   ROUTES: '@prestamos_mobile_routes_v1',
@@ -59,6 +78,7 @@ const STORAGE_KEYS = {
   CASH_MOVEMENTS: '@prestamos_mobile_cash_v1',
   NON_PAYMENT_VISITS: '@prestamos_mobile_non_payments_v1',
   AUDIT_LOGS: '@prestamos_mobile_audit_v1',
+  OFFICE_CONFIG: '@prestamos_mobile_office_config_v1',
 };
 
 /**
@@ -126,6 +146,7 @@ class LocalStore {
   private cashMovements: CashMovement[] = [...INITIAL_CASH_MOVEMENTS];
   private nonPaymentVisits: NonPaymentVisit[] = [];
   private auditLogs: AuditLog[] = [];
+  private officeConfig: OfficeCompanyConfig = { ...DEFAULT_OFFICE_CONFIG };
 
   private isInitialized = false;
   private listeners: Array<() => void> = [];
@@ -159,6 +180,7 @@ class LocalStore {
         savedCash,
         savedNonPayments,
         savedAudit,
+        savedOfficeConfig,
       ] = await Promise.all([
         safeStorage.getItem(STORAGE_KEYS.USERS),
         safeStorage.getItem(STORAGE_KEYS.ROUTES),
@@ -173,6 +195,7 @@ class LocalStore {
         safeStorage.getItem(STORAGE_KEYS.CASH_MOVEMENTS),
         safeStorage.getItem(STORAGE_KEYS.NON_PAYMENT_VISITS),
         safeStorage.getItem(STORAGE_KEYS.AUDIT_LOGS),
+        safeStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG),
       ]);
 
       if (savedUsers) this.users = JSON.parse(savedUsers);
@@ -188,6 +211,7 @@ class LocalStore {
       if (savedCash) this.cashMovements = JSON.parse(savedCash);
       if (savedNonPayments) this.nonPaymentVisits = JSON.parse(savedNonPayments);
       if (savedAudit) this.auditLogs = JSON.parse(savedAudit);
+      if (savedOfficeConfig) this.officeConfig = JSON.parse(savedOfficeConfig);
 
       this.isInitialized = true;
       this.notify();
@@ -201,6 +225,7 @@ class LocalStore {
       this.activeSession = { ...INITIAL_SESSION };
       this.promises = [...INITIAL_PROMISES];
       this.cashMovements = [...INITIAL_CASH_MOVEMENTS];
+      this.officeConfig = { ...DEFAULT_OFFICE_CONFIG };
       this.isInitialized = true;
       this.notify();
     }
@@ -219,6 +244,23 @@ class LocalStore {
   public getPromises(): PaymentPromise[] { return this.promises; }
   public getCashMovements(): CashMovement[] { return this.cashMovements; }
   public getAuditLogs(): AuditLog[] { return this.auditLogs; }
+  public getOfficeConfig(): OfficeCompanyConfig { return { ...this.officeConfig }; }
+
+  public async updateOfficeConfig(config: Partial<OfficeCompanyConfig>): Promise<OfficeCompanyConfig> {
+    this.officeConfig = { ...this.officeConfig, ...config };
+    await safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
+    this.notify();
+    return { ...this.officeConfig };
+  }
+
+  public async updateCustomerOrder(orderedCustomerIds: string[]): Promise<void> {
+    this.customers = this.customers.map((c) => {
+      const idx = orderedCustomerIds.indexOf(c.id);
+      return idx >= 0 ? { ...c, orderIndex: idx + 1 } : c;
+    });
+    await safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers));
+    this.notify();
+  }
 
   /**
    * Calcula las métricas en tiempo real para el Hero Balance Card, Quick Pills y Gráficos (Figma 7020-3430)
@@ -307,12 +349,39 @@ class LocalStore {
       todayRenewals.reduce((sum, r) => sum + r.actualCashDisbursed, 0) +
       todayNewLoans.reduce((sum, l) => sum + l.principal, 0);
 
-    // Base inicial de caja + efectivo cobrado - desembolsos en efectivo
+    // Gastos operativos de ruta (pinchazos, datos, gasolina)
+    const expensesToday = this.cashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          cm.category === 'EXPENSE' &&
+          cm.createdAt.startsWith(todayStr)
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    // Retiros de recaudo de la base a oficina (Audio 3)
+    const recaudoRetiradoToday = this.cashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          cm.category === 'RECAUDO_OFICINA' &&
+          cm.createdAt.startsWith(todayStr)
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    // Base inicial de caja + efectivo cobrado - desembolsos en efectivo - gastos operativos de ruta - recaudo retirado
     const initialCashBase = this.cashMovements
       .filter((cm) => cm.type === 'INCOME' && cm.category === 'ADJUSTMENT')
       .reduce((sum, cm) => sum + cm.amount, 0);
 
-    const cashAvailableInHand = initialCashBase + collectedCashToday - disbursedToday;
+    const cashAvailableInHand = Math.max(
+      0,
+      initialCashBase + collectedCashToday - disbursedToday - expensesToday - recaudoRetiradoToday
+    );
+
+    // Administrativo de la Ruta (Audio 3: "El administrativo es toda la plata que tiene la ruta...")
+    // Valor total activo = Cartera activa prestada en calle + Base en efectivo disponible
+    const totalAdministrativeCapital = activeCapitalInStreet + cashAvailableInHand;
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
 
@@ -328,7 +397,10 @@ class LocalStore {
       collectedCashToday,
       collectedDigitalToday,
       disbursedToday,
+      expensesToday,
+      recaudoRetiradoToday,
       cashAvailableInHand,
+      totalAdministrativeCapital,
       visitedCustomersCount: visitedCustomerIds.size,
       expectedCustomersCount: activeLoans.length,
 
@@ -538,6 +610,7 @@ class LocalStore {
     interestRate?: number;
     installmentCount?: number;
     frequency?: LoanFrequency;
+    fixedDueDate?: string;
     collectorId?: string;
     routeId?: string;
     todayStr: string;
@@ -554,10 +627,13 @@ class LocalStore {
       );
     }
 
+    const isFixedDate = params.frequency === 'FIXED_DATE';
+    const effectiveInstallmentCount = isFixedDate ? 1 : (params.installmentCount ?? 30);
+
     const summary = calculateLoanSummary(
       params.principal,
       params.interestRate ?? 0.20,
-      params.installmentCount ?? 30
+      effectiveInstallmentCount
     );
     const paperworkFee = calculatePaperworkFee(params.principal);
     const netDisbursed = Math.max(0, summary.principal - paperworkFee);
@@ -571,10 +647,14 @@ class LocalStore {
       loanId,
       summary,
       params.todayStr,
-      params.frequency || 'DAILY'
+      params.frequency || 'DAILY',
+      undefined,
+      params.fixedDueDate
     );
     const endDate =
-      generatedInstallments.length > 0
+      isFixedDate && params.fixedDueDate
+        ? params.fixedDueDate
+        : generatedInstallments.length > 0
         ? generatedInstallments[generatedInstallments.length - 1].dueDate
         : params.todayStr;
 
@@ -592,6 +672,7 @@ class LocalStore {
       installmentCount: summary.installmentCount,
       installmentAmount: summary.installmentAmount,
       frequency: params.frequency || 'DAILY',
+      fixedDueDate: params.fixedDueDate,
       startDate: params.todayStr,
       endDate,
       status: 'ACTIVE',
@@ -800,12 +881,60 @@ class LocalStore {
   }
 
   /**
+   * Registrar Retiro de Recaudo de la Base a la Oficina (Audio 3)
+   * Descuenta directamente de la base en efectivo de la ruta.
+   * Validación estricta: No se puede retirar más de lo que haya en la base ("si no hay base, de dónde vas a sacar").
+   */
+  public async recordRecaudoWithdrawal(params: {
+    amount: number;
+    destinationOrReason?: string;
+    routeId?: string;
+    authorizedBy?: string;
+    todayStr?: string;
+  }): Promise<CashMovement> {
+    if (params.amount <= 0) {
+      throw new Error('El monto a recaudar debe ser mayor a cero.');
+    }
+
+    const dateStamp = params.todayStr || '2026-09-19';
+    const metrics = this.getDailyRouteMetrics(dateStamp);
+
+    if (params.amount > metrics.cashAvailableInHand) {
+      throw new Error(
+        `Base insuficiente. La base actual disponible es $${metrics.cashAvailableInHand.toLocaleString(
+          'es-CO'
+        )}. No se pueden retirar $${params.amount.toLocaleString('es-CO')}.`
+      );
+    }
+
+    const session = this.activeSession;
+    const movement: CashMovement = {
+      id: `csm-rec-${Date.now()}`,
+      routeId: params.routeId || session?.routeId || 'route-1',
+      collectorId: params.authorizedBy || session?.collectorId || 'usr-admin-1',
+      sessionId: session?.id,
+      type: 'EXPENSE',
+      category: 'RECAUDO_OFICINA',
+      amount: params.amount,
+      description: params.destinationOrReason || 'Retiro de Recaudo / Utilidad a Oficina Central',
+      createdAt: `${dateStamp}T${new Date().toTimeString().split(' ')[0]}`,
+    };
+
+    this.cashMovements.unshift(movement);
+    await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
+    this.notify();
+    return movement;
+  }
+
+  /**
    * Cerrar Jornada y Liquidar Ruta con Arqueo de Caja (Efectivo vs Digital Nequi/Transferencia)
    */
   public async closeDailySettlement(params: {
     cashHandedOver: number;
     differenceJustification?: string;
     auditedBy?: string;
+    payrollDeductionAmount?: number;
+    payrollDeductionReason?: string;
   }): Promise<DailySettlement> {
     if (!this.activeSession) throw new Error('No hay jornada activa para cerrar');
 
@@ -819,11 +948,21 @@ class LocalStore {
     const collectedTransfers = sessionPayments
       .filter((p) => p.paymentMethod === 'NEQUI' || p.paymentMethod === 'TRANSFER' || p.paymentMethod === 'OTHER')
       .reduce((sum, p) => sum + p.amountReceived, 0);
-
     const actualCollection = collectedCash + collectedTransfers;
     const pendingCollection = Math.max(0, session.expectedCollection - actualCollection);
 
-    const cashDifference = collectedCash - params.cashHandedOver;
+    // Gastos operativos de la ruta que se descuentan del efectivo que la ruta rinde a la caja
+    const sessionExpenses = this.cashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          cm.category === 'EXPENSE' &&
+          cm.createdAt.startsWith(session.date)
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const netCashExpected = Math.max(0, collectedCash - sessionExpenses);
+    const cashDifference = netCashExpected - params.cashHandedOver;
     if (cashDifference !== 0 && !params.differenceJustification) {
       throw new Error('Es obligatoria una justificación cuando existe diferencia en el arqueo de caja');
     }
@@ -844,6 +983,26 @@ class LocalStore {
     const salidasNetCashDisbursed =
       todayRenewals.reduce((sum, r) => sum + r.actualCashDisbursed, 0) +
       todayNewLoans.reduce((sum, l) => sum + (l.principal - calculatePaperworkFee(l.principal)), 0);
+
+    let justificationText = params.differenceJustification || '';
+    if (params.payrollDeductionAmount && params.payrollDeductionAmount > 0) {
+      const payrollReason = params.payrollDeductionReason || 'Consumo personal / descuadre cobrador';
+      justificationText += ` [DEDUCCIÓN NÓMINA: $${params.payrollDeductionAmount.toLocaleString('es-CO')} (${payrollReason})]`;
+
+      // Registrar movimiento de ajuste para nómina
+      const payrollMov: CashMovement = {
+        id: `csm-nom-${Date.now()}`,
+        routeId: session.routeId,
+        collectorId: session.collectorId,
+        sessionId: session.id,
+        type: 'EXPENSE',
+        category: 'ADJUSTMENT',
+        amount: params.payrollDeductionAmount,
+        description: `Deducción nómina: ${payrollReason}`,
+        createdAt: new Date().toISOString(),
+      };
+      this.cashMovements.unshift(payrollMov);
+    }
 
     const settlement: DailySettlement = {
       id: `set-${Date.now()}`,
@@ -869,7 +1028,7 @@ class LocalStore {
       collectedTransfers,
       cashHandedOver: params.cashHandedOver,
       cashDifference,
-      differenceJustification: params.differenceJustification,
+      differenceJustification: justificationText.trim() || undefined,
       status: 'SETTLED',
       settledAt: new Date().toISOString(),
       auditedBy: params.auditedBy,

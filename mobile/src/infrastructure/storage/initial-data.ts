@@ -72,6 +72,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     businessName: 'Panadería El Sol',
     routeId: 'route-norte',
     assignedCollectorId: 'usr-col-1',
+    orderIndex: 1,
     status: 'ACTIVE',
     references: [
       { id: 'ref-1', fullName: 'Marta Pérez', relationship: 'Hermana', phone: '3019876543' },
@@ -91,6 +92,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     businessName: 'Taller San Roque',
     routeId: 'route-norte',
     assignedCollectorId: 'usr-col-1',
+    orderIndex: 2,
     status: 'ACTIVE',
     references: [
       { id: 'ref-2', fullName: 'Pedro Díaz', relationship: 'Padre', phone: '3123456789' },
@@ -110,6 +112,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     businessName: 'Miscelánea María',
     routeId: 'route-norte',
     assignedCollectorId: 'usr-col-1',
+    orderIndex: 3,
     status: 'ACTIVE',
     references: [
       { id: 'ref-3', fullName: 'Lucía López', relationship: 'Prima', phone: '3001122334' },
@@ -129,6 +132,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     businessName: 'Comidas Rápidas Don Pedro',
     routeId: 'route-norte',
     assignedCollectorId: 'usr-col-1',
+    orderIndex: 4,
     status: 'ACTIVE',
     references: [
       { id: 'ref-4', fullName: 'Carmen Gómez', relationship: 'Esposa', phone: '3159988776' },
@@ -148,6 +152,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
     businessName: 'Peluquería Estilo',
     routeId: 'route-norte',
     assignedCollectorId: 'usr-col-1',
+    orderIndex: 5,
     status: 'ACTIVE',
     references: [
       { id: 'ref-5', fullName: 'Jorge Martínez', relationship: 'Hermano', phone: '3207654321' },

@@ -4,7 +4,6 @@ import com.cartera.collections.application.TodayCollectionsService;
 import com.cartera.collections.application.TodayCollectionsService.CollectionItem;
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.settlement.application.SettlementUseCase;
-import com.cartera.infrastructure.persistence.repository.DailySettlementRepository;
 import com.cartera.infrastructure.persistence.repository.CashMovementRepository;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
@@ -30,16 +29,11 @@ public class TodayCollectionsView extends VBox {
     private final TodayCollectionsService collectionsService;
     private final RecordPaymentUseCase paymentUseCase;
     private final SettlementUseCase settlementUseCase;
-    private final DailySettlementRepository settlementRepository;
     private final CashMovementRepository cashMovementRepository;
     private final Stage primaryStage;
     private final Runnable onDataUpdated;
 
-    private SettlementManagementView settlementView;
-    private StackPane contentArea;
     private VBox routeContainer;
-    private Button btnTabRoute;
-    private Button btnTabSettlement;
 
     private final ObservableList<CollectionItem> masterData = FXCollections.observableArrayList();
     private final TableView<CollectionItem> table = new TableView<>();
@@ -54,29 +48,18 @@ public class TodayCollectionsView extends VBox {
                                 RecordPaymentUseCase paymentUseCase,
                                 Stage primaryStage,
                                 Runnable onDataUpdated) {
-        this(collectionsService, paymentUseCase, null, null, null, primaryStage, onDataUpdated);
+        this(collectionsService, paymentUseCase, null, null, primaryStage, onDataUpdated);
     }
 
     public TodayCollectionsView(TodayCollectionsService collectionsService,
                                 RecordPaymentUseCase paymentUseCase,
                                 SettlementUseCase settlementUseCase,
-                                DailySettlementRepository settlementRepository,
-                                Stage primaryStage,
-                                Runnable onDataUpdated) {
-        this(collectionsService, paymentUseCase, settlementUseCase, settlementRepository, null, primaryStage, onDataUpdated);
-    }
-
-    public TodayCollectionsView(TodayCollectionsService collectionsService,
-                                RecordPaymentUseCase paymentUseCase,
-                                SettlementUseCase settlementUseCase,
-                                DailySettlementRepository settlementRepository,
                                 CashMovementRepository cashMovementRepository,
                                 Stage primaryStage,
                                 Runnable onDataUpdated) {
         this.collectionsService = collectionsService;
         this.paymentUseCase = paymentUseCase;
         this.settlementUseCase = settlementUseCase;
-        this.settlementRepository = settlementRepository;
         this.cashMovementRepository = cashMovementRepository;
         this.primaryStage = primaryStage;
         this.onDataUpdated = onDataUpdated;
@@ -95,56 +78,38 @@ public class TodayCollectionsView extends VBox {
         top.setAlignment(Pos.CENTER_LEFT);
 
         VBox titleBox = new VBox(4);
-        Label title = new Label("Ruta y Liquidación Diaria");
+        Label title = new Label("Ruta y Cobros de Hoy");
         title.getStyleClass().add("section-title");
         lblCounter.getStyleClass().add("muted");
         titleBox.getChildren().addAll(title, lblCounter);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
-        // Control Segmentado Integrado
-        HBox segmentBar = new HBox(4);
-        segmentBar.getStyleClass().add("segment-bar");
-        segmentBar.setAlignment(Pos.CENTER);
-
-        btnTabRoute = new Button("Ruta y Cobros de Hoy");
-        btnTabRoute.getStyleClass().addAll("segment-btn", "segment-btn-active");
-        btnTabRoute.setOnAction(e -> showSection("route"));
-
-        btnTabSettlement = new Button("Cuadre y Liquidación Diaria");
-        btnTabSettlement.getStyleClass().add("segment-btn");
-        btnTabSettlement.setOnAction(e -> showSection("settlement"));
-
-        segmentBar.getChildren().addAll(btnTabRoute, btnTabSettlement);
+        Button btnReportExpense = new Button("+ Reportar Gasto de Ruta");
+        btnReportExpense.setStyle("-fx-background-color: #ea580c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnReportExpense.setOnAction(e -> openReportExpenseDialog());
 
         Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refreshData());
 
-        top.getChildren().addAll(titleBox, segmentBar, btnRefresh);
+        top.getChildren().addAll(titleBox, btnReportExpense, btnRefresh);
         getChildren().add(top);
     }
 
-    private void showSection(String section) {
-        btnTabRoute.getStyleClass().remove("segment-btn-active");
-        btnTabSettlement.getStyleClass().remove("segment-btn-active");
-
-        if ("settlement".equalsIgnoreCase(section)) {
-            btnTabSettlement.getStyleClass().add("segment-btn-active");
-            if (settlementView != null) {
-                settlementView.refresh();
-                contentArea.getChildren().setAll(settlementView);
+    private void openReportExpenseDialog() {
+        String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
+                .map(com.cartera.infrastructure.security.UserSession::userId)
+                .orElse("usr-col-1");
+        RouteExpenseDialog.show(primaryStage, collectorId, "route-1", settlementUseCase, saved -> {
+            if (saved) {
+                refreshData();
+                if (onDataUpdated != null) onDataUpdated.run();
             }
-        } else {
-            btnTabRoute.getStyleClass().add("segment-btn-active");
-            contentArea.getChildren().setAll(routeContainer);
-        }
+        });
     }
 
     private void buildContentArea() {
-        contentArea = new StackPane();
-        VBox.setVgrow(contentArea, Priority.ALWAYS);
-
-        // Contenedor de Ruta
+        // Contenedor de Ruta puro para el cobrador
         routeContainer = new VBox(14);
         VBox.setVgrow(routeContainer, Priority.ALWAYS);
 
@@ -197,17 +162,8 @@ public class TodayCollectionsView extends VBox {
             }).show();
         });
 
-        searchRow.getChildren().addAll(searchField, lblFreq, cmbFreqFilter, spacer, btnSyncMobile);
         routeContainer.getChildren().addAll(searchRow, buildTableCard());
-
-        // Contenedor de Liquidación
-        if (settlementUseCase != null && settlementRepository != null) {
-            settlementView = new SettlementManagementView(settlementUseCase, settlementRepository);
-            settlementView.setPadding(new Insets(0));
-        }
-
-        contentArea.getChildren().setAll(routeContainer);
-        getChildren().add(contentArea);
+        getChildren().add(routeContainer);
     }
 
     @SuppressWarnings("unchecked")
@@ -471,9 +427,6 @@ public class TodayCollectionsView extends VBox {
         var items = collectionsService.getTodayCollectionItems(LocalDate.now());
         masterData.setAll(items);
         updateStats(items.size());
-        if (settlementView != null) {
-            settlementView.refresh();
-        }
     }
 
     private void updateStats(int total) {

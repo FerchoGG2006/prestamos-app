@@ -62,6 +62,7 @@ public final class CarteraApplication extends Application {
     private CustomersView customersView;
     private LoansView loansView;
     private CreditHistoryView creditHistoryView;
+    private SettlementManagementView settlementManagementView;
     private TreasuryManagementView treasuryManagementView;
     private ReportsView reportsView;
     private ConfigurationView configurationView;
@@ -100,7 +101,7 @@ public final class CarteraApplication extends Application {
 
         dashboardView = new DashboardView(collectionsService, () -> navigateTo("Cobros y Rutas"));
 
-        todayCollectionsView = new TodayCollectionsView(collectionsService, paymentUseCase, settlementUseCase, dailySettlementRepository, cashMovementRepository, stage, () -> {
+        todayCollectionsView = new TodayCollectionsView(collectionsService, paymentUseCase, settlementUseCase, cashMovementRepository, stage, () -> {
             dashboardView.refresh();
             if (loansView != null) loansView.refresh();
             if (customersView != null) customersView.refresh();
@@ -112,7 +113,10 @@ public final class CarteraApplication extends Application {
             if (customersView != null) customersView.refresh();
         });
 
-        customersView = new CustomersView(customerRepository, createCustomerUseCase, loanRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, loansView, stage);
+        var paymentRepository = context.getBean(com.cartera.infrastructure.persistence.repository.PaymentRepository.class);
+        var paymentAllocationRepository = context.getBean(com.cartera.infrastructure.persistence.repository.PaymentAllocationRepository.class);
+
+        customersView = new CustomersView(customerRepository, createCustomerUseCase, loanRepository, installmentRepository, paymentRepository, paymentAllocationRepository, createLoanUseCase, renewLoanUseCase, loansView, stage);
 
         var creditHistoryService = context.getBean(com.cartera.history.application.CreditHistoryService.class);
         creditHistoryView = new CreditHistoryView(creditHistoryService, stage);
@@ -122,12 +126,11 @@ public final class CarteraApplication extends Application {
         });
 
         var cashManagementView = new CashManagementView(cashMovementRepository, auditLogRepository, stage);
-        var settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository);
-        treasuryManagementView = new TreasuryManagementView(cashManagementView, settlementManagementView);
-
-        var paymentRepository = context.getBean(com.cartera.infrastructure.persistence.repository.PaymentRepository.class);
         var settingRepository = context.getBean(com.cartera.infrastructure.persistence.repository.SystemSettingRepository.class);
         var userRepository = context.getBean(com.cartera.infrastructure.persistence.repository.AppUserRepository.class);
+
+        settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository, userRepository, stage);
+        treasuryManagementView = new TreasuryManagementView(cashManagementView, settlementManagementView);
 
         reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository);
         configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, stage);
@@ -262,23 +265,26 @@ public final class CarteraApplication extends Application {
         navButtons.clear();
 
         if (session != null && session.isCollector()) {
-            // Menú Ultra Limpio para Cobrador (solo lo que necesita)
+            // Menú Ultra Limpio para Cobrador (solo lo que necesita para su trabajo en calle)
             navContainer.getChildren().add(createSectionHeader("OPERACIÓN Y RUTA"));
-            navContainer.getChildren().add(createNavButton("Ruta y Liquidación", "Cobros y Rutas"));
+            navContainer.getChildren().add(createNavButton("Mi Ruta de Hoy", "Cobros y Rutas"));
             navContainer.getChildren().add(createNavButton("Mis Clientes", "Clientes"));
             navContainer.getChildren().add(createNavButton("Historial Crediticio", "Historial"));
         } else {
-            // Menú Completo para Administrador
+            // Menú Completo para Administrador / Supervisor / Dueño
             navContainer.getChildren().add(createSectionHeader("GENERAL"));
             navContainer.getChildren().add(createNavButton("Panel Principal", "Inicio"));
 
-            navContainer.getChildren().add(createSectionHeader("OPERACIÓN Y RUTA"));
-            navContainer.getChildren().add(createNavButton("Ruta y Liquidación", "Cobros y Rutas"));
+            navContainer.getChildren().add(createSectionHeader("SUPERVISIÓN Y CONTROL"));
+            navContainer.getChildren().add(createNavButton("Liquidación de Rutas", "Liquidación Diaria"));
+            navContainer.getChildren().add(createNavButton("Arqueo y Flujo de Caja", "Tesorería y Cierres"));
+
+            navContainer.getChildren().add(createSectionHeader("OPERACIÓN"));
+            navContainer.getChildren().add(createNavButton("Supervisión de Cobros", "Cobros y Rutas"));
             navContainer.getChildren().add(createNavButton("Clientes y Créditos", "Clientes"));
             navContainer.getChildren().add(createNavButton("Historial Crediticio", "Historial"));
 
-            navContainer.getChildren().add(createSectionHeader("ADMINISTRACIÓN Y CONTROL"));
-            navContainer.getChildren().add(createNavButton("Caja y Tesorería", "Tesorería y Cierres"));
+            navContainer.getChildren().add(createSectionHeader("ADMINISTRACIÓN"));
             navContainer.getChildren().add(createNavButton("Informes y Auditoría", "Reportes"));
             navContainer.getChildren().add(createNavButton("Configuración", "Configuración"));
         }
@@ -323,12 +329,18 @@ public final class CarteraApplication extends Application {
 
         Node viewNode;
         switch (viewName) {
+            case "Liquidación Diaria":
+            case "Liquidación":
+                activeKey = "Liquidación Diaria";
+                effectiveTitle = "Liquidación y Arqueo Diario de Rutas";
+                if (settlementManagementView != null) settlementManagementView.refresh();
+                viewNode = settlementManagementView;
+                break;
             case "Cobros y Rutas":
             case "Cobros de hoy":
             case "Rutas":
-            case "Liquidación":
                 activeKey = "Cobros y Rutas";
-                effectiveTitle = "Ruta y Liquidación Diaria";
+                effectiveTitle = "Ruta y Cobros de Hoy";
                 todayCollectionsView.refreshData();
                 viewNode = todayCollectionsView;
                 break;

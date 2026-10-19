@@ -137,6 +137,8 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
         return 'Quincenal';
       case 'MONTHLY':
         return 'Mensual';
+      case 'FIXED_DATE':
+        return 'Fecha Fija';
       case 'DAILY':
       default:
         return 'Diario';

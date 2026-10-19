@@ -75,6 +75,10 @@ public class CashManagementView extends VBox {
         titleBox.getChildren().addAll(title, subtitle);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
+        Button btnRecaudo = new Button("💰 Retirar Recaudo a Oficina");
+        btnRecaudo.setStyle("-fx-background-color: #0284c7; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnRecaudo.setOnAction(e -> openRecaudoDialog());
+
         Button btnNewMovement = new Button("+ Movimiento de Caja");
         btnNewMovement.getStyleClass().add("btn-primary");
         btnNewMovement.setOnAction(e -> openNewMovementDialog());
@@ -83,7 +87,7 @@ public class CashManagementView extends VBox {
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
-        top.getChildren().addAll(titleBox, btnNewMovement, btnRefresh);
+        top.getChildren().addAll(titleBox, btnRecaudo, btnNewMovement, btnRefresh);
         getChildren().add(top);
     }
 
@@ -238,7 +242,7 @@ public class CashManagementView extends VBox {
         cmbType.getStyleClass().add("search-field");
 
         ComboBox<String> cmbCategory = new ComboBox<>(FXCollections.observableArrayList(
-                "GASTO_GASOLINA", "GASTO_VIATICOS", "BASE_INICIAL", "RETIRO_CAJA_PRINCIPAL", "AJUSTE_ARQUEO", "OTRO"
+                "GASTO_GASOLINA", "GASTO_VIATICOS", "BASE_INICIAL", "RECAUDO_OFICINA", "RETIRO_CAJA_PRINCIPAL", "AJUSTE_ARQUEO", "OTRO"
         ));
         cmbCategory.setValue("GASTO_GASOLINA");
         cmbCategory.setMaxWidth(Double.MAX_VALUE);
@@ -327,6 +331,150 @@ public class CashManagementView extends VBox {
                 new VBox(4, new Label("Categoría *") {{ setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px;"); }}, cmbCategory),
                 new VBox(4, new Label("Monto ($) *") {{ setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px;"); }}, txtAmount),
                 new VBox(4, new Label("Descripción / Justificación *") {{ setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px;"); }}, txtDesc),
+                lblFeedback,
+                actions
+        );
+
+        var scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
+        dialog.setScene(scene);
+        dialog.showAndWait();
+    }
+
+    private void openRecaudoDialog() {
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.WINDOW_MODAL);
+        dialog.initOwner(ownerStage);
+        dialog.setTitle("Retirar Recaudo a Oficina Central");
+        dialog.setResizable(false);
+
+        VBox root = new VBox(16);
+        root.setPadding(new Insets(24));
+        root.setStyle("-fx-background-color: #ffffff;");
+        root.setPrefWidth(440);
+
+        Label title = new Label("💰 Retiro de Recaudo de Ruta");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
+
+        // Calcular base disponible actual
+        List<CashMovementEntity> list = cashMovementRepository.findAll();
+        BigDecimal inflow = list.stream()
+                .filter(m -> "INGRESO".equalsIgnoreCase(m.getMovementType()) || "ENTRADA".equalsIgnoreCase(m.getMovementType()))
+                .map(CashMovementEntity::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal outflow = list.stream()
+                .filter(m -> "EGRESO".equalsIgnoreCase(m.getMovementType()) || "SALIDA".equalsIgnoreCase(m.getMovementType()))
+                .map(CashMovementEntity::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal currentBase = inflow.subtract(outflow).max(BigDecimal.ZERO);
+
+        VBox baseBox = new VBox(4);
+        baseBox.setStyle("-fx-background-color: #0f172a; -fx-padding: 14; -fx-background-radius: 10;");
+        Label lblBaseTitle = new Label("BASE DISPONIBLE EN CAJA:");
+        lblBaseTitle.setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 10px; -fx-font-weight: bold;");
+        Label lblBaseVal = new Label(CURRENCY.format(currentBase));
+        lblBaseVal.setStyle("-fx-text-fill: #38bdf8; -fx-font-size: 22px; -fx-font-weight: bold;");
+        baseBox.getChildren().addAll(lblBaseTitle, lblBaseVal);
+
+        TextField txtAmount = new TextField();
+        txtAmount.setPromptText("Ej. 300000");
+        txtAmount.getStyleClass().add("search-field");
+
+        ComboBox<String> cmbDestination = new ComboBox<>(FXCollections.observableArrayList(
+                "🏢 Entrega a Oficina Central",
+                "💼 Retiro Utilidad / Dueño",
+                "🏦 Consignación Bancaria / Nequi",
+                "🔄 Traslado de Fondeo a Otra Ruta"
+        ));
+        cmbDestination.setValue("🏢 Entrega a Oficina Central");
+        cmbDestination.setMaxWidth(Double.MAX_VALUE);
+        cmbDestination.getStyleClass().add("search-field");
+
+        TextField txtNotes = new TextField();
+        txtNotes.setPromptText("Ej. Entregado en efectivo a administración central");
+        txtNotes.getStyleClass().add("search-field");
+
+        Label lblFeedback = new Label();
+        lblFeedback.setVisible(false);
+        lblFeedback.setManaged(false);
+
+        HBox actions = new HBox(12);
+        actions.setAlignment(Pos.CENTER_RIGHT);
+
+        Button btnCancel = new Button("Cancelar");
+        btnCancel.getStyleClass().add("btn-secondary");
+        btnCancel.setOnAction(e -> dialog.close());
+
+        Button btnSave = new Button("Confirmar Retiro (-)");
+        btnSave.setStyle("-fx-background-color: #0284c7; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 16; -fx-background-radius: 8;");
+        btnSave.setOnAction(e -> {
+            try {
+                String clean = txtAmount.getText().replaceAll("[^0-9.]", "").trim();
+                if (clean.isBlank()) {
+                    throw new IllegalArgumentException("Debe ingresar el monto a recaudar.");
+                }
+                BigDecimal amount = new BigDecimal(clean);
+                if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new IllegalArgumentException("El monto a recaudar debe ser mayor a cero.");
+                }
+                if (amount.compareTo(currentBase) > 0) {
+                    throw new IllegalArgumentException("Base insuficiente (" + CURRENCY.format(currentBase) + "). No se puede retirar de donde no hay plata.");
+                }
+
+                String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                String userId = com.cartera.infrastructure.security.UserSessionContext.getSession()
+                        .map(com.cartera.infrastructure.security.UserSession::userId)
+                        .orElse("usr-admin-1");
+
+                String reason = cmbDestination.getValue();
+                if (!txtNotes.getText().isBlank()) {
+                    reason += " - " + txtNotes.getText().trim();
+                }
+
+                CashMovementEntity mov = new CashMovementEntity(
+                        UUID.randomUUID().toString(),
+                        "route-norte",
+                        userId,
+                        null,
+                        "EGRESO",
+                        "RECAUDO_OFICINA",
+                        amount,
+                        null,
+                        reason,
+                        now
+                );
+                cashMovementRepository.save(mov);
+
+                auditLogRepository.save(new AuditLogEntity(
+                        UUID.randomUUID().toString(),
+                        userId,
+                        "CASH_MOVEMENT",
+                        mov.getId(),
+                        "RECAUDO_OFICINA_RETIRO",
+                        null,
+                        "EGRESO " + amount + " (RECAUDO_OFICINA)",
+                        reason,
+                        now
+                ));
+
+                refresh();
+                dialog.close();
+            } catch (Exception ex) {
+                lblFeedback.setText("Error: " + ex.getMessage());
+                lblFeedback.setStyle("-fx-text-fill: #ef4444;");
+                lblFeedback.setVisible(true);
+                lblFeedback.setManaged(true);
+            }
+        });
+
+        actions.getChildren().addAll(btnCancel, btnSave);
+
+        root.getChildren().addAll(
+                title,
+                baseBox,
+                new VBox(4, new Label("Monto a Recaudar / Retirar ($) *") {{ setStyle("-fx-text-fill: #475569; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, txtAmount),
+                new VBox(4, new Label("Destino del Recaudo *") {{ setStyle("-fx-text-fill: #475569; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, cmbDestination),
+                new VBox(4, new Label("Detalle / Observación") {{ setStyle("-fx-text-fill: #475569; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, txtNotes),
                 lblFeedback,
                 actions
         );

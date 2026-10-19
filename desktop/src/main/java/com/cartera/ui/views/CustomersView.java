@@ -23,6 +23,16 @@ import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
 
+import com.cartera.infrastructure.persistence.entity.PaymentAllocationEntity;
+import com.cartera.infrastructure.persistence.entity.PaymentEntity;
+import com.cartera.infrastructure.persistence.repository.PaymentAllocationRepository;
+import com.cartera.infrastructure.persistence.repository.PaymentRepository;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * Vista unificada de Clientes y Créditos.
  * Permite gestionar la ficha del cliente, consultar sus préstamos activos,
@@ -38,6 +48,8 @@ public class CustomersView extends VBox {
     private final com.cartera.customers.application.CreateCustomerUseCase createCustomerUseCase;
     private final LoanRepository loanRepository;
     private final InstallmentRepository installmentRepository;
+    private final PaymentRepository paymentRepository;
+    private final PaymentAllocationRepository paymentAllocationRepository;
     private final com.cartera.loans.application.CreateLoanUseCase createLoanUseCase;
     private final com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase;
     private final LoansView loansView;
@@ -61,7 +73,7 @@ public class CustomersView extends VBox {
     public CustomersView(CustomerRepository customerRepository,
                          com.cartera.customers.application.CreateCustomerUseCase createCustomerUseCase,
                          Stage ownerStage) {
-        this(customerRepository, createCustomerUseCase, null, null, null, null, null, ownerStage);
+        this(customerRepository, createCustomerUseCase, null, null, null, null, null, null, null, ownerStage);
     }
 
     public CustomersView(CustomerRepository customerRepository,
@@ -72,10 +84,25 @@ public class CustomersView extends VBox {
                          com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase,
                          LoansView loansView,
                          Stage ownerStage) {
+        this(customerRepository, createCustomerUseCase, loanRepository, installmentRepository, null, null, createLoanUseCase, renewLoanUseCase, loansView, ownerStage);
+    }
+
+    public CustomersView(CustomerRepository customerRepository,
+                         com.cartera.customers.application.CreateCustomerUseCase createCustomerUseCase,
+                         LoanRepository loanRepository,
+                         InstallmentRepository installmentRepository,
+                         PaymentRepository paymentRepository,
+                         PaymentAllocationRepository paymentAllocationRepository,
+                         com.cartera.loans.application.CreateLoanUseCase createLoanUseCase,
+                         com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase,
+                         LoansView loansView,
+                         Stage ownerStage) {
         this.customerRepository = customerRepository;
         this.createCustomerUseCase = createCustomerUseCase;
         this.loanRepository = loanRepository;
         this.installmentRepository = installmentRepository;
+        this.paymentRepository = paymentRepository;
+        this.paymentAllocationRepository = paymentAllocationRepository;
         this.createLoanUseCase = createLoanUseCase;
         this.renewLoanUseCase = renewLoanUseCase;
         this.loansView = loansView;
@@ -446,36 +473,177 @@ public class CustomersView extends VBox {
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: #ffffff;");
-        root.setPrefWidth(540);
+        root.setPrefWidth(720);
 
-        Label title = new Label("Plan de Cuotas del Crédito");
+        Label title = new Label("Plan de Cuotas y Registro de Pagos");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
 
         TableView<InstallmentEntity> tableInst = new TableView<>();
         tableInst.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(tableInst, Priority.ALWAYS);
 
+        // Preload payments and payment dates for this loan
+        Map<String, String> installmentPaymentDates = new HashMap<>();
+        if (paymentAllocationRepository != null && paymentRepository != null) {
+            List<PaymentEntity> loanPayments = paymentRepository.findByLoanId(loan.getId());
+            Map<String, String> paymentDateMap = loanPayments.stream()
+                    .collect(Collectors.toMap(PaymentEntity::getId, p -> {
+                        String c = p.getCreatedAt();
+                        return (c != null && c.length() >= 10) ? c.substring(0, 10) : (c != null ? c : "");
+                    }, (a, b) -> a));
+
+            List<InstallmentEntity> allLoanInst = installmentRepository.findByLoanId(loan.getId());
+            for (InstallmentEntity inst : allLoanInst) {
+                List<PaymentAllocationEntity> allocs = paymentAllocationRepository.findByInstallmentId(inst.getId());
+                if (!allocs.isEmpty()) {
+                    for (PaymentAllocationEntity alloc : allocs) {
+                        String pDate = paymentDateMap.get(alloc.getPaymentId());
+                        if (pDate != null && !pDate.isBlank()) {
+                            installmentPaymentDates.put(inst.getId(), pDate);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        LocalDate today = LocalDate.now();
+
         TableColumn<InstallmentEntity, String> colNum = new TableColumn<>("#");
         colNum.setCellValueFactory(d -> new SimpleObjectProperty<>("Cuota #" + d.getValue().getInstallmentNumber()));
-        colNum.setPrefWidth(70);
+        colNum.setPrefWidth(75);
 
         TableColumn<InstallmentEntity, String> colDate = new TableColumn<>("VENCE");
         colDate.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getDueDate()));
-        colDate.setPrefWidth(100);
+        colDate.setPrefWidth(90);
 
         TableColumn<InstallmentEntity, String> colVal = new TableColumn<>("VALOR");
         colVal.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().getAmount())));
-        colVal.setPrefWidth(100);
-
-        TableColumn<InstallmentEntity, String> colBal = new TableColumn<>("PENDIENTE");
-        colBal.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().getPendingAmount())));
-        colBal.setPrefWidth(100);
+        colVal.setPrefWidth(95);
 
         TableColumn<InstallmentEntity, String> colSt = new TableColumn<>("ESTADO");
         colSt.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getStatus()));
-        colSt.setPrefWidth(90);
+        colSt.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String status, boolean empty) {
+                super.updateItem(status, empty);
+                if (empty || status == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    Label badge = new Label(status.toUpperCase());
+                    badge.setAlignment(Pos.CENTER);
+                    String base = "-fx-padding: 3 8; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 10px;";
+                    if ("PAGADA".equalsIgnoreCase(status)) {
+                        badge.setStyle(base + "-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-border-color: #bbf7d0; -fx-border-radius: 12;");
+                    } else if ("MORA".equalsIgnoreCase(status)) {
+                        badge.setStyle(base + "-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 12;");
+                    } else {
+                        badge.setStyle(base + "-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-border-color: #cbd5e1; -fx-border-radius: 12;");
+                    }
+                    setGraphic(badge);
+                    setText(null);
+                }
+            }
+        });
+        colSt.setPrefWidth(85);
 
-        tableInst.getColumns().addAll(colNum, colDate, colVal, colBal, colSt);
+        // FECHA PAGO
+        TableColumn<InstallmentEntity, String> colPaidDate = new TableColumn<>("FECHA PAGO");
+        colPaidDate.setCellValueFactory(d -> {
+            String pDate = installmentPaymentDates.get(d.getValue().getId());
+            return new SimpleObjectProperty<>(pDate != null ? pDate : ("PAGADA".equalsIgnoreCase(d.getValue().getStatus()) ? d.getValue().getDueDate() : "-"));
+        });
+        colPaidDate.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    setText(item);
+                    if (!"-".equals(item)) {
+                        setStyle("-fx-text-fill: #0369a1; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    } else {
+                        setStyle("-fx-text-fill: #94a3b8; -fx-font-size: 11px;");
+                    }
+                }
+            }
+        });
+        colPaidDate.setPrefWidth(100);
+
+        // PUNTUALIDAD / RETRASO
+        TableColumn<InstallmentEntity, InstallmentEntity> colDelay = new TableColumn<>("PUNTUALIDAD / RETRASO");
+        colDelay.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
+        colDelay.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(InstallmentEntity inst, boolean empty) {
+                super.updateItem(inst, empty);
+                if (empty || inst == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    Label badge = new Label();
+                    badge.setAlignment(Pos.CENTER);
+                    String base = "-fx-padding: 3 8; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 10px;";
+
+                    String pDateStr = installmentPaymentDates.get(inst.getId());
+                    if (pDateStr == null && "PAGADA".equalsIgnoreCase(inst.getStatus())) {
+                        pDateStr = inst.getDueDate();
+                    }
+
+                    if ("PAGADA".equalsIgnoreCase(inst.getStatus()) && pDateStr != null) {
+                        try {
+                            LocalDate dueDate = LocalDate.parse(inst.getDueDate());
+                            LocalDate paidDate = LocalDate.parse(pDateStr.length() >= 10 ? pDateStr.substring(0, 10) : pDateStr);
+                            if (paidDate.isAfter(dueDate)) {
+                                long days = ChronoUnit.DAYS.between(dueDate, paidDate);
+                                badge.setText("⚠️ " + days + " d retraso");
+                                badge.setStyle(base + "-fx-background-color: #fef3c7; -fx-text-fill: #b45309; -fx-border-color: #fde68a; -fx-border-radius: 12;");
+                            } else if (paidDate.isBefore(dueDate)) {
+                                long days = ChronoUnit.DAYS.between(paidDate, dueDate);
+                                badge.setText("⚡ Adelantada (" + days + "d)");
+                                badge.setStyle(base + "-fx-background-color: #e0e7ff; -fx-text-fill: #4338ca; -fx-border-color: #c7d2fe; -fx-border-radius: 12;");
+                            } else {
+                                badge.setText("✓ A tiempo");
+                                badge.setStyle(base + "-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-border-color: #bbf7d0; -fx-border-radius: 12;");
+                            }
+                        } catch (Exception ex) {
+                            badge.setText("Pagada");
+                            badge.setStyle(base + "-fx-background-color: #dcfce7; -fx-text-fill: #15803d;");
+                        }
+                    } else if (!"PAGADA".equalsIgnoreCase(inst.getStatus()) && inst.getDueDate() != null) {
+                        try {
+                            LocalDate dueDate = LocalDate.parse(inst.getDueDate());
+                            if (dueDate.isBefore(today)) {
+                                long days = ChronoUnit.DAYS.between(dueDate, today);
+                                badge.setText("⚠️ Mora (" + days + "d)");
+                                badge.setStyle(base + "-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 12;");
+                            } else if (dueDate.isEqual(today)) {
+                                badge.setText("🔔 Vence hoy");
+                                badge.setStyle(base + "-fx-background-color: #e0f2fe; -fx-text-fill: #0284c7; -fx-border-color: #bae6fd; -fx-border-radius: 12;");
+                            } else {
+                                badge.setText("Pendiente");
+                                badge.setStyle(base + "-fx-background-color: #f8fafc; -fx-text-fill: #64748b; -fx-border-color: #e2e8f0; -fx-border-radius: 12;");
+                            }
+                        } catch (Exception ex) {
+                            badge.setText("Pendiente");
+                            badge.setStyle(base + "-fx-background-color: #f8fafc; -fx-text-fill: #64748b;");
+                        }
+                    } else {
+                        badge.setText("-");
+                        badge.setStyle(base + "-fx-background-color: #f8fafc; -fx-text-fill: #94a3b8;");
+                    }
+
+                    setGraphic(badge);
+                    setText(null);
+                }
+            }
+        });
+        colDelay.setPrefWidth(150);
+
+        tableInst.getColumns().addAll(colNum, colDate, colVal, colSt, colPaidDate, colDelay);
 
         List<InstallmentEntity> list = installmentRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
         tableInst.setItems(FXCollections.observableArrayList(list));
@@ -488,7 +656,7 @@ public class CustomersView extends VBox {
         bot.setAlignment(Pos.CENTER_RIGHT);
 
         root.getChildren().addAll(title, tableInst, bot);
-        Scene scene = new Scene(root, 560, 420);
+        Scene scene = new Scene(root, 720, 440);
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
         modal.setScene(scene);
         modal.showAndWait();

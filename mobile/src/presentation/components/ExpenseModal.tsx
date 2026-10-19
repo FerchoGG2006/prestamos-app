@@ -27,16 +27,16 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   onSuccess,
 }) => {
   const [amountStr, setAmountStr] = useState('');
-  const [category, setCategory] = useState('GASOLINA');
+  const [category, setCategory] = useState('PINCHAZO');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const categories = [
-    { key: 'GASOLINA', label: '⛽ Gasolina', quickAmount: 15000 },
-    { key: 'PARQUEADERO', label: '🅿️ Parqueadero', quickAmount: 3000 },
-    { key: 'ALMUERZO', label: '🍽️ Almuerzo / Comida', quickAmount: 14000 },
-    { key: 'IMPREVISTO', label: '🛠️ Taller / Imprevisto', quickAmount: 20000 },
-    { key: 'OTRO', label: '💼 Otro gasto', quickAmount: 10000 },
+    { key: 'PINCHAZO', label: '🛠️ Pinchazo / Taller Moto', quickAmount: 10000 },
+    { key: 'DATOS', label: '📱 Recarga / Plan Celular', quickAmount: 5000 },
+    { key: 'GASOLINA', label: '⛽ Gasolina / Combustible', quickAmount: 15000 },
+    { key: 'PARQUEADERO', label: '🅿️ Peaje / Parqueadero', quickAmount: 3000 },
+    { key: 'OTRO', label: '💼 Otro gasto operativo', quickAmount: 10000 },
   ];
 
   const numericAmount = parseInt(amountStr.replace(/\D/g, ''), 10) || 0;
@@ -64,8 +64,8 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       });
 
       Alert.alert(
-        'Gasto Registrado',
-        `Se registró salida de ${formatCOP(numericAmount)} por concepto de ${category}. Se descontará del efectivo físico a liquidar.`
+        'Gasto Operativo Registrado',
+        `Se registró gasto de ${formatCOP(numericAmount)} (${category}). Se descuenta del efectivo que la ruta rinde a la caja.`
       );
       setAmountStr('');
       setDescription('');
@@ -86,7 +86,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>Registrar Gasto de Ruta</Text>
               <Text style={styles.subtitle}>
-                Salida de caja menor durante la jornada
+                Gastos operativos (pinchazo, datos, gasolina). Se descuentan de la ruta.
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>

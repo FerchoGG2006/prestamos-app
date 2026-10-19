@@ -38,6 +38,9 @@ import { NewCustomerModal } from './src/presentation/components/NewCustomerModal
 import { NewLoanModal } from './src/presentation/components/NewLoanModal';
 import { NonPaymentModal } from './src/presentation/components/NonPaymentModal';
 import { ExpenseModal } from './src/presentation/components/ExpenseModal';
+import { RouteOrganizerModal } from './src/presentation/components/RouteOrganizerModal';
+import { OfficeConfigModal } from './src/presentation/components/OfficeConfigModal';
+import { RecaudoModal } from './src/presentation/components/RecaudoModal';
 import {
   Smartphone,
   DollarSign,
@@ -50,6 +53,8 @@ import {
   FilePlus2,
   RotateCcw,
   ClipboardList,
+  Settings,
+  Fuel,
 } from 'lucide-react-native';
 
 export default function App() {
@@ -59,7 +64,10 @@ export default function App() {
   // Permite alternar marco de teléfono simulado (390x844) cuando se visualiza en pantallas anchas / IDE
   const [phoneFrameEnabled, setPhoneFrameEnabled] = useState(true);
 
-  // Tabs móviles del cobrador
+  // Rol activo (Cobrador vs Administrador / Supervisor / Dueño) - Audio 1
+  const [userRole, setUserRole] = useState<'COBRADOR' | 'ADMIN'>('COBRADOR');
+
+  // Tabs móviles del cobrador / admin
   const [collectorTab, setCollectorTab] = useState<'COBROS' | 'CLIENTES' | 'HISTORIAL' | 'LIQUIDAR'>('COBROS');
   const [historyInitialDoc, setHistoryInitialDoc] = useState<string>('');
 
@@ -98,6 +106,9 @@ export default function App() {
   const [newCustomerModalVisible, setNewCustomerModalVisible] = useState(false);
   const [newLoanModalVisible, setNewLoanModalVisible] = useState(false);
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
+  const [recaudoModalVisible, setRecaudoModalVisible] = useState(false);
+  const [routeOrganizerVisible, setRouteOrganizerVisible] = useState(false);
+  const [officeConfigVisible, setOfficeConfigVisible] = useState(false);
   const [nonPaymentModalData, setNonPaymentModalData] = useState<{
     visible: boolean;
     customer: Customer | null;
@@ -181,6 +192,14 @@ export default function App() {
 
         <View style={styles.rightTopActions}>
           <TouchableOpacity
+            style={styles.officeConfigBtn}
+            onPress={() => setOfficeConfigVisible(true)}
+          >
+            <Settings size={11} color={COLORS.primary} style={{ marginRight: 3 }} />
+            <Text style={styles.officeConfigText}>Oficina</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.demoResetBtn}
             onPress={async () => {
               await localStore.resetToDemoSeed();
@@ -207,6 +226,50 @@ export default function App() {
               </Text>
             </TouchableOpacity>
           )}
+        </View>
+      </View>
+
+      {/* Selector de Rol: Cobrador en Ruta vs Administrador / Dueño (Audio 1) */}
+      <View style={styles.roleBannerContainer}>
+        <View style={styles.roleSwitchPill}>
+          <TouchableOpacity
+            style={[
+              styles.roleSwitchOption,
+              userRole === 'COBRADOR' && styles.roleSwitchOptionActive,
+            ]}
+            onPress={() => {
+              setUserRole('COBRADOR');
+              if (collectorTab === 'LIQUIDAR') setCollectorTab('COBROS');
+            }}
+          >
+            <Text
+              style={[
+                styles.roleSwitchOptionText,
+                userRole === 'COBRADOR' && styles.roleSwitchOptionTextActive,
+              ]}
+            >
+              🛵 Vista Cobrador
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.roleSwitchOption,
+              userRole === 'ADMIN' && styles.roleSwitchOptionActive,
+            ]}
+            onPress={() => {
+              setUserRole('ADMIN');
+            }}
+          >
+            <Text
+              style={[
+                styles.roleSwitchOptionText,
+                userRole === 'ADMIN' && styles.roleSwitchOptionTextActive,
+              ]}
+            >
+              👔 Vista Administrador
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -263,6 +326,7 @@ export default function App() {
             promises={promises}
             metrics={routeMetrics}
             todayStr={todayStr}
+            isAdminMode={userRole === 'ADMIN'}
             nonPaymentVisits={nonPaymentVisits}
             onSelectCustomerToPay={(customer, loan) =>
               setPaymentModalData({ visible: true, customer, loan })
@@ -280,7 +344,9 @@ export default function App() {
             onOpenNewCustomer={() => setNewCustomerModalVisible(true)}
             onOpenNewLoan={() => setNewLoanModalVisible(true)}
             onOpenExpense={() => setExpenseModalVisible(true)}
+            onOpenRecaudo={userRole === 'ADMIN' ? () => setRecaudoModalVisible(true) : undefined}
             onOpenSettlement={() => setSettlementModalVisible(true)}
+            onOpenRouteOrganizer={() => setRouteOrganizerVisible(true)}
           />
         ) : collectorTab === 'CLIENTES' ? (
           <ScrollView
@@ -382,72 +448,156 @@ export default function App() {
               </Text>
             </TouchableOpacity>
 
-            {/* Tab 2: Clientes */}
-            <TouchableOpacity
-              style={styles.dockNavBtn}
-              onPress={() => setCollectorTab('CLIENTES')}
-            >
-              <Users
-                size={20}
-                color={
-                  collectorTab === 'CLIENTES' ? COLORS.dockActive : COLORS.dockInactive
-                }
-              />
-              <Text
-                style={[
-                  styles.dockNavText,
-                  collectorTab === 'CLIENTES' && styles.dockNavTextActive,
-                ]}
+            {/* Tab 2: Clientes (Cobrador) o Liquidaciones (Admin) */}
+            {userRole === 'COBRADOR' ? (
+              <TouchableOpacity
+                style={styles.dockNavBtn}
+                onPress={() => setCollectorTab('CLIENTES')}
               >
-                Clientes
-              </Text>
-            </TouchableOpacity>
+                <Users
+                  size={20}
+                  color={
+                    collectorTab === 'CLIENTES' ? COLORS.dockActive : COLORS.dockInactive
+                  }
+                />
+                <Text
+                  style={[
+                    styles.dockNavText,
+                    collectorTab === 'CLIENTES' && styles.dockNavTextActive,
+                  ]}
+                >
+                  Clientes
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.dockNavBtn}
+                onPress={() => setCollectorTab('LIQUIDAR')}
+              >
+                <Landmark
+                  size={20}
+                  color={
+                    collectorTab === 'LIQUIDAR' ? COLORS.dockActive : COLORS.dockInactive
+                  }
+                />
+                <Text
+                  style={[
+                    styles.dockNavText,
+                    collectorTab === 'LIQUIDAR' && styles.dockNavTextActive,
+                  ]}
+                >
+                  Liquidaciones
+                </Text>
+              </TouchableOpacity>
+            )}
 
-            {/* FAB Central Sobresaliente (+ Cobro 1-Toque) */}
+            {/* FAB Central Sobresaliente:
+                - Cobrador: (+) Abono rápido a primer pendiente en ruta
+                - Admin: (+) Arqueo y Liquidación Diaria oficial */}
             <View style={styles.fabCenterSlot}>
               <TouchableOpacity
-                style={styles.centralFabButton}
+                style={[
+                  styles.centralFabButton,
+                  userRole === 'ADMIN' && { backgroundColor: COLORS.primary },
+                ]}
                 activeOpacity={0.9}
-                onPress={handleCentralFabPress}
+                onPress={
+                  userRole === 'COBRADOR'
+                    ? handleCentralFabPress
+                    : () => setSettlementModalVisible(true)
+                }
               >
-                <Plus size={26} color="#FFFFFF" strokeWidth={2.8} />
+                {userRole === 'COBRADOR' ? (
+                  <Plus size={26} color="#FFFFFF" strokeWidth={2.8} />
+                ) : (
+                  <Landmark size={22} color="#FFFFFF" />
+                )}
               </TouchableOpacity>
             </View>
 
-            {/* Tab 3: Historial Crediticio */}
-            <TouchableOpacity
-              style={styles.dockNavBtn}
-              onPress={() => {
-                setHistoryInitialDoc('');
-                setCollectorTab('HISTORIAL');
-              }}
-            >
-              <ClipboardList
-                size={20}
-                color={
-                  collectorTab === 'HISTORIAL' ? COLORS.dockActive : COLORS.dockInactive
-                }
-              />
-              <Text
-                style={[
-                  styles.dockNavText,
-                  collectorTab === 'HISTORIAL' && styles.dockNavTextActive,
-                ]}
+            {/* Tab 3: Clientes (Admin) o Historial (Cobrador) */}
+            {userRole === 'ADMIN' ? (
+              <TouchableOpacity
+                style={styles.dockNavBtn}
+                onPress={() => setCollectorTab('CLIENTES')}
               >
-                Historial
-              </Text>
-            </TouchableOpacity>
+                <Users
+                  size={20}
+                  color={
+                    collectorTab === 'CLIENTES' ? COLORS.dockActive : COLORS.dockInactive
+                  }
+                />
+                <Text
+                  style={[
+                    styles.dockNavText,
+                    collectorTab === 'CLIENTES' && styles.dockNavTextActive,
+                  ]}
+                >
+                  Clientes
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.dockNavBtn}
+                onPress={() => {
+                  setHistoryInitialDoc('');
+                  setCollectorTab('HISTORIAL');
+                }}
+              >
+                <ClipboardList
+                  size={20}
+                  color={
+                    collectorTab === 'HISTORIAL' ? COLORS.dockActive : COLORS.dockInactive
+                  }
+                />
+                <Text
+                  style={[
+                    styles.dockNavText,
+                    collectorTab === 'HISTORIAL' && styles.dockNavTextActive,
+                  ]}
+                >
+                  Historial
+                </Text>
+              </TouchableOpacity>
+            )}
 
-            {/* Tab 4: Mi Caja / Cuadre */}
-            <TouchableOpacity
-              style={styles.dockNavBtn}
-              onPress={() => setSettlementModalVisible(true)}
-            >
-              <Landmark size={20} color={COLORS.dockInactive} />
-              <Text style={styles.dockNavText}>
-                Mi Caja
-              </Text>
-            </TouchableOpacity>
+            {/* Tab 4:
+                - Cobrador: + Gasto Ruta (pinchazo, gasolina, datos)
+                - Admin: Historial Crediticio */}
+            {userRole === 'COBRADOR' ? (
+              <TouchableOpacity
+                style={styles.dockNavBtn}
+                onPress={() => setExpenseModalVisible(true)}
+              >
+                <Fuel size={20} color="#fb923c" />
+                <Text style={[styles.dockNavText, { color: '#fb923c' }]}>
+                  + Gasto Ruta
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.dockNavBtn}
+                onPress={() => {
+                  setHistoryInitialDoc('');
+                  setCollectorTab('HISTORIAL');
+                }}
+              >
+                <ClipboardList
+                  size={20}
+                  color={
+                    collectorTab === 'HISTORIAL' ? COLORS.dockActive : COLORS.dockInactive
+                  }
+                />
+                <Text
+                  style={[
+                    styles.dockNavText,
+                    collectorTab === 'HISTORIAL' && styles.dockNavTextActive,
+                  ]}
+                >
+                  Historial
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       )}
@@ -529,6 +679,28 @@ export default function App() {
         visible={expenseModalVisible}
         todayStr={todayStr}
         onClose={() => setExpenseModalVisible(false)}
+        onSuccess={syncFromStore}
+      />
+
+      <RecaudoModal
+        visible={recaudoModalVisible}
+        baseDisponible={routeMetrics.cashAvailableInHand}
+        todayStr={todayStr}
+        onClose={() => setRecaudoModalVisible(false)}
+        onSuccess={syncFromStore}
+      />
+
+      <RouteOrganizerModal
+        visible={routeOrganizerVisible}
+        customers={customers}
+        loans={loans}
+        onClose={() => setRouteOrganizerVisible(false)}
+        onSuccess={syncFromStore}
+      />
+
+      <OfficeConfigModal
+        visible={officeConfigVisible}
+        onClose={() => setOfficeConfigVisible(false)}
         onSuccess={syncFromStore}
       />
     </SafeAreaView>
@@ -655,6 +827,21 @@ const styles = StyleSheet.create({
   },
   offlineText: {
     color: COLORS.success,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  officeConfigBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: COLORS.primaryBorder,
+  },
+  officeConfigText: {
+    color: COLORS.primary,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -811,5 +998,42 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 8,
+  },
+  roleBannerContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    backgroundColor: COLORS.bgPrimary,
+  },
+  roleSwitchPill: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 12,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+  },
+  roleSwitchOption: {
+    flex: 1,
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+  },
+  roleSwitchOptionActive: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  roleSwitchOptionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+  },
+  roleSwitchOptionTextActive: {
+    color: COLORS.primary,
+    fontWeight: '800',
   },
 });

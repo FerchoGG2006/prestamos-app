@@ -44,7 +44,9 @@ public class TodayCollectionsService {
             int pendingCustomersCount,
             int totalCustomersToday,
             BigDecimal overdueAmount,
-            BigDecimal cashBalance
+            BigDecimal cashBalance,
+            BigDecimal totalActiveDebt,
+            BigDecimal totalAdministrativeCapital
     ) {}
 
     public record CollectionItem(
@@ -81,21 +83,25 @@ public class TodayCollectionsService {
 
         // Hecho objetivo (no una regla de mora): suma de cuotas con vencimiento anterior a hoy y saldo pendiente.
         BigDecimal overdue = BigDecimal.ZERO;
+        BigDecimal totalActiveDebt = BigDecimal.ZERO;
         for (var item : items) {
             overdue = overdue.add(item.overdueTotal());
+            totalActiveDebt = totalActiveDebt.add(item.loanBalance());
         }
 
-        var movements = cashMovementRepository.findByCreatedAtStartingWith(todayStr);
+        var movements = cashMovementRepository.findAll();
         BigDecimal cash = BigDecimal.ZERO;
         for (var m : movements) {
-            if ("ENTRADA".equalsIgnoreCase(m.getMovementType())) {
+            if ("ENTRADA".equalsIgnoreCase(m.getMovementType()) || "INGRESO".equalsIgnoreCase(m.getMovementType())) {
                 cash = cash.add(m.getAmount());
-            } else if ("SALIDA".equalsIgnoreCase(m.getMovementType())) {
+            } else if ("SALIDA".equalsIgnoreCase(m.getMovementType()) || "EGRESO".equalsIgnoreCase(m.getMovementType())) {
                 cash = cash.subtract(m.getAmount());
             }
         }
 
-        return new DailyMetrics(collectedToday, pending, items.size(), overdue, cash);
+        BigDecimal administrative = totalActiveDebt.add(cash.max(BigDecimal.ZERO));
+
+        return new DailyMetrics(collectedToday, pending, items.size(), overdue, cash, totalActiveDebt, administrative);
     }
 
     public List<CollectionItem> getTodayCollectionItems(LocalDate date) {
