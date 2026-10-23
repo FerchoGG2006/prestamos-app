@@ -184,6 +184,7 @@ class AuditFixesTest {
     void testSettlementRequiresJustificationOnDifferenceAndBlocksClosedSessionExpenses() {
         LocalDate testDate = LocalDate.now().minusDays(45);
         var summary = settlementUseCase.getOrCreateDaySummary("usr-col-1", testDate);
+        assertNotNull(summary);
 
         // Registrar un gasto de ruta de $10.000
         settlementUseCase.registerRouteExpense(

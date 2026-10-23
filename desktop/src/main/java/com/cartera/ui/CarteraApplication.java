@@ -75,7 +75,6 @@ public final class CarteraApplication extends Application {
     private Label lblUserName;
     private Label lblUserRole;
     private final ComboBox<GlobalRouteOption> cmbGlobalRoute = new ComboBox<>();
-    private String currentViewKey = "Inicio";
 
     private DashboardView dashboardView;
     private TodayCollectionsView todayCollectionsView;
@@ -447,7 +446,6 @@ public final class CarteraApplication extends Application {
     }
 
     private void navigateTo(String viewName) {
-        this.currentViewKey = viewName;
         String effectiveTitle = viewName;
         String activeKey = viewName;
 
