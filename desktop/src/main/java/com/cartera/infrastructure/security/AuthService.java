@@ -98,8 +98,11 @@ public class AuthService {
     }
 
     private String determineRole(String username) {
-        if ("admin".equalsIgnoreCase(username)) {
+        if ("admin".equalsIgnoreCase(username) || "administrador".equalsIgnoreCase(username)) {
             return "ADMIN";
+        }
+        if (username != null && username.toLowerCase().contains("superv")) {
+            return "SUPERVISOR";
         }
         return "COBRADOR";
     }

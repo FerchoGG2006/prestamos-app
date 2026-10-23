@@ -8,14 +8,18 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Customer, Loan, Installment } from '../../core/domain/types';
 import { formatCOP, DEFAULT_BUSINESS_CONFIG } from '../../core/config/business-rules';
 import {
   calculateRenewalDisbursement,
   calculateLoanSummary,
+  calculatePaperworkFee,
+  getLocalTodayStr,
 } from '../../core/domain/calculator';
-import { COLORS } from '../theme/colors';
+import { COLORS, TYPOGRAPHY, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { RefreshCw, X, AlertCircle } from 'lucide-react-native';
 
@@ -34,7 +38,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   customer,
   loan,
   installments,
-  todayStr = '2026-09-19',
+  todayStr = getLocalTodayStr(),
   onClose,
   onSuccess,
 }) => {
@@ -42,6 +46,11 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!customer || !loan) return null;
+
+  const officeConfig = localStore.getOfficeConfig();
+  const isPaperworkEnabled = officeConfig.paperworkFeeEnabled ?? true;
+  const effectivePaperworkRate =
+    officeConfig.paperworkRate || DEFAULT_BUSINESS_CONFIG.paperwork.rate;
 
   // Saldo pendiente del crédito anterior
   const previousRemainingBalance = installments
@@ -60,7 +69,22 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
 
   try {
     if (newPrincipal > 0) {
-      renewalCalc = calculateRenewalDisbursement(newPrincipal, previousRemainingBalance);
+      const customPaperworkFee = isPaperworkEnabled
+        ? calculatePaperworkFee(newPrincipal, {
+            rate: effectivePaperworkRate,
+            base: 100000,
+            calculationMode: 'PROPORTIONAL',
+          })
+        : 0;
+      renewalCalc = calculateRenewalDisbursement(
+        newPrincipal,
+        previousRemainingBalance,
+        customPaperworkFee
+      );
+      if (renewalCalc.actualCashDisbursed <= 0) {
+        calculationError =
+          'El desembolso neto debe ser mayor a $0 COP. El nuevo capital debe superar el saldo anterior más papelería.';
+      }
     }
   } catch (err: any) {
     calculationError = err.message;
@@ -71,6 +95,17 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
       ? calculateLoanSummary(newPrincipal, loan.interestRate, loan.installmentCount)
       : null;
 
+  const freqUnitLabel =
+    loan.frequency === 'WEEKLY'
+      ? 'semana'
+      : loan.frequency === 'BIWEEKLY'
+      ? 'quincena'
+      : loan.frequency === 'MONTHLY'
+      ? 'mes'
+      : loan.frequency === 'FIXED_DATE'
+      ? 'pago único'
+      : 'día';
+
   const quickPrincipals = [150000, 200000, 300000, 400000, 500000];
 
   const handleConfirmRenewal = async () => {
@@ -78,8 +113,11 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
       Alert.alert('Error', 'Ingrese un capital nuevo válido');
       return;
     }
-    if (calculationError) {
-      Alert.alert('Monto insuficiente', calculationError);
+    if (calculationError || renewalCalc.actualCashDisbursed <= 0) {
+      Alert.alert(
+        'Monto insuficiente',
+        calculationError || 'El desembolso neto debe ser mayor a $0 COP.'
+      );
       return;
     }
 
@@ -90,6 +128,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
         newPrincipal,
         collectorId: loan.collectorId,
         todayStr,
+        paperworkFee: renewalCalc.paperworkDeducted,
       });
 
       Alert.alert(
@@ -109,7 +148,10 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.overlay}
+      >
         <View style={styles.sheet}>
           {/* Drag Handle Superior */}
           <View style={styles.sheetHandle} />
@@ -138,7 +180,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                 <Text style={styles.infoVal}>{formatCOP(loan.principal)}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Saldo pendiente a descontar:</Text>
+                <Text style={styles.infoLabel}>Saliente (Saldo a descontar):</Text>
                 <Text style={[styles.infoVal, { color: COLORS.danger }]}>
                   - {formatCOP(previousRemainingBalance)}
                 </Text>
@@ -201,14 +243,16 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                   <Text style={styles.infoVal}>{formatCOP(newPrincipal)}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>(-) Saldo crédito anterior:</Text>
+                  <Text style={styles.infoLabel}>(-) Saliente (Saldo anterior):</Text>
                   <Text style={[styles.infoVal, { color: COLORS.danger }]}>
                     - {formatCOP(renewalCalc.previousBalanceDeducted)}
                   </Text>
                 </View>
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>
-                    (-) Papelería ({formatCOP(DEFAULT_BUSINESS_CONFIG.paperwork.rate)} / $100k):
+                    {isPaperworkEnabled
+                      ? `(-) Papelería (${formatCOP(effectivePaperworkRate)} / $100k):`
+                      : '(-) Papelería (Exento por oficina):'}
                   </Text>
                   <Text style={[styles.infoVal, { color: COLORS.warning }]}>
                     - {formatCOP(renewalCalc.paperworkDeducted)}
@@ -229,10 +273,10 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                 {newSummary && (
                   <View style={[styles.infoRow, { marginTop: 4 }]}>
                     <Text style={styles.infoLabel}>
-                      Nueva cuota diaria ({newSummary.installmentCount} días):
+                      Nueva cuota ({newSummary.installmentCount} cuotas):
                     </Text>
                     <Text style={[styles.infoVal, { color: COLORS.primary }]}>
-                      {formatCOP(newSummary.installmentAmount)} / día
+                      {formatCOP(newSummary.installmentAmount)} / {freqUnitLabel}
                     </Text>
                   </View>
                 )}
@@ -243,10 +287,11 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
           <TouchableOpacity
             style={[
               styles.confirmBtn,
-              (isSubmitting || !!calculationError) && styles.confirmBtnDisabled,
+              (isSubmitting || !!calculationError || renewalCalc.actualCashDisbursed <= 0) &&
+                styles.confirmBtnDisabled,
             ]}
             onPress={handleConfirmRenewal}
-            disabled={isSubmitting || !!calculationError}
+            disabled={isSubmitting || !!calculationError || renewalCalc.actualCashDisbursed <= 0}
           >
             <RefreshCw size={18} color="#ffffff" style={{ marginRight: 8 }} />
             <Text style={styles.confirmBtnText}>
@@ -254,7 +299,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -291,12 +336,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: -0.4,
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -323,6 +370,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purpleBorder,
   },
   lavenderCardTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.purple,
@@ -336,11 +384,13 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   infoLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
   infoVal: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -356,6 +406,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   floatingInternalLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -363,6 +414,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   amountInput: {
+    fontFamily: FONT_FAMILY,
     height: 38,
     fontSize: 24,
     fontWeight: '900',
@@ -384,6 +436,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purple,
   },
   quickAmtText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -399,6 +452,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   errorText: {
+    fontFamily: FONT_FAMILY,
     flex: 1,
     fontSize: 12,
     fontWeight: '700',
@@ -412,6 +466,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.microBorder,
   },
   ticketTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -426,6 +481,7 @@ const styles = StyleSheet.create({
     marginVertical: 8,
   },
   netAmountText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 18,
     fontWeight: '900',
     color: COLORS.success,
@@ -443,6 +499,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   confirmBtnText: {
+    fontFamily: FONT_FAMILY,
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '800',

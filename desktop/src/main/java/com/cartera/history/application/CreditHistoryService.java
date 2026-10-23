@@ -3,15 +3,21 @@ package com.cartera.history.application;
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
+import com.cartera.infrastructure.persistence.entity.PaymentAllocationEntity;
+import com.cartera.infrastructure.persistence.entity.PaymentEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
+import com.cartera.infrastructure.persistence.repository.PaymentAllocationRepository;
+import com.cartera.infrastructure.persistence.repository.PaymentRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Servicio de Consulta y Evaluación de Historial Crediticio.
@@ -25,13 +31,26 @@ public class CreditHistoryService {
     private final CustomerRepository customerRepository;
     private final LoanRepository loanRepository;
     private final InstallmentRepository installmentRepository;
+    private final PaymentRepository paymentRepository;
+    private final PaymentAllocationRepository paymentAllocationRepository;
 
     public CreditHistoryService(CustomerRepository customerRepository,
                                 LoanRepository loanRepository,
                                 InstallmentRepository installmentRepository) {
+        this(customerRepository, loanRepository, installmentRepository, null, null);
+    }
+
+    @Autowired
+    public CreditHistoryService(CustomerRepository customerRepository,
+                                LoanRepository loanRepository,
+                                InstallmentRepository installmentRepository,
+                                PaymentRepository paymentRepository,
+                                PaymentAllocationRepository paymentAllocationRepository) {
         this.customerRepository = customerRepository;
         this.loanRepository = loanRepository;
         this.installmentRepository = installmentRepository;
+        this.paymentRepository = paymentRepository;
+        this.paymentAllocationRepository = paymentAllocationRepository;
     }
 
     public enum RepaymentRating {
@@ -151,8 +170,14 @@ public class CreditHistoryService {
             totalBorrowed = totalBorrowed.add(loan.getPrincipal() != null ? loan.getPrincipal() : BigDecimal.ZERO);
             totalAgreed = totalAgreed.add(loan.getTotalAgreed() != null ? loan.getTotalAgreed() : BigDecimal.ZERO);
 
-            boolean isActive = "ACTIVO".equalsIgnoreCase(loan.getStatus()) || "ACTIVE".equalsIgnoreCase(loan.getStatus());
-            boolean isCompleted = "PAGADO".equalsIgnoreCase(loan.getStatus()) || "PAID".equalsIgnoreCase(loan.getStatus()) || "CANCELADO".equalsIgnoreCase(loan.getStatus());
+            String st = loan.getStatus() != null ? loan.getStatus().trim() : "";
+            boolean isActive = "ACTIVO".equalsIgnoreCase(st) || "ACTIVE".equalsIgnoreCase(st);
+            boolean isRenewed = "RENOVADO".equalsIgnoreCase(st);
+            boolean isCompleted = "FINALIZADO".equalsIgnoreCase(st)
+                    || "PAGADO".equalsIgnoreCase(st)
+                    || "PAID".equalsIgnoreCase(st)
+                    || "CANCELADO".equalsIgnoreCase(st)
+                    || isRenewed;
 
             if (isActive) {
                 activeLoansCount++;
@@ -160,13 +185,42 @@ public class CreditHistoryService {
                 completedLoansCount++;
             }
 
+            // Construir mapa de fechas reales de pago por cuota (si existen allocations)
+            Map<String, LocalDate> paidDateByInstallment = new HashMap<>();
+            if (paymentRepository != null && paymentAllocationRepository != null) {
+                Map<String, LocalDate> paymentDates = paymentRepository.findByLoanId(loan.getId()).stream()
+                        .filter(p -> p.getCreatedAt() != null && p.getCreatedAt().length() >= 10)
+                        .collect(Collectors.toMap(
+                                PaymentEntity::getId,
+                                p -> {
+                                    try {
+                                        return LocalDate.parse(p.getCreatedAt().substring(0, 10));
+                                    } catch (Exception e) {
+                                        return today;
+                                    }
+                                },
+                                (a, b) -> a.isAfter(b) ? a : b
+                        ));
+
+                for (PaymentEntity p : paymentRepository.findByLoanId(loan.getId())) {
+                    LocalDate pDate = paymentDates.get(p.getId());
+                    if (pDate != null) {
+                        for (PaymentAllocationEntity alloc : paymentAllocationRepository.findByPaymentId(p.getId())) {
+                            paidDateByInstallment.merge(alloc.getInstallmentId(), pDate, (d1, d2) -> d1.isAfter(d2) ? d1 : d2);
+                        }
+                    }
+                }
+            }
+
             List<InstallmentEntity> installments = installmentRepository.findByLoanId(loan.getId());
             installments.sort(Comparator.comparingInt(i -> i.getInstallmentNumber() != null ? i.getInstallmentNumber() : 0));
 
             BigDecimal loanPaid = BigDecimal.ZERO;
             BigDecimal loanPending = BigDecimal.ZERO;
+            BigDecimal loanOverdueAmount = BigDecimal.ZERO;
             int paidInstCount = 0;
             int overdueInstCount = 0;
+            int latePaidInstCount = 0;
             int maxLoanDelayDays = 0;
 
             for (InstallmentEntity inst : installments) {
@@ -179,15 +233,26 @@ public class CreditHistoryService {
                     paidInstCount++;
                 }
 
-                // Cálculo fáctico de mora: fecha de vencimiento anterior a hoy y saldo pendiente
                 if (inst.getDueDate() != null && !inst.getDueDate().isBlank()) {
                     try {
                         LocalDate dueDate = LocalDate.parse(inst.getDueDate());
-                        if (today.isAfter(dueDate) && pending.compareTo(BigDecimal.ZERO) > 0) {
+                        if (pending.compareTo(BigDecimal.ZERO) > 0 && today.isAfter(dueDate)) {
+                            // Cuota aún pendiente y vencida
                             overdueInstCount++;
+                            loanOverdueAmount = loanOverdueAmount.add(pending);
                             long days = ChronoUnit.DAYS.between(dueDate, today);
                             if (days > maxLoanDelayDays) {
                                 maxLoanDelayDays = (int) days;
+                            }
+                        } else if (pending.compareTo(BigDecimal.ZERO) <= 0) {
+                            // Cuota ya pagada: verificar si se pagó después de su fecha de vencimiento
+                            LocalDate paidDate = paidDateByInstallment.get(inst.getId());
+                            if (paidDate != null && paidDate.isAfter(dueDate)) {
+                                latePaidInstCount++;
+                                long days = ChronoUnit.DAYS.between(dueDate, paidDate);
+                                if (days > maxLoanDelayDays) {
+                                    maxLoanDelayDays = (int) days;
+                                }
                             }
                         }
                     } catch (Exception ignored) {}
@@ -199,7 +264,10 @@ public class CreditHistoryService {
                 currentRemainingBalance = currentRemainingBalance.add(loanPending);
                 if (overdueInstCount > 0) {
                     hasActiveOverdueLoans = true;
-                    currentOverdueAmount = currentOverdueAmount.add(loanPending);
+                    currentOverdueAmount = currentOverdueAmount.add(loanOverdueAmount);
+                }
+                if (latePaidInstCount > 0) {
+                    hasPastLoansWithDelay = true;
                 }
             }
 
@@ -211,7 +279,16 @@ public class CreditHistoryService {
             String behaviorVerdict;
             String behaviorColor;
 
-            if (isCompleted) {
+            if (isRenewed) {
+                if (maxLoanDelayDays > 0) {
+                    hasPastLoansWithDelay = true;
+                    behaviorVerdict = "↻ Renovado (con atraso previo de " + maxLoanDelayDays + " días)";
+                    behaviorColor = "#d97706";
+                } else {
+                    behaviorVerdict = "↻ Renovado (cumplimiento al día)";
+                    behaviorColor = "#4338ca";
+                }
+            } else if (isCompleted) {
                 if (maxLoanDelayDays == 0) {
                     behaviorVerdict = "✓ Pagó Excelente (Puntual sin demoras)";
                     behaviorColor = "#059669";
@@ -224,12 +301,15 @@ public class CreditHistoryService {
                 if (overdueInstCount > 0) {
                     behaviorVerdict = "🚨 Cuotas Vencidas (" + overdueInstCount + " en mora - " + maxLoanDelayDays + " días)";
                     behaviorColor = "#dc2626";
+                } else if (latePaidInstCount > 0) {
+                    behaviorVerdict = "⚠ Al Día (con atraso previo de " + maxLoanDelayDays + " días)";
+                    behaviorColor = "#d97706";
                 } else {
                     behaviorVerdict = "✓ Al Día (Cuotas al corriente)";
                     behaviorColor = "#2563eb";
                 }
             } else {
-                behaviorVerdict = "• Renovado / Liquidado";
+                behaviorVerdict = "• Liquidado";
                 behaviorColor = "#64748b";
             }
 
@@ -240,7 +320,7 @@ public class CreditHistoryService {
                     loanPending,
                     installments.size(),
                     paidInstCount,
-                    overdueInstCount,
+                    overdueInstCount + latePaidInstCount,
                     maxLoanDelayDays,
                     behaviorVerdict,
                     behaviorColor,
@@ -260,7 +340,7 @@ public class CreditHistoryService {
             ratingExplanation = "El cliente presenta cuotas vencidas e impagas en su crédito activo (" + maxOverdueDaysRecorded + " días de mora máx). Alto riesgo crediticio.";
         } else if (hasPastLoansWithDelay) {
             rating = RepaymentRating.REGULAR;
-            ratingExplanation = "El cliente ha completado sus créditos, pero presentó atrasos en sus fechas de pago programadas (" + maxOverdueDaysRecorded + " días de demora histórica).";
+            ratingExplanation = "El cliente ha cumplido sus créditos, pero presentó atrasos en sus fechas de pago programadas (" + maxOverdueDaysRecorded + " días de demora histórica).";
         } else {
             rating = RepaymentRating.BUEN_PAGADOR;
             ratingExplanation = "Historial crediticio excelente. Pagos puntuales, sin cuotas vencidas registradas y cumplimiento total de acuerdos.";

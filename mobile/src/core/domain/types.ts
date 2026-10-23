@@ -3,7 +3,7 @@
  * Definición estricta de entidades de dominio financiero y operativo (Offline-First).
  */
 
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'COBRADOR';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'SUPERVISOR' | 'COBRADOR' | 'COLLECTOR';
 
 export type CustomerStatus = 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
 
@@ -18,7 +18,7 @@ export type InstallmentStatus =
 
 export type PaymentMethod = 'CASH' | 'NEQUI' | 'TRANSFER' | 'OTHER';
 
-export type PaymentStatus = 'COMPLETED' | 'ANNULLED';
+export type PaymentStatus = 'COMPLETED' | 'ANNULLED' | 'REVERSED';
 
 export type PromiseStatus = 'PENDIENTE' | 'CUMPLIDA' | 'INCUMPLIDA' | 'CANCELADA';
 
@@ -31,10 +31,13 @@ export type InterestType = 'FLAT_INITIAL_CAPITAL' | 'AMORTIZED';
 export interface User {
   id: string;
   name: string;
+  username?: string;
+  password?: string;
   email: string;
   role: UserRole;
   phone?: string;
   assignedRouteIds: string[];
+  routeId?: string;
   isActive: boolean;
   createdAt: string;
 }
@@ -51,7 +54,8 @@ export interface Customer {
   id: string;
   fullName: string;
   documentNumber: string; // Cédula de ciudadanía / extranjería
-  phone: string;
+  phone: string;          // Teléfono para llamadas
+  whatsappPhone?: string; // Teléfono para WhatsApp
   altPhone?: string;
   address: string;
   neighborhood: string;   // Barrio
@@ -104,6 +108,7 @@ export interface Loan {
   previousLoanId?: string;
   renewalId?: string;
 
+  notes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -233,7 +238,15 @@ export interface CashMovement {
   collectorId: string;
   sessionId?: string;
   type: 'INCOME' | 'EXPENSE';
-  category: 'COLLECTION' | 'LOAN_DISBURSEMENT' | 'RENEWAL_DISBURSEMENT' | 'EXPENSE' | 'ADJUSTMENT' | 'RECAUDO_OFICINA';
+  category:
+    | 'COLLECTION'
+    | 'LOAN_DISBURSEMENT'
+    | 'RENEWAL_DISBURSEMENT'
+    | 'EXPENSE'
+    | 'ADJUSTMENT'
+    | 'RECAUDO_OFICINA'
+    | 'PAYMENT_REVERSAL'
+    | 'LOAN_CANCELLATION';
   amount: number;
   referenceId?: string; // loanId, paymentId, etc.
   description: string;
@@ -246,9 +259,9 @@ export interface AuditLog {
   timestamp: string;
   entity: 'CUSTOMER' | 'LOAN' | 'INSTALLMENT' | 'PAYMENT' | 'RENEWAL' | 'SETTLEMENT' | 'CONFIG' | 'SESSION';
   entityId: string;
-  action: 'CREATE' | 'UPDATE' | 'ANNUL' | 'CLOSE' | 'ADJUST';
+  action: 'CREATE' | 'UPDATE' | 'ANNUL' | 'CLOSE' | 'ADJUST' | 'DELETE';
   previousValue?: string; // JSON serializado
-  newValue: string;       // JSON serializado
+  newValue?: string;      // JSON serializado
   reason?: string;
 }
 
@@ -297,6 +310,8 @@ export interface MobileSyncPackage {
     idempotencyKey: string;
     loanId: string;
     customerId: string;
+    collectorId?: string;
+    routeId?: string;
     amountReceived: string; // Representación exacta para new BigDecimal(str)
     paymentMethod: PaymentMethod;
     createdAt: string;
@@ -311,6 +326,7 @@ export interface MobileSyncPackage {
   promises: PaymentPromise[];
   newCustomers: Customer[];
   newLoans: Loan[];
+  installments?: Installment[];
   renewals: Renewal[];
   settlements: DailySettlement[];
   cashMovements?: CashMovement[];
@@ -347,6 +363,7 @@ export interface OfficeCompanyConfig {
   receiptFooterMessage: string; // Mensaje oficial en pie de comprobante
 
   // Reglas comerciales por defecto
+  paperworkFeeEnabled?: boolean; // ¿Cobrar papelería / cartulina? (Audio 2: opción para oficinas que no cobran papelería)
   defaultInterestRate: number;  // Tasa de interés predeterminada (ej. 0.20 = 20%)
   defaultInstallmentsCount: number; // Plazo predeterminado (ej. 30 días)
   defaultFrequency: LoanFrequency;  // 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY'
@@ -354,9 +371,13 @@ export interface OfficeCompanyConfig {
   paperworkRate: number;        // Cobro de papelería por cada $100.000 (ej. 5.000)
   graceDays: number;            // Días de gracia antes de marcar mora
 
-  // Reglas operativas para cobradores
-  maxNewLoanLimit: number;      // Límite de crédito inicial para nuevos clientes
-  routeInitialCashBase: number; // Base de efectivo entregada al cobrador en la mañana
-  allowCollectorExpenses: boolean; // ¿Permitir al cobrador registrar gastos de ruta?
+  // Reglas operativas para cobradores ("Qué cosas sí, qué cosas no")
+  allowRouteNewLoans?: boolean;     // ¿Permitir a cobradores crear préstamos desde el móvil?
+  allowCollectorExpenses: boolean;  // ¿Permitir al cobrador registrar gastos de ruta?
+  allowRouteReorder?: boolean;      // ¿Permitir al cobrador reordenar clientes en ruta?
+  allowPartialPayments?: boolean;   // ¿Permitir abonos parciales?
+  maxNewLoanLimit: number;          // Límite de crédito inicial para nuevos clientes
+  routeInitialCashBase: number;     // Base de efectivo entregada al cobrador en la mañana
+  officeServerUrl?: string;         // URL del servidor Desktop en Red Local Wi-Fi (ej. http://192.168.1.10:8765)
 }
 

@@ -33,10 +33,20 @@ public final class LoanCalculator {
      * $200.000 -> 5% = $10.000 -> $10.000
      */
     public static Money calculatePaperworkFee(Money principal) {
+        return calculatePaperworkFee(principal, BigDecimal.valueOf(5000));
+    }
+
+    public static Money calculatePaperworkFee(Money principal, BigDecimal feePer100k) {
         if (principal == null || !principal.isPositive()) {
             return Money.ZERO;
         }
-        BigDecimal rawFee = principal.amount().multiply(BigDecimal.valueOf(5000))
+        BigDecimal rate = (feePer100k != null && feePer100k.compareTo(BigDecimal.ZERO) >= 0)
+                ? feePer100k
+                : BigDecimal.valueOf(5000);
+        if (rate.compareTo(BigDecimal.ZERO) == 0) {
+            return Money.ZERO;
+        }
+        BigDecimal rawFee = principal.amount().multiply(rate)
                 .divide(BigDecimal.valueOf(100000), 2, RoundingMode.HALF_UP);
         BigDecimal thousands = rawFee.divide(BigDecimal.valueOf(1000), 0, RoundingMode.CEILING);
         return new Money(thousands.multiply(BigDecimal.valueOf(1000)));

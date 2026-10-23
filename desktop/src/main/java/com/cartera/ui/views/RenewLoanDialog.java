@@ -1,11 +1,15 @@
 package com.cartera.ui.views;
 
+import com.cartera.domain.money.Money;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
+import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import com.cartera.infrastructure.security.UserSessionContext;
+import com.cartera.loans.domain.LoanCalculator;
 import com.cartera.renewals.application.RenewLoanUseCase;
 import com.cartera.renewals.application.RenewLoanUseCase.RenewLoanCommand;
+import com.cartera.ui.util.CurrencyInputUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -23,7 +27,7 @@ import java.util.Locale;
 import java.util.function.Consumer;
 
 /**
- * Diálogo modal para renovar un crédito activo con deducción de saldo pendiente y desembolso neto.
+ * Diálogo modal para renovar un crédito activo con deducción de saldo pendiente, cartulina y desembolso neto.
  */
 public class RenewLoanDialog extends Stage {
 
@@ -36,6 +40,7 @@ public class RenewLoanDialog extends Stage {
     private final String customerName;
     private final RenewLoanUseCase renewLoanUseCase;
     private final InstallmentRepository installmentRepository;
+    private final SystemSettingRepository settingRepository;
     private final Consumer<RenewLoanUseCase.RenewalResult> onSuccess;
 
     private BigDecimal currentBalance = BigDecimal.ZERO;
@@ -47,6 +52,7 @@ public class RenewLoanDialog extends Stage {
     private final DatePicker dpStartDate = new DatePicker(LocalDate.now());
 
     private final Label lblCurrentBalance = new Label("$ 0");
+    private final Label lblPaperworkFee = new Label("$ 0");
     private final Label lblNetCash = new Label("$ 0");
     private final Label lblNewTotal = new Label("$ 0");
     private final Label lblFeedback = new Label();
@@ -58,15 +64,34 @@ public class RenewLoanDialog extends Stage {
                            InstallmentRepository installmentRepository,
                            Stage ownerStage,
                            Consumer<RenewLoanUseCase.RenewalResult> onSuccess) {
+        this(currentLoan, customerName, renewLoanUseCase, installmentRepository, null, ownerStage, onSuccess);
+    }
+
+    public RenewLoanDialog(LoanEntity currentLoan,
+                           String customerName,
+                           RenewLoanUseCase renewLoanUseCase,
+                           InstallmentRepository installmentRepository,
+                           SystemSettingRepository settingRepository,
+                           Stage ownerStage,
+                           Consumer<RenewLoanUseCase.RenewalResult> onSuccess) {
         this.currentLoan = currentLoan;
         this.customerName = customerName;
         this.renewLoanUseCase = renewLoanUseCase;
         this.installmentRepository = installmentRepository;
+        this.settingRepository = settingRepository;
         this.onSuccess = onSuccess;
+
+        if (settingRepository != null) {
+            settingRepository.findById("default_interest_percent")
+                    .map(s -> s.getSettingValue())
+                    .filter(v -> v != null && !v.isBlank())
+                    .ifPresent(txtInterestPercent::setText);
+        }
 
         initModality(Modality.WINDOW_MODAL);
         initOwner(ownerStage);
-        setTitle("Renovar Crédito #" + currentLoan.getId().substring(0, 8));
+        String shortId = currentLoan.getId().length() > 8 ? currentLoan.getId().substring(0, 8) : currentLoan.getId();
+        setTitle("Renovar Crédito #" + shortId);
         setResizable(false);
 
         calculateCurrentBalance();
@@ -77,22 +102,42 @@ public class RenewLoanDialog extends Stage {
     private void calculateCurrentBalance() {
         List<InstallmentEntity> list = installmentRepository.findByLoanId(currentLoan.getId());
         currentBalance = list.stream()
-                .filter(i -> "PENDIENTE".equalsIgnoreCase(i.getStatus()))
+                .filter(i -> i.getPendingAmount() != null && i.getPendingAmount().compareTo(BigDecimal.ZERO) > 0)
                 .map(InstallmentEntity::getPendingAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal computeConfiguredPaperwork(BigDecimal principal) {
+        boolean isPaperworkEnabled = settingRepository == null || settingRepository.findById("paperwork_enabled")
+                .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
+                .orElse(true);
+        if (!isPaperworkEnabled) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal feePer100k = new BigDecimal("5000");
+        if (settingRepository != null) {
+            try {
+                String raw = settingRepository.findById("paperwork_fee").map(s -> s.getSettingValue()).orElse("5000");
+                BigDecimal parsed = CurrencyInputUtil.parseAmount(raw);
+                if (parsed.compareTo(BigDecimal.ZERO) >= 0) {
+                    feePer100k = parsed;
+                }
+            } catch (Exception ignored) {}
+        }
+        return LoanCalculator.calculatePaperworkFee(new Money(principal), feePer100k).amount();
     }
 
     private void buildUI() {
         VBox root = new VBox(18);
         root.setPadding(new Insets(24));
         root.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12;");
-        root.setPrefWidth(520);
+        root.setPrefWidth(540);
 
         // Header
         HBox header = new HBox(12);
         header.setAlignment(Pos.CENTER_LEFT);
         Label icon = new Label("RENOVACIÓN");
-        icon.setStyle("-fx-font-size: 24px;");
+        icon.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 6 12; -fx-background-radius: 8; -fx-border-color: #bfdbfe; -fx-border-radius: 8;");
         VBox titleBox = new VBox(2);
         Label title = new Label("Renovación de Crédito");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
@@ -108,17 +153,20 @@ public class RenewLoanDialog extends Stage {
         balanceCard.setPadding(new Insets(14));
         balanceCard.setAlignment(Pos.CENTER_LEFT);
 
-        VBox b1 = new VBox(2, new Label("Saldo Pendiente por Pagar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblCurrentBalance);
-        lblCurrentBalance.setText(CURRENCY.format(currentBalance));
-        lblCurrentBalance.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 16px; -fx-font-weight: bold;");
+        VBox b1 = new VBox(2, new Label("Saldo Pendiente Anterior") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblCurrentBalance);
+        lblCurrentBalance.setText("- " + CURRENCY.format(currentBalance));
+        lblCurrentBalance.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 15px; -fx-font-weight: bold;");
+
+        VBox bPaperwork = new VBox(2, new Label("Cartulina / Papelería") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblPaperworkFee);
+        lblPaperworkFee.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 15px; -fx-font-weight: bold;");
 
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
-        VBox b2 = new VBox(2, new Label("Efectivo Neto a Entregar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblNetCash);
+        VBox b2 = new VBox(2, new Label("💵 Efectivo Neto a Entregar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, lblNetCash);
         lblNetCash.setStyle("-fx-text-fill: #059669; -fx-font-size: 18px; -fx-font-weight: bold;");
 
-        balanceCard.getChildren().addAll(b1, sp, b2);
+        balanceCard.getChildren().addAll(b1, bPaperwork, sp, b2);
 
         // Formulario
         GridPane grid = new GridPane();
@@ -148,6 +196,7 @@ public class RenewLoanDialog extends Stage {
         grid.add(boxTotal, 1, 2);
 
         // Feedback
+        lblFeedback.setWrapText(true);
         lblFeedback.setVisible(false);
         lblFeedback.setManaged(false);
 
@@ -186,7 +235,10 @@ public class RenewLoanDialog extends Stage {
             BigDecimal rate = ratePct.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
             BigDecimal totalAgreed = principal.add(principal.multiply(rate));
 
-            BigDecimal netCash = principal.subtract(currentBalance);
+            BigDecimal paperworkFee = computeConfiguredPaperwork(principal);
+            lblPaperworkFee.setText(paperworkFee.compareTo(BigDecimal.ZERO) > 0 ? "- " + CURRENCY.format(paperworkFee) : "$ 0");
+
+            BigDecimal netCash = principal.subtract(currentBalance).subtract(paperworkFee);
             lblNetCash.setText(CURRENCY.format(netCash));
             lblNewTotal.setText(CURRENCY.format(totalAgreed));
 
@@ -210,6 +262,7 @@ public class RenewLoanDialog extends Stage {
             BigDecimal rate = ratePct.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
             BigDecimal totalAgreed = principal.add(principal.multiply(rate));
             LocalDate start = dpStartDate.getValue() != null ? dpStartDate.getValue() : LocalDate.now();
+            BigDecimal paperworkFee = computeConfiguredPaperwork(principal);
 
             String author = UserSessionContext.getSession()
                     .map(com.cartera.infrastructure.security.UserSession::userId)
@@ -223,7 +276,7 @@ public class RenewLoanDialog extends Stage {
                     count,
                     cmbFrequency.getValue(),
                     start,
-                    BigDecimal.ZERO,
+                    paperworkFee,
                     author
             );
 
@@ -241,8 +294,6 @@ public class RenewLoanDialog extends Stage {
     }
 
     private static BigDecimal parseAmount(String text) {
-        if (text == null || text.isBlank()) return BigDecimal.ZERO;
-        String clean = text.replaceAll("[^0-9.]", "").trim();
-        return clean.isEmpty() ? BigDecimal.ZERO : new BigDecimal(clean);
+        return CurrencyInputUtil.parseAmount(text);
     }
 }

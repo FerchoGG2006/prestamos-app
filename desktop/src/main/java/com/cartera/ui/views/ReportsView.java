@@ -4,11 +4,13 @@ import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.entity.PaymentEntity;
+import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.PaymentRepository;
-import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
+import com.cartera.infrastructure.security.UserSessionContext;
+import com.cartera.reports.application.ExcelReportExporter;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -16,15 +18,20 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 
+import java.awt.Desktop;
+import java.io.File;
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 
 /**
- * Vista unificada de Informes y Auditoría del Negocio.
+ * Vista unificada de Informes y Auditoría del Negocio con exportación ejecutiva a Excel (.xlsx).
  */
 public class ReportsView extends VBox {
 
@@ -38,6 +45,8 @@ public class ReportsView extends VBox {
     private final PaymentRepository paymentRepository;
     private final CustomerRepository customerRepository;
     private final AuditLogRepository auditLogRepository;
+    private final ExcelReportExporter excelReportExporter;
+    private final Stage ownerStage;
 
     private AuditView auditView;
     private StackPane contentArea;
@@ -67,7 +76,7 @@ public class ReportsView extends VBox {
                        InstallmentRepository installmentRepository,
                        PaymentRepository paymentRepository,
                        CustomerRepository customerRepository) {
-        this(loanRepository, installmentRepository, paymentRepository, customerRepository, null);
+        this(loanRepository, installmentRepository, paymentRepository, customerRepository, null, null, null);
     }
 
     public ReportsView(LoanRepository loanRepository,
@@ -75,11 +84,25 @@ public class ReportsView extends VBox {
                        PaymentRepository paymentRepository,
                        CustomerRepository customerRepository,
                        AuditLogRepository auditLogRepository) {
+        this(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository, null, null);
+    }
+
+    public ReportsView(LoanRepository loanRepository,
+                       InstallmentRepository installmentRepository,
+                       PaymentRepository paymentRepository,
+                       CustomerRepository customerRepository,
+                       AuditLogRepository auditLogRepository,
+                       ExcelReportExporter excelReportExporter,
+                       Stage ownerStage) {
         this.loanRepository = loanRepository;
         this.installmentRepository = installmentRepository;
         this.paymentRepository = paymentRepository;
         this.customerRepository = customerRepository;
         this.auditLogRepository = auditLogRepository;
+        this.excelReportExporter = excelReportExporter != null
+                ? excelReportExporter
+                : new ExcelReportExporter(loanRepository, installmentRepository, paymentRepository, customerRepository, null, null, null);
+        this.ownerStage = ownerStage;
 
         setSpacing(18);
         setPadding(new Insets(24));
@@ -91,13 +114,13 @@ public class ReportsView extends VBox {
     }
 
     private void buildHeader() {
-        HBox top = new HBox(16);
+        HBox top = new HBox(14);
         top.setAlignment(Pos.CENTER_LEFT);
 
         VBox titleBox = new VBox(4);
         Label title = new Label("Informes y Auditoría");
         title.getStyleClass().add("section-title");
-        Label subtitle = new Label("Consolidado general de rentabilidad, colocación y auditoría de transacciones");
+        Label subtitle = new Label("Consolidado general de rentabilidad, colocación, exportación contable en Excel y auditoría");
         subtitle.getStyleClass().add("muted");
         titleBox.getChildren().addAll(title, subtitle);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
@@ -117,12 +140,54 @@ public class ReportsView extends VBox {
 
         segmentBar.getChildren().addAll(btnTabReports, btnTabAudit);
 
+        Button btnExportExcel = new Button("📊 Exportar Reporte Contable en Excel (.xlsx)");
+        btnExportExcel.setStyle("-fx-background-color: #15803d; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 8 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnExportExcel.setOnAction(e -> exportExcelReport());
+
         Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
-        top.getChildren().addAll(titleBox, segmentBar, btnRefresh);
+        top.getChildren().addAll(titleBox, segmentBar, btnExportExcel, btnRefresh);
         getChildren().add(top);
+    }
+
+    private void exportExcelReport() {
+        try {
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Exportar Libro Contable en Excel (.xlsx)");
+            chooser.setInitialFileName("Reporte_Contable_Cartera_" + LocalDate.now() + ".xlsx");
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Libro de Excel (*.xlsx)", "*.xlsx"));
+
+            File dest = chooser.showSaveDialog(ownerStage);
+            if (dest != null) {
+                Path savedPath = excelReportExporter.exportAccountingWorkbook(dest.toPath());
+                Alert ok = new Alert(Alert.AlertType.INFORMATION);
+                if (ownerStage != null) ok.initOwner(ownerStage);
+                ok.setTitle("Exportación Contable Completada");
+                ok.setHeaderText("Libro Excel (.xlsx) generado con éxito");
+                ok.setContentText(
+                        "Archivo guardado en:\n" + savedPath.toAbsolutePath() + "\n\n" +
+                        "Hojas incluidas:\n" +
+                        "1. Resumen Ejecutivo (KPIs)\n" +
+                        "2. Cartera Activa y Contratos\n" +
+                        "3. Cartera en Mora\n" +
+                        "4. Historial de Recaudos\n" +
+                        "5. Libro Diario de Caja"
+                );
+                ok.showAndWait();
+
+                try {
+                    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                        Desktop.getDesktop().open(savedPath.toFile());
+                    }
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ex) {
+            Alert err = new Alert(Alert.AlertType.ERROR, "Error al exportar a Excel: " + ex.getMessage());
+            if (ownerStage != null) err.initOwner(ownerStage);
+            err.showAndWait();
+        }
     }
 
     public void showSection(String section) {
@@ -229,22 +294,33 @@ public class ReportsView extends VBox {
     }
 
     public void refresh() {
-        List<LoanEntity> loans = loanRepository.findAll();
+        String selectedRoute = UserSessionContext.getSelectedRouteId();
+        boolean filterRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute);
+
+        List<LoanEntity> loans = loanRepository.findAll().stream()
+                .filter(l -> !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId() != null ? l.getRouteId() : "route-norte"))
+                .toList();
         List<InstallmentEntity> installments = installmentRepository.findAll();
         List<PaymentEntity> payments = paymentRepository.findAll();
         var customerMap = customerRepository.findAll().stream()
                 .collect(java.util.stream.Collectors.toMap(CustomerEntity::getId, CustomerEntity::getFullName, (a, b) -> a));
 
-        BigDecimal totalPrincipal = loans.stream().map(LoanEntity::getPrincipal).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal totalInterest = loans.stream().map(LoanEntity::getInterestAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalPrincipal = loans.stream()
+                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()))
+                .map(LoanEntity::getPrincipal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalInterest = loans.stream()
+                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()))
+                .map(LoanEntity::getInterestAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalCollected = payments.stream()
-                .filter(p -> "REGISTRADO".equalsIgnoreCase(p.getStatus()))
+                .filter(p -> "APLICADO".equalsIgnoreCase(p.getStatus()) || "REGISTRADO".equalsIgnoreCase(p.getStatus()))
                 .map(PaymentEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         String todayStr = LocalDate.now().toString();
         BigDecimal totalOverdue = installments.stream()
-                .filter(i -> "PENDIENTE".equalsIgnoreCase(i.getStatus()))
+                .filter(i -> i.getPendingAmount() != null && i.getPendingAmount().compareTo(BigDecimal.ZERO) > 0)
                 .filter(i -> i.getDueDate().compareTo(todayStr) < 0)
                 .map(InstallmentEntity::getPendingAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -254,14 +330,15 @@ public class ReportsView extends VBox {
         lblTotalCollected.setText(CURRENCY.format(totalCollected));
         lblTotalOverdue.setText(CURRENCY.format(totalOverdue));
 
-        // Construir filas de reporte
         var items = loans.stream().map(l -> {
             String cName = customerMap.getOrDefault(l.getCustomerId(), "Cliente #" + l.getCustomerId());
             BigDecimal paid = installments.stream()
                     .filter(i -> l.getId().equals(i.getLoanId()))
                     .map(i -> i.getPaidAmount() != null ? i.getPaidAmount() : BigDecimal.ZERO)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal balance = l.getTotalAgreed().subtract(paid);
+            BigDecimal balance = "ANULADO".equalsIgnoreCase(l.getStatus())
+                    ? BigDecimal.ZERO
+                    : l.getTotalAgreed().subtract(paid).max(BigDecimal.ZERO);
 
             return new LoanReportItem(
                     l.getId(),

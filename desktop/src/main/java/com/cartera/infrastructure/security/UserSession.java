@@ -10,10 +10,18 @@ public record UserSession(
         String roleCode
 ) {
     public boolean isAdmin() {
-        return "ADMIN".equalsIgnoreCase(roleCode);
+        return "ADMIN".equalsIgnoreCase(roleCode) || "ADMINISTRADOR".equalsIgnoreCase(roleCode);
+    }
+
+    public boolean isSupervisor() {
+        return "SUPERVISOR".equalsIgnoreCase(roleCode);
+    }
+
+    public boolean canReverseOrCancel() {
+        return isAdmin() || isSupervisor();
     }
 
     public boolean isCollector() {
-        return "COBRADOR".equalsIgnoreCase(roleCode);
+        return "COBRADOR".equalsIgnoreCase(roleCode) || "COLLECTOR".equalsIgnoreCase(roleCode);
     }
 }

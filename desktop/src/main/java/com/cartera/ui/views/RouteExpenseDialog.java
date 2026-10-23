@@ -1,6 +1,7 @@
 package com.cartera.ui.views;
 
 import com.cartera.settlement.application.SettlementUseCase;
+import com.cartera.ui.util.CurrencyInputUtil;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -94,6 +95,7 @@ public class RouteExpenseDialog {
 
         // Feedback
         Label lblFeedback = new Label();
+        lblFeedback.setWrapText(true);
         lblFeedback.setVisible(false);
         lblFeedback.setManaged(false);
 
@@ -113,16 +115,7 @@ public class RouteExpenseDialog {
         btnSave.getStyleClass().add("btn-primary");
         btnSave.setOnAction(e -> {
             try {
-                String clean = txtAmount.getText().replaceAll("[^0-9.]", "").trim();
-                if (clean.isEmpty()) {
-                    lblFeedback.setText("Ingresa el monto del gasto.");
-                    lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.12); -fx-padding: 8; -fx-background-radius: 6;");
-                    lblFeedback.setVisible(true);
-                    lblFeedback.setManaged(true);
-                    return;
-                }
-
-                BigDecimal amount = new BigDecimal(clean);
+                BigDecimal amount = CurrencyInputUtil.parseAmount(txtAmount.getText());
                 if (amount.compareTo(BigDecimal.ZERO) <= 0) {
                     lblFeedback.setText("El monto debe ser mayor a cero.");
                     lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.12); -fx-padding: 8; -fx-background-radius: 6;");

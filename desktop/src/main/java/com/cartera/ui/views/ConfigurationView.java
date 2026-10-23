@@ -1,10 +1,13 @@
 package com.cartera.ui.views;
 
+import com.cartera.infrastructure.backup.DatabaseBackupService;
 import com.cartera.infrastructure.persistence.entity.AppUserEntity;
 import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
+import com.cartera.infrastructure.persistence.entity.RouteEntity;
 import com.cartera.infrastructure.persistence.entity.SystemSettingEntity;
 import com.cartera.infrastructure.persistence.repository.AppUserRepository;
 import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
+import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import com.cartera.infrastructure.security.PasswordHasher;
 import com.cartera.infrastructure.security.UserSessionContext;
@@ -32,39 +35,78 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Vista de Configuración del Sistema: Parámetros del negocio, gestión de cobradores y copias de seguridad.
+ * Vista de Configuración Operativa del Sistema:
+ * - Parámetros de la oficina y sede
+ * - Políticas de crédito y cobro (cobro de papelería / cartulina y topes)
+ * - Permisos y controles de ruta
+ * - Gestión de múltiples rutas y asignación de cobradores
+ * - Gestión de cobradores y credenciales de acceso
+ * - Copias de seguridad automáticas y manuales de la base de datos
  */
 public class ConfigurationView extends VBox {
 
     private final SystemSettingRepository settingRepository;
     private final AppUserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
+    private final RouteRepository routeRepository;
+    private final DatabaseBackupService databaseBackupService;
     private final Stage ownerStage;
+    private Runnable onRoutesChanged;
 
-    // Parámetros
+    // 1. Datos de la Empresa / Sede
     private final TextField txtCompanyName = new TextField();
     private final TextField txtPhone = new TextField();
     private final TextField txtCity = new TextField();
+
+    // 2. Políticas de Crédito & Cobro
+    private final CheckBox chkPaperworkEnabled = new CheckBox("Cobrar gastos de papelería / cartulina en créditos");
+    private final TextField txtPaperworkFee = new TextField("5000");
+    private final TextField txtDefaultInterest = new TextField("20");
+    private final TextField txtMaxNewLoanAmount = new TextField("2000000");
+    private final CheckBox chkExcludeSundays = new CheckBox("Excluir domingos del calendario de cobro");
+
+    // 3. Permisos de Ruta
+    private final CheckBox chkRouteAllowNewLoans = new CheckBox("Permitir a cobradores crear nuevos préstamos en la calle");
+    private final CheckBox chkRouteAllowExpenses = new CheckBox("Permitir a cobradores registrar gastos operativos de ruta");
+    private final CheckBox chkRouteAllowReorder = new CheckBox("Permitir a cobradores reordenar clientes en ruta");
+    private final CheckBox chkRouteAllowPartialPayments = new CheckBox("Permitir abonos parciales (menores a la cuota)");
+
     private final Label lblParamsFeedback = new Label();
 
-    // Usuarios
+    // 4. Rutas y Cobradores
+    private final ObservableList<RouteEntity> routeList = FXCollections.observableArrayList();
+    private final TableView<RouteEntity> routeTable = new TableView<>();
+
+    // 5. Usuarios y Credenciales
     private final ObservableList<AppUserEntity> userList = FXCollections.observableArrayList();
     private final TableView<AppUserEntity> userTable = new TableView<>();
 
-    // Backup
+    // 6. Backup
+    private final Label lblBackupCounter = new Label();
     private final Label lblBackupFeedback = new Label();
 
     public ConfigurationView(SystemSettingRepository settingRepository,
                              AppUserRepository userRepository,
                              AuditLogRepository auditLogRepository,
                              Stage ownerStage) {
+        this(settingRepository, userRepository, auditLogRepository, null, null, ownerStage);
+    }
+
+    public ConfigurationView(SystemSettingRepository settingRepository,
+                             AppUserRepository userRepository,
+                             AuditLogRepository auditLogRepository,
+                             RouteRepository routeRepository,
+                             DatabaseBackupService databaseBackupService,
+                             Stage ownerStage) {
         this.settingRepository = settingRepository;
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
+        this.routeRepository = routeRepository;
+        this.databaseBackupService = databaseBackupService;
         this.ownerStage = ownerStage;
 
-        setSpacing(18);
-        setPadding(new Insets(24));
+        setSpacing(16);
+        setPadding(new Insets(20));
         setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
@@ -73,14 +115,18 @@ public class ConfigurationView extends VBox {
         refreshUsers();
     }
 
+    public void setOnRoutesChanged(Runnable onRoutesChanged) {
+        this.onRoutesChanged = onRoutesChanged;
+    }
+
     private void buildHeader() {
         HBox top = new HBox(16);
         top.setAlignment(Pos.CENTER_LEFT);
 
         VBox titleBox = new VBox(4);
-        Label title = new Label("Configuración del Sistema");
+        Label title = new Label("Panel Operativo de Configuración");
         title.getStyleClass().add("section-title");
-        Label subtitle = new Label("Parámetros generales de la cartera, seguridad de accesos y respaldo de base de datos");
+        Label subtitle = new Label("Parámetros del negocio, políticas de crédito, multi-ruta, credenciales y respaldos automáticos");
         subtitle.getStyleClass().add("muted");
         titleBox.getChildren().addAll(title, subtitle);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
@@ -90,30 +136,35 @@ public class ConfigurationView extends VBox {
     }
 
     private void buildContent() {
+        ScrollPane scrollPane = new ScrollPane();
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
+
         HBox columns = new HBox(20);
-        VBox.setVgrow(columns, Priority.ALWAYS);
 
-        // Columna Izquierda: Parámetros y Backup
+        // Columna Izquierda: Parámetros del Negocio, Políticas y Backups
         VBox leftCol = new VBox(16);
-        leftCol.setPrefWidth(380);
+        leftCol.setPrefWidth(430);
+        leftCol.getChildren().addAll(buildOfficeParamsCard(), buildLoanPoliciesCard(), buildRoutePermissionsCard(), buildBackupCard());
 
-        leftCol.getChildren().addAll(buildParamsCard(), buildBackupCard());
-
-        // Columna Derecha: Gestión de Cobradores
+        // Columna Derecha: Gestión Multi-Ruta y Cobradores
         VBox rightCol = new VBox(16);
         HBox.setHgrow(rightCol, Priority.ALWAYS);
-        rightCol.getChildren().add(buildUsersCard());
+        rightCol.getChildren().addAll(buildRoutesCard(), buildUsersCard());
 
         columns.getChildren().addAll(leftCol, rightCol);
-        getChildren().add(columns);
+        scrollPane.setContent(columns);
+
+        getChildren().add(scrollPane);
     }
 
-    private VBox buildParamsCard() {
-        VBox card = new VBox(12);
+    private VBox buildOfficeParamsCard() {
+        VBox card = new VBox(10);
         card.getStyleClass().add("table-card");
-        card.setPadding(new Insets(20));
+        card.setPadding(new Insets(18));
 
-        Label title = new Label("Datos de la Empresa / Cartera");
+        Label title = new Label("1. Sede y Datos de la Empresa");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
 
         txtCompanyName.setPromptText("Ej. Inversiones & Cobranzas del Norte");
@@ -125,41 +176,112 @@ public class ConfigurationView extends VBox {
         txtCity.setPromptText("Ej. Barranquilla");
         txtCity.getStyleClass().add("search-field");
 
-        lblParamsFeedback.setVisible(false);
-        lblParamsFeedback.setManaged(false);
-
-        Button btnSaveParams = new Button("Guardar Cambios");
-        btnSaveParams.getStyleClass().add("btn-primary");
-        btnSaveParams.setOnAction(e -> saveSettings());
-
         card.getChildren().addAll(
                 title,
                 createFieldBox("Nombre Comercial / Razón Social", txtCompanyName),
-                createFieldBox("Teléfono de Contacto (Recibos)", txtPhone),
-                createFieldBox("Ciudad Principal", txtCity),
+                createFieldBox("Teléfono Oficial de Contacto", txtPhone),
+                createFieldBox("Ciudad Sede Principal", txtCity)
+        );
+        return card;
+    }
+
+    private VBox buildLoanPoliciesCard() {
+        VBox card = new VBox(10);
+        card.getStyleClass().add("table-card");
+        card.setPadding(new Insets(18));
+
+        Label title = new Label("2. Políticas de Crédito (Papelería & Tasas)");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
+
+        chkPaperworkEnabled.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 12px;");
+        chkPaperworkEnabled.setSelected(true);
+
+        txtPaperworkFee.setPromptText("5000");
+        txtPaperworkFee.getStyleClass().add("search-field");
+
+        txtDefaultInterest.setPromptText("20");
+        txtDefaultInterest.getStyleClass().add("search-field");
+
+        txtMaxNewLoanAmount.setPromptText("2000000");
+        txtMaxNewLoanAmount.getStyleClass().add("search-field");
+
+        chkExcludeSundays.setStyle("-fx-text-fill: #475569; -fx-font-size: 12px;");
+        chkExcludeSundays.setSelected(true);
+
+        card.getChildren().addAll(
+                title,
+                chkPaperworkEnabled,
+                createFieldBox("Tarifa de Papelería ($ por cada $100.000)", txtPaperworkFee),
+                createFieldBox("Tasa de Interés Sugerida (%)", txtDefaultInterest),
+                createFieldBox("Monto Máximo por Nuevo Préstamo ($)", txtMaxNewLoanAmount),
+                chkExcludeSundays
+        );
+        return card;
+    }
+
+    private VBox buildRoutePermissionsCard() {
+        VBox card = new VBox(10);
+        card.getStyleClass().add("table-card");
+        card.setPadding(new Insets(18));
+
+        Label title = new Label("3. Permisos Operativos de Ruta");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
+
+        chkRouteAllowNewLoans.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px;");
+        chkRouteAllowNewLoans.setSelected(true);
+
+        chkRouteAllowExpenses.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px;");
+        chkRouteAllowExpenses.setSelected(true);
+
+        chkRouteAllowReorder.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px;");
+        chkRouteAllowReorder.setSelected(false);
+
+        chkRouteAllowPartialPayments.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px;");
+        chkRouteAllowPartialPayments.setSelected(true);
+
+        lblParamsFeedback.setVisible(false);
+        lblParamsFeedback.setManaged(false);
+
+        Button btnSaveAllParams = new Button("Guardar Toda la Configuración");
+        btnSaveAllParams.getStyleClass().add("btn-primary");
+        btnSaveAllParams.setOnAction(e -> saveSettings());
+
+        card.getChildren().addAll(
+                title,
+                chkRouteAllowNewLoans,
+                chkRouteAllowExpenses,
+                chkRouteAllowReorder,
+                chkRouteAllowPartialPayments,
                 lblParamsFeedback,
-                btnSaveParams
+                btnSaveAllParams
         );
         return card;
     }
 
     private VBox buildBackupCard() {
-        VBox card = new VBox(12);
+        VBox card = new VBox(10);
         card.getStyleClass().add("table-card");
-        card.setPadding(new Insets(20));
+        card.setPadding(new Insets(18));
 
-        Label title = new Label("Copia de Seguridad (SQLite)");
+        Label title = new Label("Copia de Seguridad Automática (SQLite)");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
 
-        Label desc = new Label("Respalda todos los clientes, créditos y pagos en un archivo externo para evitar pérdida de datos.");
+        Label desc = new Label("El sistema genera respaldos automáticos al cerrar cada liquidación diaria en ~/.sistema-cartera/backups.");
         desc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
         desc.setWrapText(true);
+
+        lblBackupCounter.setStyle("-fx-text-fill: #0369a1; -fx-font-size: 12px; -fx-font-weight: bold;");
+        updateBackupCounterLabel();
 
         lblBackupFeedback.setVisible(false);
         lblBackupFeedback.setManaged(false);
 
-        HBox btns = new HBox(10);
-        Button btnExport = new Button("Crear Copia");
+        HBox btns = new HBox(8);
+        Button btnInstant = new Button("⚡ Respaldo Instantáneo");
+        btnInstant.getStyleClass().add("btn-primary");
+        btnInstant.setOnAction(e -> createInstantBackup());
+
+        Button btnExport = new Button("Exportar Copia...");
         btnExport.getStyleClass().add("btn-success");
         btnExport.setOnAction(e -> exportBackup());
 
@@ -167,10 +289,187 @@ public class ConfigurationView extends VBox {
         btnOpenFolder.getStyleClass().add("btn-secondary");
         btnOpenFolder.setOnAction(e -> openDbFolder());
 
-        btns.getChildren().addAll(btnExport, btnOpenFolder);
+        btns.getChildren().addAll(btnInstant, btnExport, btnOpenFolder);
 
-        card.getChildren().addAll(title, desc, btns, lblBackupFeedback);
+        card.getChildren().addAll(title, desc, lblBackupCounter, btns, lblBackupFeedback);
         return card;
+    }
+
+    private void updateBackupCounterLabel() {
+        if (databaseBackupService != null) {
+            int count = databaseBackupService.getBackupCount();
+            lblBackupCounter.setText("📦 Copias automáticas almacenadas: " + count);
+        } else {
+            lblBackupCounter.setText("📦 Carpeta de respaldos activa en ~/.sistema-cartera/backups");
+        }
+    }
+
+    private void createInstantBackup() {
+        if (databaseBackupService == null) {
+            exportBackup();
+            return;
+        }
+        try {
+            Path path = databaseBackupService.createBackup("manual");
+            updateBackupCounterLabel();
+            lblBackupFeedback.setText("Respaldo creado en: " + (path != null ? path.getFileName() : "ok"));
+            lblBackupFeedback.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-padding: 6 10; -fx-background-radius: 6;");
+            lblBackupFeedback.setVisible(true);
+            lblBackupFeedback.setManaged(true);
+        } catch (Exception e) {
+            lblBackupFeedback.setText("No se pudo crear el respaldo instantáneo.");
+            lblBackupFeedback.setStyle("-fx-text-fill: #dc2626;");
+            lblBackupFeedback.setVisible(true);
+            lblBackupFeedback.setManaged(true);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private VBox buildRoutesCard() {
+        VBox card = new VBox(12);
+        card.getStyleClass().add("table-card");
+        card.setPadding(new Insets(18));
+        card.setPrefHeight(260);
+
+        HBox header = new HBox(12);
+        header.setAlignment(Pos.CENTER_LEFT);
+        Label title = new Label("4. Gestión Multi-Ruta y Asignación de Cobradores");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button btnNewRoute = new Button("+ Crear Nueva Ruta");
+        btnNewRoute.getStyleClass().add("btn-primary");
+        btnNewRoute.setOnAction(e -> openNewRouteDialog());
+
+        header.getChildren().addAll(title, spacer, btnNewRoute);
+
+        routeTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        VBox.setVgrow(routeTable, Priority.ALWAYS);
+
+        TableColumn<RouteEntity, String> colId = new TableColumn<>("ID RUTA");
+        colId.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getId()));
+        colId.setPrefWidth(110);
+
+        TableColumn<RouteEntity, String> colName = new TableColumn<>("NOMBRE DE RUTA");
+        colName.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getName()));
+        colName.setPrefWidth(150);
+
+        TableColumn<RouteEntity, String> colCollector = new TableColumn<>("COBRADOR ASIGNADO");
+        colCollector.setCellValueFactory(d -> {
+            String colIdVal = d.getValue().getCollectorId();
+            if (colIdVal == null || colIdVal.isBlank()) return new SimpleStringProperty("Sin asignar");
+            String name = userList.stream()
+                    .filter(u -> colIdVal.equals(u.getId()))
+                    .map(AppUserEntity::getFullName)
+                    .findFirst()
+                    .orElse(colIdVal);
+            return new SimpleStringProperty(name);
+        });
+        colCollector.setPrefWidth(140);
+
+        routeTable.getColumns().addAll(colId, colName, colCollector);
+        routeTable.setItems(routeList);
+
+        card.getChildren().addAll(header, routeTable);
+        return card;
+    }
+
+    private void openNewRouteDialog() {
+        if (routeRepository == null) return;
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.WINDOW_MODAL);
+        dialog.initOwner(ownerStage);
+        dialog.setTitle("Crear Nueva Ruta de Cobro");
+        dialog.setResizable(false);
+
+        VBox root = new VBox(14);
+        root.setPadding(new Insets(24));
+        root.setStyle("-fx-background-color: #ffffff;");
+        root.setPrefWidth(400);
+
+        Label title = new Label("Nueva Ruta Operativa");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
+
+        TextField txtCode = new TextField();
+        txtCode.setPromptText("Ej. route-sur");
+        txtCode.getStyleClass().add("search-field");
+
+        TextField txtName = new TextField();
+        txtName.setPromptText("Ej. Ruta Sur / Soledad");
+        txtName.getStyleClass().add("search-field");
+
+        ComboBox<AppUserEntity> cmbCollector = new ComboBox<>();
+        cmbCollector.setMaxWidth(Double.MAX_VALUE);
+        cmbCollector.getItems().setAll(userList);
+        cmbCollector.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(AppUserEntity u) {
+                return u == null ? "" : u.getFullName() + " (" + u.getUsername() + ")";
+            }
+            @Override
+            public AppUserEntity fromString(String s) {
+                return null;
+            }
+        });
+        if (!userList.isEmpty()) {
+            cmbCollector.setValue(userList.get(0));
+        }
+
+        Label lblErr = new Label();
+        lblErr.setVisible(false);
+        lblErr.setManaged(false);
+
+        HBox actions = new HBox(12);
+        actions.setAlignment(Pos.CENTER_RIGHT);
+
+        Button btnCancel = new Button("Cancelar");
+        btnCancel.getStyleClass().add("btn-secondary");
+        btnCancel.setOnAction(e -> dialog.close());
+
+        Button btnSave = new Button("Guardar Ruta");
+        btnSave.getStyleClass().add("btn-primary");
+        btnSave.setOnAction(e -> {
+            String id = txtCode.getText().trim().toLowerCase().replaceAll("\\s+", "-");
+            String name = txtName.getText().trim();
+            if (id.isEmpty() || name.isEmpty()) {
+                lblErr.setText("El código y nombre de la ruta son obligatorios.");
+                lblErr.setStyle("-fx-text-fill: #ef4444;");
+                lblErr.setVisible(true);
+                lblErr.setManaged(true);
+                return;
+            }
+            String collectorId = cmbCollector.getValue() != null ? cmbCollector.getValue().getId() : "usr-col-1";
+            String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            routeRepository.save(new RouteEntity(id, name, collectorId, 1, now));
+            refreshUsers();
+            if (onRoutesChanged != null) {
+                onRoutesChanged.run();
+            }
+            dialog.close();
+        });
+
+        actions.getChildren().addAll(btnCancel, btnSave);
+
+        VBox collectorBox = new VBox(4);
+        Label lblCol = new Label("Cobrador Responsable *");
+        lblCol.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
+        collectorBox.getChildren().addAll(lblCol, cmbCollector);
+
+        root.getChildren().addAll(
+                title,
+                createFieldBox("Código Identificador de Ruta *", txtCode),
+                createFieldBox("Nombre Descriptivo de la Ruta *", txtName),
+                collectorBox,
+                lblErr,
+                actions
+        );
+
+        var scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
+        dialog.setScene(scene);
+        dialog.showAndWait();
     }
 
     @SuppressWarnings("unchecked")
@@ -182,13 +481,13 @@ public class ConfigurationView extends VBox {
 
         HBox header = new HBox(12);
         header.setAlignment(Pos.CENTER_LEFT);
-        Label title = new Label("Cobradores y Usuarios");
+        Label title = new Label("5. Gestión de Cobradores y Credenciales de Ruta");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button btnNewUser = new Button("+ Nuevo Cobrador");
+        Button btnNewUser = new Button("+ Registrar Nuevo Cobrador");
         btnNewUser.getStyleClass().add("btn-primary");
         btnNewUser.setOnAction(e -> openNewUserDialog());
 
@@ -201,9 +500,9 @@ public class ConfigurationView extends VBox {
         colName.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getFullName()));
         colName.setPrefWidth(160);
 
-        TableColumn<AppUserEntity, String> colUser = new TableColumn<>("USUARIO");
+        TableColumn<AppUserEntity, String> colUser = new TableColumn<>("USUARIO (ACCESO)");
         colUser.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getUsername()));
-        colUser.setPrefWidth(100);
+        colUser.setPrefWidth(120);
 
         TableColumn<AppUserEntity, String> colStatus = new TableColumn<>("ESTADO");
         colStatus.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getActive() == 1 ? "ACTIVO" : "INACTIVO"));
@@ -228,7 +527,10 @@ public class ConfigurationView extends VBox {
         userTable.getColumns().addAll(colName, colUser, colStatus);
         userTable.setItems(userList);
 
-        card.getChildren().addAll(header, userTable);
+        Label notice = new Label("Nota: El cobrador debe iniciar sesión en su teléfono móvil únicamente con su Usuario y Contraseña asignados.");
+        notice.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-style: italic;");
+
+        card.getChildren().addAll(header, userTable, notice);
         return card;
     }
 
@@ -244,6 +546,17 @@ public class ConfigurationView extends VBox {
         settingRepository.findById("company_name").ifPresent(s -> txtCompanyName.setText(s.getSettingValue()));
         settingRepository.findById("company_phone").ifPresent(s -> txtPhone.setText(s.getSettingValue()));
         settingRepository.findById("company_city").ifPresent(s -> txtCity.setText(s.getSettingValue()));
+
+        settingRepository.findById("paperwork_enabled").ifPresent(s -> chkPaperworkEnabled.setSelected(!"false".equalsIgnoreCase(s.getSettingValue())));
+        settingRepository.findById("paperwork_fee").ifPresent(s -> txtPaperworkFee.setText(s.getSettingValue()));
+        settingRepository.findById("default_interest_percent").ifPresent(s -> txtDefaultInterest.setText(s.getSettingValue()));
+        settingRepository.findById("max_new_loan_amount").ifPresent(s -> txtMaxNewLoanAmount.setText(s.getSettingValue()));
+        settingRepository.findById("exclude_sundays").ifPresent(s -> chkExcludeSundays.setSelected(!"false".equalsIgnoreCase(s.getSettingValue())));
+
+        settingRepository.findById("route_allow_new_loans").ifPresent(s -> chkRouteAllowNewLoans.setSelected(!"false".equalsIgnoreCase(s.getSettingValue())));
+        settingRepository.findById("route_allow_expenses").ifPresent(s -> chkRouteAllowExpenses.setSelected(!"false".equalsIgnoreCase(s.getSettingValue())));
+        settingRepository.findById("route_allow_reorder").ifPresent(s -> chkRouteAllowReorder.setSelected("true".equalsIgnoreCase(s.getSettingValue())));
+        settingRepository.findById("route_allow_partial_payments").ifPresent(s -> chkRouteAllowPartialPayments.setSelected(!"false".equalsIgnoreCase(s.getSettingValue())));
     }
 
     private void saveSettings() {
@@ -252,7 +565,18 @@ public class ConfigurationView extends VBox {
         settingRepository.save(new SystemSettingEntity("company_phone", txtPhone.getText().trim(), now));
         settingRepository.save(new SystemSettingEntity("company_city", txtCity.getText().trim(), now));
 
-        lblParamsFeedback.setText("Parámetros actualizados con éxito.");
+        settingRepository.save(new SystemSettingEntity("paperwork_enabled", String.valueOf(chkPaperworkEnabled.isSelected()), now));
+        settingRepository.save(new SystemSettingEntity("paperwork_fee", txtPaperworkFee.getText().trim(), now));
+        settingRepository.save(new SystemSettingEntity("default_interest_percent", txtDefaultInterest.getText().trim(), now));
+        settingRepository.save(new SystemSettingEntity("max_new_loan_amount", txtMaxNewLoanAmount.getText().trim(), now));
+        settingRepository.save(new SystemSettingEntity("exclude_sundays", String.valueOf(chkExcludeSundays.isSelected()), now));
+
+        settingRepository.save(new SystemSettingEntity("route_allow_new_loans", String.valueOf(chkRouteAllowNewLoans.isSelected()), now));
+        settingRepository.save(new SystemSettingEntity("route_allow_expenses", String.valueOf(chkRouteAllowExpenses.isSelected()), now));
+        settingRepository.save(new SystemSettingEntity("route_allow_reorder", String.valueOf(chkRouteAllowReorder.isSelected()), now));
+        settingRepository.save(new SystemSettingEntity("route_allow_partial_payments", String.valueOf(chkRouteAllowPartialPayments.isSelected()), now));
+
+        lblParamsFeedback.setText("Parámetros y políticas operativas actualizados con éxito.");
         lblParamsFeedback.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
         lblParamsFeedback.setVisible(true);
         lblParamsFeedback.setManaged(true);
@@ -261,29 +585,34 @@ public class ConfigurationView extends VBox {
     public void refreshUsers() {
         List<AppUserEntity> list = userRepository.findAll();
         userList.setAll(list);
+        if (routeRepository != null) {
+            routeList.setAll(routeRepository.findAll());
+            routeTable.refresh();
+        }
+        updateBackupCounterLabel();
     }
 
     private void openNewUserDialog() {
         Stage dialog = new Stage();
         dialog.initModality(Modality.WINDOW_MODAL);
         dialog.initOwner(ownerStage);
-        dialog.setTitle("Registrar Nuevo Cobrador");
+        dialog.setTitle("Registrar Nuevo Cobrador / Credenciales de Ruta");
         dialog.setResizable(false);
 
         VBox root = new VBox(14);
         root.setPadding(new Insets(24));
         root.setStyle("-fx-background-color: #ffffff;");
-        root.setPrefWidth(380);
+        root.setPrefWidth(400);
 
-        Label title = new Label("Nuevo Cobrador / Usuario");
+        Label title = new Label("Nuevo Cobrador / Credencial de Ruta");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
 
         TextField txtName = new TextField();
-        txtName.setPromptText("Ej. Andrés Pérez");
+        txtName.setPromptText("Ej. Carlos Cobrador");
         txtName.getStyleClass().add("search-field");
 
         TextField txtUser = new TextField();
-        txtUser.setPromptText("Ej. andres");
+        txtUser.setPromptText("Ej. ruta1");
         txtUser.getStyleClass().add("search-field");
 
         PasswordField txtPass = new PasswordField();
@@ -301,11 +630,11 @@ public class ConfigurationView extends VBox {
         btnCancel.getStyleClass().add("btn-secondary");
         btnCancel.setOnAction(e -> dialog.close());
 
-        Button btnSave = new Button("Crear Usuario");
+        Button btnSave = new Button("Crear y Asignar Credencial");
         btnSave.getStyleClass().add("btn-primary");
         btnSave.setOnAction(e -> {
             String name = txtName.getText().trim();
-            String user = txtUser.getText().trim();
+            String user = txtUser.getText().trim().toLowerCase();
             String pass = txtPass.getText();
 
             if (name.isEmpty() || user.isEmpty() || pass.isEmpty()) {
@@ -354,9 +683,9 @@ public class ConfigurationView extends VBox {
 
         root.getChildren().addAll(
                 title,
-                createFieldBox("Nombre Completo *", txtName),
-                createFieldBox("Nombre de Usuario (Acceso) *", txtUser),
-                createFieldBox("Contraseña Inicial *", txtPass),
+                createFieldBox("Nombre Completo del Cobrador *", txtName),
+                createFieldBox("Usuario de Acceso a Ruta *", txtUser),
+                createFieldBox("Contraseña Inicial de la Ruta *", txtPass),
                 lblErr,
                 actions
         );

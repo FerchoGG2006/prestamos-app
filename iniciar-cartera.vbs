@@ -2,4 +2,4 @@ Set WshShell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 WshShell.CurrentDirectory = scriptDir
-WshShell.Run """" & scriptDir & "\ejecutar-java.bat""", 1, False
+WshShell.Run """" & scriptDir & "\ejecutar.bat""", 1, False

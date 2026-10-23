@@ -86,6 +86,35 @@ export function formatCOP(amount: number): string {
 }
 
 /**
+ * Etiqueta legible de la modalidad de cobro de un crédito.
+ */
+export function getFrequencyLabel(freq?: string): string {
+  switch (freq) {
+    case 'WEEKLY':
+      return 'Semanal';
+    case 'BIWEEKLY':
+      return 'Quincenal';
+    case 'MONTHLY':
+      return 'Mensual';
+    case 'FIXED_DATE':
+      return 'Fecha Fija';
+    case 'DAILY':
+    default:
+      return 'Diario';
+  }
+}
+
+/**
+ * Iniciales de un nombre para avatares (ej. "Juan Pérez" -> "JP").
+ */
+export function getInitials(fullName?: string): string {
+  if (!fullName || !fullName.trim()) return 'CL';
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return parts[0].substring(0, 2).toUpperCase();
+}
+
+/**
  * Suma días a una fecha en formato YYYY-MM-DD sin desajustes por zona horaria
  */
 export function addDays(dateStr: string, days: number): string {

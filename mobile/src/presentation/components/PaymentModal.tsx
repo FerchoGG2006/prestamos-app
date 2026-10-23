@@ -9,6 +9,8 @@ import {
   Alert,
   ScrollView,
   Linking,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import {
   Customer,
@@ -18,9 +20,13 @@ import {
   Payment,
 } from '../../core/domain/types';
 import { formatCOP } from '../../core/config/business-rules';
-import { calculateDelinquencyMetrics } from '../../core/domain/calculator';
-import { COLORS } from '../theme/colors';
+import { calculateDelinquencyMetrics, getLocalTodayStr } from '../../core/domain/calculator';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
+import {
+  formatDigitalPaymentReceipt,
+  openWhatsAppReceipt,
+} from '../../core/utils/whatsapp-receipt';
 import {
   CheckCircle2,
   DollarSign,
@@ -45,7 +51,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   customer,
   loan,
   installments,
-  todayStr = '2026-09-19',
+  todayStr = getLocalTodayStr(),
   onClose,
   onSuccess,
 }) => {
@@ -101,11 +107,39 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   if (!customer || !loan) return null;
 
+  const officeConfig = localStore.getOfficeConfig();
+  const allowPartialPayments = officeConfig.allowPartialPayments !== false;
   const currentNumericAmount = parseInt(amountStr.replace(/\D/g, ''), 10) || 0;
+  const isOverpaying = currentNumericAmount > totalRemainingBalance;
+  const minAllowedAmount = Math.min(totalRemainingBalance, exactInstallmentAmount);
+  const isBelowPartialPolicy =
+    !allowPartialPayments &&
+    currentNumericAmount > 0 &&
+    currentNumericAmount < minAllowedAmount;
 
   const handleConfirmPayment = async () => {
     if (currentNumericAmount <= 0) {
       Alert.alert('Monto inválido', 'Ingrese un valor mayor a $0 COP.');
+      return;
+    }
+
+    if (isOverpaying) {
+      Alert.alert(
+        'Monto excede el saldo',
+        `El monto ingresado (${formatCOP(
+          currentNumericAmount
+        )}) supera el saldo total pendiente del crédito (${formatCOP(totalRemainingBalance)}).`
+      );
+      return;
+    }
+
+    if (isBelowPartialPolicy) {
+      Alert.alert(
+        'Abonos parciales deshabilitados',
+        `La política de la oficina no permite abonos parciales inferiores a la cuota (${formatCOP(
+          minAllowedAmount
+        )}).`
+      );
       return;
     }
 
@@ -130,35 +164,26 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     }
   };
 
-  const handleSendWhatsAppReceipt = () => {
+  const handleSendWhatsAppReceipt = async () => {
     if (!completedPayment) return;
-    const cleanPhone = customer.phone.replace(/\D/g, '');
-    const fullPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
     const newRemaining = Math.max(
       0,
       totalRemainingBalance - completedPayment.amountReceived
     );
-    const methodLabel =
-      completedPayment.paymentMethod === 'CASH'
-        ? 'Efectivo'
-        : completedPayment.paymentMethod === 'NEQUI'
-        ? 'Nequi'
-        : 'Transferencia';
+    const updatedInsts = localStore
+      .getInstallments()
+      .filter((i) => i.loanId === loan.id);
 
-    const receiptText =
-      `✅ *COMPROBANTE DE ABONO — CARTERA MÓVIL*\n` +
-      `• Cliente: *${customer.fullName}*\n` +
-      `• Crédito: *${loan.loanNumber}*\n` +
-      `• Valor abonado: *${formatCOP(completedPayment.amountReceived)}*\n` +
-      `• Medio de pago: *${methodLabel}*\n` +
-      `• Cuotas aplicadas: *${completedPayment.installmentsBreakdown.length}*\n` +
-      `• Nuevo saldo pendiente: *${formatCOP(newRemaining)}*\n` +
-      `• Ref: ${completedPayment.id}`;
-
-    const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(receiptText)}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Comprobante Listo', receiptText);
+    const receiptText = formatDigitalPaymentReceipt({
+      companyConfig: officeConfig,
+      customer,
+      loan,
+      payment: completedPayment,
+      remainingBalance: newRemaining,
+      installments: updatedInsts.length > 0 ? updatedInsts : loanInstallments,
     });
+
+    await openWhatsAppReceipt(customer.phone, receiptText);
   };
 
   const amountPills = [
@@ -176,7 +201,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.overlay}
+      >
         <View style={styles.sheetContainer}>
           {/* Handle superior estilo Bottom Sheet (Patrón #4 de Gemini Share) */}
           <View style={styles.sheetHandle} />
@@ -251,7 +279,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               >
                 <MessageCircle size={18} color="#ffffff" style={{ marginRight: 8 }} />
                 <Text style={styles.whatsappReceiptBtnText}>
-                  Enviar Comprobante por WhatsApp
+                  📲 Enviar Recibo por WhatsApp al Cliente
                 </Text>
               </TouchableOpacity>
 
@@ -290,7 +318,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </View>
 
                 {/* Filled Input con Floating Label interno para el Monto */}
-                <View style={styles.filledAmountBlock}>
+                <View
+                  style={[
+                    styles.filledAmountBlock,
+                    (isOverpaying || isBelowPartialPolicy) && {
+                      borderColor: COLORS.danger,
+                      borderWidth: 1.5,
+                    },
+                  ]}
+                >
                   <Text style={styles.floatingInternalLabel}>
                     MONTO A ABONAR ($ COP)
                   </Text>
@@ -306,6 +342,46 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     />
                   </View>
                 </View>
+
+                {isOverpaying && (
+                  <View
+                    style={{
+                      backgroundColor: '#fef2f2',
+                      borderWidth: 1,
+                      borderColor: '#fecaca',
+                      borderRadius: 12,
+                      padding: 10,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#dc2626' }}>
+                      ⚠️ El monto ingresado supera el saldo total pendiente ({formatCOP(totalRemainingBalance)}).
+                    </Text>
+                  </View>
+                )}
+
+                {!allowPartialPayments && (
+                  <View
+                    style={{
+                      backgroundColor: isBelowPartialPolicy ? '#fef2f2' : '#fffbeb',
+                      borderWidth: 1,
+                      borderColor: isBelowPartialPolicy ? '#fecaca' : '#fde68a',
+                      borderRadius: 12,
+                      padding: 10,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: isBelowPartialPolicy ? '#dc2626' : '#b45309',
+                      }}
+                    >
+                      ℹ️ Abonos parciales deshabilitados por oficina. Mínimo a recaudar: {formatCOP(minAllowedAmount)}.
+                    </Text>
+                  </View>
+                )}
 
                 {/* 4 Píldoras de Monto Precalculadas */}
                 <Text style={styles.fieldLabel}>Atajos de Monto en 1 Toque</Text>
@@ -387,9 +463,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               {/* Footer */}
               <View style={styles.footer}>
                 <TouchableOpacity
-                  style={[styles.confirmBtn, isSubmitting && styles.confirmBtnDisabled]}
+                  style={[
+                    styles.confirmBtn,
+                    (isSubmitting || isOverpaying || isBelowPartialPolicy || currentNumericAmount <= 0) &&
+                      styles.confirmBtnDisabled,
+                  ]}
                   onPress={handleConfirmPayment}
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting || isOverpaying || isBelowPartialPolicy || currentNumericAmount <= 0
+                  }
                 >
                   <CheckCircle2 size={20} color="#ffffff" style={{ marginRight: 8 }} />
                   <Text style={styles.confirmBtnText}>
@@ -402,7 +484,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -439,12 +521,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: -0.4,
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -476,16 +560,19 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   infoLabel: {
+    fontFamily: FONT_FAMILY,
     color: COLORS.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },
   infoVal: {
+    fontFamily: FONT_FAMILY,
     color: COLORS.textPrimary,
     fontWeight: '800',
     fontSize: 13,
   },
   fieldLabel: {
+    fontFamily: FONT_FAMILY,
     color: COLORS.textMuted,
     fontSize: 10,
     fontWeight: '800',
@@ -505,6 +592,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.inputBorder,
   },
   floatingInternalLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -519,6 +607,7 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   input: {
+    fontFamily: FONT_FAMILY,
     flex: 1,
     height: 42,
     color: COLORS.textPrimary,
@@ -547,6 +636,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
   amountPillTitle: {
+    fontFamily: FONT_FAMILY,
     color: COLORS.textSecondary,
     fontSize: 11,
     fontWeight: '700',
@@ -555,6 +645,7 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   amountPillValue: {
+    fontFamily: FONT_FAMILY,
     color: COLORS.textPrimary,
     fontSize: 15,
     fontWeight: '900',
@@ -582,6 +673,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.dockBg,
   },
   methodBtnText: {
+    fontFamily: FONT_FAMILY,
     color: COLORS.textSecondary,
     fontWeight: '700',
     fontSize: 12,
@@ -601,6 +693,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   notesInput: {
+    fontFamily: FONT_FAMILY,
     height: 30,
     fontSize: 13,
     fontWeight: '600',
@@ -622,6 +715,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   confirmBtnText: {
+    fontFamily: FONT_FAMILY,
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '800',
@@ -651,18 +745,21 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   semanticApprovedPillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '900',
     color: COLORS.success,
     letterSpacing: 0.5,
   },
   receiptAmountText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 32,
     fontWeight: '900',
     letterSpacing: -0.8,
     color: COLORS.textPrimary,
   },
   receiptSubText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.textMuted,
@@ -721,6 +818,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   receiptMetaTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -732,11 +830,13 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   breakdownLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
   breakdownValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textPrimary,
     fontWeight: '800',
@@ -752,6 +852,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   whatsappReceiptBtnText: {
+    fontFamily: FONT_FAMILY,
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '800',
@@ -767,6 +868,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   doneBtnText: {
+    fontFamily: FONT_FAMILY,
     color: COLORS.textPrimary,
     fontSize: 14,
     fontWeight: '800',

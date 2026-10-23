@@ -77,6 +77,8 @@ public class PaymentEntity {
     public void setAmount(BigDecimal amount) { this.amount = amount; }
     public String getMethod() { return method; }
     public void setMethod(String method) { this.method = method; }
+    public String getPaymentMethod() { return method; }
+    public void setPaymentMethod(String paymentMethod) { this.method = paymentMethod; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public String getCreatedAt() { return createdAt; }

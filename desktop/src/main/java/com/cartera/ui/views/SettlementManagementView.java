@@ -3,11 +3,14 @@ package com.cartera.ui.views;
 import com.cartera.infrastructure.persistence.entity.AppUserEntity;
 import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
 import com.cartera.infrastructure.persistence.entity.DailySettlementEntity;
+import com.cartera.infrastructure.persistence.entity.RouteEntity;
 import com.cartera.infrastructure.persistence.repository.AppUserRepository;
 import com.cartera.infrastructure.persistence.repository.DailySettlementRepository;
+import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.settlement.application.SettlementUseCase;
 import com.cartera.settlement.application.SettlementUseCase.DaySettlementSummary;
+import com.cartera.ui.util.CurrencyInputUtil;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -49,6 +52,7 @@ public class SettlementManagementView extends VBox {
     private final SettlementUseCase settlementUseCase;
     private final DailySettlementRepository settlementRepository;
     private final AppUserRepository userRepository;
+    private final RouteRepository routeRepository;
     private final Stage ownerStage;
 
     private final DatePicker dpDate = new DatePicker(LocalDate.now());
@@ -77,8 +81,10 @@ public class SettlementManagementView extends VBox {
     private final ObservableList<DailySettlementEntity> historyList = FXCollections.observableArrayList();
     private final TableView<DailySettlementEntity> historyTable = new TableView<>();
 
+    private final VBox scrollableContent = new VBox(18);
+
     public SettlementManagementView(SettlementUseCase settlementUseCase, DailySettlementRepository settlementRepository) {
-        this(settlementUseCase, settlementRepository, null, null);
+        this(settlementUseCase, settlementRepository, null, null, null);
     }
 
     public SettlementManagementView(
@@ -87,9 +93,20 @@ public class SettlementManagementView extends VBox {
             AppUserRepository userRepository,
             Stage ownerStage
     ) {
+        this(settlementUseCase, settlementRepository, userRepository, null, ownerStage);
+    }
+
+    public SettlementManagementView(
+            SettlementUseCase settlementUseCase,
+            DailySettlementRepository settlementRepository,
+            AppUserRepository userRepository,
+            RouteRepository routeRepository,
+            Stage ownerStage
+    ) {
         this.settlementUseCase = settlementUseCase;
         this.settlementRepository = settlementRepository;
         this.userRepository = userRepository;
+        this.routeRepository = routeRepository;
         this.ownerStage = ownerStage;
 
         setSpacing(18);
@@ -97,10 +114,19 @@ public class SettlementManagementView extends VBox {
         setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
+
+        ScrollPane scrollPane = new ScrollPane(scrollableContent);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
+
         buildMetrics();
         buildSettlementCard();
         buildExpensesCard();
         buildHistoryTableCard();
+
+        getChildren().add(scrollPane);
+
         loadCollectors();
         refresh();
     }
@@ -122,7 +148,7 @@ public class SettlementManagementView extends VBox {
 
         cmbCollector.getStyleClass().add("search-field");
         cmbCollector.setPrefWidth(220);
-        cmbCollector.valueProperty().addListener((obs, old, val) -> refresh());
+        cmbCollector.valueProperty().addListener((obs, old, val) -> refreshInternal());
 
         Button btnAddExpense = new Button("+ Registrar Gasto");
         btnAddExpense.setStyle("-fx-background-color: #f97316; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 14; -fx-background-radius: 8; -fx-cursor: hand;");
@@ -152,7 +178,7 @@ public class SettlementManagementView extends VBox {
         HBox.setHgrow(card3, Priority.ALWAYS);
 
         metrics.getChildren().addAll(card1, card2, card3);
-        getChildren().add(metrics);
+        scrollableContent.getChildren().add(metrics);
     }
 
     private VBox createMetricCard(String title, Label valueLabel, String subtitle) {
@@ -182,7 +208,6 @@ public class SettlementManagementView extends VBox {
         lblStatusBadge.setStyle("-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 12;");
         cardHeader.getChildren().addAll(cardTitle, spacer, lblStatusBadge);
 
-        // Grid de Cuadre
         GridPane grid = new GridPane();
         grid.setHgap(20);
         grid.setVgap(14);
@@ -200,25 +225,28 @@ public class SettlementManagementView extends VBox {
         grid.add(createFieldBox("Diferencia / Cuadre", lblDifference), 1, 0);
         grid.add(createFieldBox("Observaciones de Auditoría", txtJustification), 0, 1, 2, 1);
 
-        // Panel de Nómina (para consumos personales / descuadres)
         buildPayrollPanel();
 
-        // Feedback
+        lblFeedback.setWrapText(true);
         lblFeedback.setVisible(false);
         lblFeedback.setManaged(false);
 
-        // Acción
         HBox actionBox = new HBox(12);
         actionBox.setAlignment(Pos.CENTER_RIGHT);
+
+        Button btnCopyWhatsAppReport = new Button("📲 Copiar Reporte WhatsApp");
+        btnCopyWhatsAppReport.getStyleClass().add("btn-secondary");
+        btnCopyWhatsAppReport.setStyle("-fx-font-size: 13px; -fx-padding: 8 16;");
+        btnCopyWhatsAppReport.setOnAction(e -> copyCuadreWhatsAppReport());
 
         btnCloseSettlement.getStyleClass().add("btn-primary");
         btnCloseSettlement.setStyle("-fx-font-size: 13px; -fx-padding: 8 18;");
         btnCloseSettlement.setOnAction(e -> doCloseSettlement());
 
-        actionBox.getChildren().add(btnCloseSettlement);
+        actionBox.getChildren().addAll(btnCopyWhatsAppReport, btnCloseSettlement);
 
         card.getChildren().addAll(cardHeader, grid, payrollBox, lblFeedback, actionBox);
-        getChildren().add(card);
+        scrollableContent.getChildren().add(card);
     }
 
     private void buildPayrollPanel() {
@@ -259,7 +287,7 @@ public class SettlementManagementView extends VBox {
                 cmbPayrollReason
         );
 
-        Label help = new Label("💡 El segundo audio especifica: Si el cobrador compró gaseosa, agua o almuerzo, se le descuenta de la nómina al empleado.");
+        Label help = new Label("💡 Política operativa: Los consumos personales del cobrador (almuerzo, bebidas o anticipos) no son gastos de ruta y se descuentan de su nómina.");
         help.setStyle("-fx-text-fill: #b45309; -fx-font-size: 11px; -fx-font-style: italic;");
 
         payrollBox.getChildren().addAll(chkPayrollDeduction, inputs, help);
@@ -308,7 +336,7 @@ public class SettlementManagementView extends VBox {
         expensesTable.setItems(routeExpensesObservable);
 
         card.getChildren().addAll(header, expensesTable);
-        getChildren().add(card);
+        scrollableContent.getChildren().add(card);
     }
 
     @SuppressWarnings("unchecked")
@@ -341,6 +369,7 @@ public class SettlementManagementView extends VBox {
         titleBox.getChildren().addAll(title, spacer, btnViewVoucher);
 
         historyTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        historyTable.setPrefHeight(220);
         VBox.setVgrow(historyTable, Priority.ALWAYS);
 
         TableColumn<DailySettlementEntity, String> colDate = new TableColumn<>("FECHA CIERRE");
@@ -386,10 +415,11 @@ public class SettlementManagementView extends VBox {
         historyTable.setItems(historyList);
 
         tableCard.getChildren().addAll(titleBox, historyTable);
-        getChildren().add(tableCard);
+        scrollableContent.getChildren().add(tableCard);
     }
 
     private void loadCollectors() {
+        UserOption prevSelected = cmbCollector.getValue();
         cmbCollector.getItems().clear();
         if (userRepository != null) {
             List<AppUserEntity> users = userRepository.findAll().stream()
@@ -401,6 +431,31 @@ public class SettlementManagementView extends VBox {
         }
         if (cmbCollector.getItems().isEmpty()) {
             cmbCollector.getItems().add(new UserOption("usr-col-1", "Carlos Cobrador"));
+        }
+
+        // Si hay una ruta activa seleccionada globalmente, sincronizar con su cobrador asignado
+        String selectedRoute = UserSessionContext.getSelectedRouteId();
+        if (routeRepository != null && selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute)) {
+            String assignedCollector = routeRepository.findById(selectedRoute)
+                    .map(RouteEntity::getCollectorId)
+                    .orElse(null);
+            if (assignedCollector != null) {
+                for (UserOption opt : cmbCollector.getItems()) {
+                    if (assignedCollector.equalsIgnoreCase(opt.id())) {
+                        cmbCollector.setValue(opt);
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (prevSelected != null) {
+            for (UserOption opt : cmbCollector.getItems()) {
+                if (prevSelected.id().equals(opt.id())) {
+                    cmbCollector.setValue(opt);
+                    return;
+                }
+            }
         }
         cmbCollector.getSelectionModel().selectFirst();
     }
@@ -414,6 +469,11 @@ public class SettlementManagementView extends VBox {
     }
 
     public void refresh() {
+        loadCollectors();
+        refreshInternal();
+    }
+
+    private void refreshInternal() {
         LocalDate date = dpDate.getValue() != null ? dpDate.getValue() : LocalDate.now();
         UserOption selectedUser = cmbCollector.getValue();
         String collectorId = selectedUser != null ? selectedUser.id() : "usr-col-1";
@@ -453,7 +513,6 @@ public class SettlementManagementView extends VBox {
 
         updateDifference();
 
-        // Cargar historial
         List<DailySettlementEntity> history = settlementRepository.findAll().stream()
                 .sorted(Comparator.comparing(DailySettlementEntity::getSettledAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
@@ -462,14 +521,14 @@ public class SettlementManagementView extends VBox {
 
     private void updateDifference() {
         try {
-            String clean = txtDelivered.getText().replaceAll("[^0-9.]", "").trim();
-            BigDecimal delivered = clean.isEmpty() ? BigDecimal.ZERO : new BigDecimal(clean);
+            BigDecimal delivered = CurrencyInputUtil.parseAmount(txtDelivered.getText());
             BigDecimal netExpected = currentSummary != null ? currentSummary.netExpectedCash() : BigDecimal.ZERO;
 
             BigDecimal diff = delivered.subtract(netExpected);
             if (diff.compareTo(BigDecimal.ZERO) == 0) {
                 lblDifference.setText("$ 0 (CUADRADO EXACTO)");
                 lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #059669;");
+                txtJustification.setPromptText("Observaciones o notas de auditoría del cierre...");
                 if (currentSummary != null && !currentSummary.isClosed()) {
                     payrollBox.setVisible(false);
                     payrollBox.setManaged(false);
@@ -477,6 +536,7 @@ public class SettlementManagementView extends VBox {
             } else if (diff.compareTo(BigDecimal.ZERO) > 0) {
                 lblDifference.setText("+ " + CURRENCY.format(diff) + "  (SOBRANTE)");
                 lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #2563eb;");
+                txtJustification.setPromptText("Observaciones obligatorias para justificar el descuadre *");
                 if (currentSummary != null && !currentSummary.isClosed()) {
                     payrollBox.setVisible(false);
                     payrollBox.setManaged(false);
@@ -485,6 +545,7 @@ public class SettlementManagementView extends VBox {
                 BigDecimal faltante = diff.abs();
                 lblDifference.setText("- " + CURRENCY.format(faltante) + " (FALTANTE / DESCUADRE)");
                 lblDifference.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #dc2626;");
+                txtJustification.setPromptText("Observaciones obligatorias para justificar el descuadre *");
                 if (currentSummary != null && !currentSummary.isClosed()) {
                     payrollBox.setVisible(true);
                     payrollBox.setManaged(true);
@@ -499,7 +560,9 @@ public class SettlementManagementView extends VBox {
     private void openNewExpenseDialog() {
         UserOption selectedUser = cmbCollector.getValue();
         String collectorId = selectedUser != null ? selectedUser.id() : "usr-col-1";
-        RouteExpenseDialog.show(ownerStage, collectorId, "route-1", settlementUseCase, saved -> {
+        String activeRoute = UserSessionContext.getSelectedRouteId();
+        String routeId = "ALL".equalsIgnoreCase(activeRoute) ? "route-norte" : activeRoute;
+        RouteExpenseDialog.show(ownerStage, collectorId, routeId, settlementUseCase, saved -> {
             if (saved) {
                 refresh();
             }
@@ -512,24 +575,20 @@ public class SettlementManagementView extends VBox {
         }
 
         try {
-            String clean = txtDelivered.getText().replaceAll("[^0-9.]", "").trim();
-            if (clean.isEmpty()) {
+            if (txtDelivered.getText() == null || txtDelivered.getText().trim().isEmpty()) {
                 showError("Ingresa el monto de efectivo físico entregado.");
                 return;
             }
 
-            BigDecimal delivered = new BigDecimal(clean);
+            BigDecimal delivered = CurrencyInputUtil.parseAmount(txtDelivered.getText());
             String justification = txtJustification.getText();
 
             BigDecimal payrollAmount = BigDecimal.ZERO;
             String payrollReason = null;
 
             if (chkPayrollDeduction.isSelected() && payrollBox.isVisible()) {
-                String cleanPayroll = txtPayrollAmount.getText().replaceAll("[^0-9.]", "").trim();
-                if (!cleanPayroll.isEmpty()) {
-                    payrollAmount = new BigDecimal(cleanPayroll);
-                    payrollReason = cmbPayrollReason.getValue();
-                }
+                payrollAmount = CurrencyInputUtil.parseAmount(txtPayrollAmount.getText());
+                payrollReason = cmbPayrollReason.getValue();
             }
 
             String authorId = UserSessionContext.getSession()
@@ -547,7 +606,7 @@ public class SettlementManagementView extends VBox {
 
             refresh();
 
-            lblFeedback.setText("Liquidación diaria cerrada y archivada inmutablemente.");
+            lblFeedback.setText("Liquidación diaria cerrada inmutablemente y copia de seguridad automática creada.");
             lblFeedback.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);
@@ -619,6 +678,41 @@ public class SettlementManagementView extends VBox {
             case "GASTO_RUTA_VIATICOS" -> "Peaje / Viáticos";
             default -> "Gasto Operativo Ruta";
         };
+    }
+
+    private void copyCuadreWhatsAppReport() {
+        if (currentSummary == null) return;
+        LocalDate date = dpDate.getValue() != null ? dpDate.getValue() : LocalDate.now();
+        UserOption selectedUser = cmbCollector.getValue();
+        String collectorName = selectedUser != null ? selectedUser.displayName() : "Cobrador";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        sb.append("📊 *REPORTE DE CUADRE DIARIO*\n");
+        sb.append("📅 *Fecha:* ").append(date).append("\n");
+        sb.append("👤 *Cobrador:* ").append(collectorName).append("\n");
+        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+        sb.append("📥 *1. COBRADO HOY*\n");
+        sb.append("• *Total Cobrado:* ").append(CURRENCY.format(currentSummary.totalCollected())).append("\n\n");
+        sb.append("⛽ *2. GASTOS DE RUTA:* ").append(CURRENCY.format(currentSummary.routeExpenses())).append("\n");
+        sb.append("💵 *3. NETO ESPERADO EN EFECTIVO:* ").append(CURRENCY.format(currentSummary.netExpectedCash())).append("\n\n");
+        if (currentSummary.isClosed() && currentSummary.settlement() != null) {
+            sb.append("✅ *ESTADO:* JORNADA CERRADA\n");
+            sb.append("• *Efectivo Entregado:* ").append(CURRENCY.format(currentSummary.settlement().getActualCollection())).append("\n");
+        } else {
+            sb.append("⏳ *ESTADO:* JORNADA EN CURSO\n");
+        }
+        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        sb.append("_Generado desde Sistema de Cartera Desktop_");
+
+        javafx.scene.input.ClipboardContent content = new javafx.scene.input.ClipboardContent();
+        content.putString(sb.toString());
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(content);
+
+        lblFeedback.setText("¡Reporte de Cuadre copiado al portapapeles! Listo para pegar en WhatsApp.");
+        lblFeedback.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
+        lblFeedback.setVisible(true);
+        lblFeedback.setManaged(true);
     }
 
     private void showError(String msg) {

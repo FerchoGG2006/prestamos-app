@@ -20,5 +20,5 @@
 - **JDK 21 LTS**: Eclipse Temurin 21.0.12.1 instalado y verificado.
 - **Gradle**: Wrapper 8.10+ ejecutando pruebas limpias (`BUILD SUCCESSFUL`).
 - **Ejecución de la app**:
-  - Directo por script: `ejecutar-java.bat` o `iniciar-cartera.vbs`.
+  - Directo por script: `ejecutar.bat` o `iniciar-cartera.vbs`.
   - Vía Gradle: `./gradlew run` desde la carpeta `desktop`.

@@ -72,10 +72,10 @@ public class RenewLoanUseCase {
             throw new IllegalStateException("Solo se pueden renovar créditos en estado ACTIVO.");
         }
 
-        // Calcular saldo restante del crédito anterior
+        // Calcular saldo restante de TODAS las cuotas no pagadas (PENDIENTE, PARCIAL, VENCIDA)
         List<InstallmentEntity> previousInstallments = installmentRepository.findByLoanId(cmd.previousLoanId());
         BigDecimal previousBalance = previousInstallments.stream()
-                .filter(i -> "PENDIENTE".equalsIgnoreCase(i.getStatus()))
+                .filter(i -> i.getPendingAmount() != null && i.getPendingAmount().compareTo(BigDecimal.ZERO) > 0)
                 .map(InstallmentEntity::getPendingAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -83,21 +83,25 @@ public class RenewLoanUseCase {
         BigDecimal cashToDisburse = cmd.newPrincipal().subtract(previousBalance).subtract(paperwork);
 
         if (cashToDisburse.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("El nuevo capital ($" + cmd.newPrincipal() + ") no alcanza para cubrir el saldo pendiente ($" + previousBalance + ").");
+            throw new IllegalArgumentException("El nuevo capital ($" + cmd.newPrincipal() + ") no alcanza para cubrir el saldo pendiente ($" + previousBalance + ") y papelería ($" + paperwork + ").");
         }
 
         String newLoanId = UUID.randomUUID().toString();
         String nowTime = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         String userId = cmd.authorUserId() != null ? cmd.authorUserId() : previousLoan.getCollectorId();
+        String routeId = (previousLoan.getRouteId() != null && !previousLoan.getRouteId().isBlank() && !"route-1".equalsIgnoreCase(previousLoan.getRouteId()))
+                ? previousLoan.getRouteId()
+                : "route-norte";
 
-        // 1. Finalizar crédito viejo y marcar sus cuotas como canceladas por renovación
-        previousLoan.setStatus("FINALIZADO");
+        // 1. Marcar crédito anterior como RENOVADO y cerrar todas sus cuotas pendientes
+        previousLoan.setStatus("RENOVADO");
         loanRepository.save(previousLoan);
 
         for (InstallmentEntity inst : previousInstallments) {
-            if ("PENDIENTE".equalsIgnoreCase(inst.getStatus())) {
-                inst.setStatus("PAGADA");
+            if (inst.getPendingAmount() != null && inst.getPendingAmount().compareTo(BigDecimal.ZERO) > 0
+                    || !"PAGADA".equalsIgnoreCase(inst.getStatus())) {
                 inst.setPaidAmount(inst.getAmount());
+                inst.setStatus("PAGADA");
                 installmentRepository.save(inst);
             }
         }
@@ -109,7 +113,7 @@ public class RenewLoanUseCase {
         LoanEntity newLoan = new LoanEntity(
                 newLoanId,
                 previousLoan.getCustomerId(),
-                previousLoan.getRouteId(),
+                routeId,
                 userId,
                 previousLoan.getId(),
                 "RENOVACION",
@@ -157,7 +161,7 @@ public class RenewLoanUseCase {
         if (cashToDisburse.compareTo(BigDecimal.ZERO) > 0) {
             cashMovementRepository.save(new CashMovementEntity(
                     UUID.randomUUID().toString(),
-                    previousLoan.getRouteId(),
+                    routeId,
                     userId,
                     null,
                     "EGRESO",
@@ -177,7 +181,7 @@ public class RenewLoanUseCase {
                 renewalId,
                 "RENOVACION_CREDITO",
                 "Crédito anterior: " + previousLoan.getId() + " Saldo: " + previousBalance,
-                "Nuevo crédito: " + newLoanId + " Capital: " + cmd.newPrincipal() + " Desembolso neto: " + cashToDisburse,
+                "Nuevo crédito: " + newLoanId + " Capital: " + cmd.newPrincipal() + " Papelería: " + paperwork + " Desembolso neto: " + cashToDisburse,
                 "Renovación y reestructuración de crédito",
                 nowTime
         ));

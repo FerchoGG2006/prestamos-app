@@ -3,6 +3,11 @@
    Diseño limpio, descansado a la vista, con acentos esmeralda y azul cálido.
    ========================================================================== */
 
+/* Fuente tipográfica uniforme en toda la aplicación */
+.root {
+    -fx-font-family: 'Segoe UI', 'Inter', -apple-system, 'Helvetica Neue', sans-serif;
+}
+
 /* Fondo general de la aplicación y vistas */
 .app-root, .view-container {
     -fx-background-color: #f8fafc;

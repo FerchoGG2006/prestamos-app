@@ -2,11 +2,18 @@ package com.cartera.ui;
 
 import com.cartera.CarteraInfrastructureApplication;
 import com.cartera.collections.application.TodayCollectionsService;
-import com.cartera.infrastructure.persistence.repository.CustomerRepository;
-import com.cartera.infrastructure.persistence.repository.LoanRepository;
+import com.cartera.infrastructure.backup.DatabaseBackupService;
+import com.cartera.infrastructure.persistence.entity.RouteEntity;
+import com.cartera.infrastructure.persistence.repository.*;
 import com.cartera.infrastructure.security.AuthService;
 import com.cartera.infrastructure.security.UserSession;
+import com.cartera.infrastructure.security.UserSessionContext;
+import com.cartera.loans.application.CancelLoanUseCase;
 import com.cartera.payments.application.RecordPaymentUseCase;
+import com.cartera.payments.application.ReversePaymentUseCase;
+import com.cartera.reports.application.ExcelReportExporter;
+import com.cartera.sync.application.MobileSyncProcessorService;
+import com.cartera.sync.infrastructure.LanSyncServerService;
 import com.cartera.ui.views.CashManagementView;
 import com.cartera.ui.views.ConfigurationView;
 import com.cartera.ui.views.CreditHistoryView;
@@ -26,6 +33,7 @@ import javafx.geometry.Rectangle2D;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.BorderPane;
@@ -41,10 +49,19 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Native JavaFX entry point for Sistema de Cartera. */
 public final class CarteraApplication extends Application {
+
+    public record GlobalRouteOption(String id, String displayName) {
+        @Override
+        public String toString() {
+            return displayName;
+        }
+    }
+
     private ConfigurableApplicationContext context;
     private StackPane appRoot;
     private BorderPane root;
@@ -53,9 +70,12 @@ public final class CarteraApplication extends Application {
     private final Map<String, Button> navButtons = new HashMap<>();
 
     private AuthService authService;
+    private RouteRepository routeRepository;
     private LoginView loginView;
     private Label lblUserName;
     private Label lblUserRole;
+    private final ComboBox<GlobalRouteOption> cmbGlobalRoute = new ComboBox<>();
+    private String currentViewKey = "Inicio";
 
     private DashboardView dashboardView;
     private TodayCollectionsView todayCollectionsView;
@@ -81,6 +101,7 @@ public final class CarteraApplication extends Application {
     @Override
     public void start(Stage stage) {
         authService = context.getBean(AuthService.class);
+        routeRepository = context.getBean(RouteRepository.class);
 
         root = new BorderPane();
         root.setStyle("-fx-background-color: #f8fafc;");
@@ -88,35 +109,87 @@ public final class CarteraApplication extends Application {
         // Inicializar vistas con servicios inyectados de Spring
         var collectionsService = context.getBean(TodayCollectionsService.class);
         var paymentUseCase = context.getBean(RecordPaymentUseCase.class);
+        var reversePaymentUseCase = context.getBean(ReversePaymentUseCase.class);
         var customerRepository = context.getBean(CustomerRepository.class);
         var loanRepository = context.getBean(LoanRepository.class);
         var createCustomerUseCase = context.getBean(com.cartera.customers.application.CreateCustomerUseCase.class);
         var createLoanUseCase = context.getBean(com.cartera.loans.application.CreateLoanUseCase.class);
-        var cashMovementRepository = context.getBean(com.cartera.infrastructure.persistence.repository.CashMovementRepository.class);
-        var auditLogRepository = context.getBean(com.cartera.infrastructure.persistence.repository.AuditLogRepository.class);
-        var dailySettlementRepository = context.getBean(com.cartera.infrastructure.persistence.repository.DailySettlementRepository.class);
+        var cancelLoanUseCase = context.getBean(CancelLoanUseCase.class);
+        var cashMovementRepository = context.getBean(CashMovementRepository.class);
+        var auditLogRepository = context.getBean(AuditLogRepository.class);
+        var dailySettlementRepository = context.getBean(DailySettlementRepository.class);
         var settlementUseCase = context.getBean(com.cartera.settlement.application.SettlementUseCase.class);
-        var installmentRepository = context.getBean(com.cartera.infrastructure.persistence.repository.InstallmentRepository.class);
+        var installmentRepository = context.getBean(InstallmentRepository.class);
         var renewLoanUseCase = context.getBean(com.cartera.renewals.application.RenewLoanUseCase.class);
+        var renewalRepository = context.getBean(RenewalRepository.class);
+        var paymentPromiseRepository = context.getBean(PaymentPromiseRepository.class);
+        var settingRepository = context.getBean(SystemSettingRepository.class);
+        var userRepository = context.getBean(AppUserRepository.class);
+        var paymentRepository = context.getBean(PaymentRepository.class);
+        var paymentAllocationRepository = context.getBean(PaymentAllocationRepository.class);
+        var syncProcessorService = context.getBean(MobileSyncProcessorService.class);
+        var lanSyncServerService = context.getBean(LanSyncServerService.class);
+        var excelReportExporter = context.getBean(ExcelReportExporter.class);
+        var databaseBackupService = context.getBean(DatabaseBackupService.class);
 
         dashboardView = new DashboardView(collectionsService, () -> navigateTo("Cobros y Rutas"));
 
-        todayCollectionsView = new TodayCollectionsView(collectionsService, paymentUseCase, settlementUseCase, cashMovementRepository, stage, () -> {
-            dashboardView.refresh();
-            if (loansView != null) loansView.refresh();
-            if (customersView != null) customersView.refresh();
-        });
+        todayCollectionsView = new TodayCollectionsView(
+                collectionsService,
+                paymentUseCase,
+                settlementUseCase,
+                cashMovementRepository,
+                customerRepository,
+                loanRepository,
+                installmentRepository,
+                createLoanUseCase,
+                renewalRepository,
+                paymentPromiseRepository,
+                auditLogRepository,
+                settingRepository,
+                syncProcessorService,
+                lanSyncServerService,
+                stage,
+                () -> {
+                    dashboardView.refresh();
+                    if (loansView != null) loansView.refresh();
+                    if (customersView != null) customersView.refresh();
+                }
+        );
 
-        loansView = new LoansView(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, stage, () -> {
-            dashboardView.refresh();
-            todayCollectionsView.refreshData();
-            if (customersView != null) customersView.refresh();
-        });
+        loansView = new LoansView(
+                loanRepository,
+                customerRepository,
+                installmentRepository,
+                createLoanUseCase,
+                renewLoanUseCase,
+                cancelLoanUseCase,
+                settingRepository,
+                stage,
+                () -> {
+                    dashboardView.refresh();
+                    todayCollectionsView.refreshData();
+                    if (customersView != null) customersView.refresh();
+                }
+        );
 
-        var paymentRepository = context.getBean(com.cartera.infrastructure.persistence.repository.PaymentRepository.class);
-        var paymentAllocationRepository = context.getBean(com.cartera.infrastructure.persistence.repository.PaymentAllocationRepository.class);
-
-        customersView = new CustomersView(customerRepository, createCustomerUseCase, loanRepository, installmentRepository, paymentRepository, paymentAllocationRepository, createLoanUseCase, renewLoanUseCase, loansView, stage);
+        customersView = new CustomersView(
+                customerRepository,
+                createCustomerUseCase,
+                loanRepository,
+                installmentRepository,
+                paymentRepository,
+                paymentAllocationRepository,
+                createLoanUseCase,
+                renewLoanUseCase,
+                settingRepository,
+                auditLogRepository,
+                routeRepository,
+                reversePaymentUseCase,
+                cancelLoanUseCase,
+                loansView,
+                stage
+        );
 
         var creditHistoryService = context.getBean(com.cartera.history.application.CreditHistoryService.class);
         creditHistoryView = new CreditHistoryView(creditHistoryService, stage);
@@ -126,14 +199,13 @@ public final class CarteraApplication extends Application {
         });
 
         var cashManagementView = new CashManagementView(cashMovementRepository, auditLogRepository, stage);
-        var settingRepository = context.getBean(com.cartera.infrastructure.persistence.repository.SystemSettingRepository.class);
-        var userRepository = context.getBean(com.cartera.infrastructure.persistence.repository.AppUserRepository.class);
 
-        settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository, userRepository, stage);
+        settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository, userRepository, routeRepository, stage);
         treasuryManagementView = new TreasuryManagementView(cashManagementView, settlementManagementView);
 
-        reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository);
-        configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, stage);
+        reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository, excelReportExporter, stage);
+        configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, routeRepository, databaseBackupService, stage);
+        configurationView.setOnRoutesChanged(this::reloadGlobalRoutes);
 
         mainContainer = new BorderPane();
         mainContainer.setStyle("-fx-background-color: #f8fafc;");
@@ -178,10 +250,13 @@ public final class CarteraApplication extends Application {
             lblUserName.setText(session.fullName());
         }
         if (lblUserRole != null) {
-            String roleText = session.isAdmin() ? "Administrador • Acceso Total" : "Cobrador • Ruta Activa";
+            String roleText = session.isAdmin()
+                    ? "Administrador • Acceso Total"
+                    : (session.isSupervisor() ? "Supervisor • Control Operativo" : "Cobrador • Ruta Activa");
             lblUserRole.setText(roleText);
         }
 
+        reloadGlobalRoutes();
         buildSidebarMenu(session);
 
         if (session.isCollector()) {
@@ -247,7 +322,7 @@ public final class CarteraApplication extends Application {
         btnLogout.setOnAction(e -> onLogout());
         box.getChildren().add(btnLogout);
 
-        var versionLabel = new Label("v1.3.0 Desktop • SQLite Nativo");
+        var versionLabel = new Label("v1.4.0 Desktop • SQLite Multi-Ruta");
         versionLabel.getStyleClass().add("sidebar-version");
         box.getChildren().add(versionLabel);
 
@@ -277,7 +352,7 @@ public final class CarteraApplication extends Application {
 
             navContainer.getChildren().add(createSectionHeader("SUPERVISIÓN Y CONTROL"));
             navContainer.getChildren().add(createNavButton("Liquidación de Rutas", "Liquidación Diaria"));
-            navContainer.getChildren().add(createNavButton("Arqueo y Flujo de Caja", "Tesorería y Cierres"));
+            navContainer.getChildren().add(createNavButton("Administrativo de Ruta", "Administrativo"));
 
             navContainer.getChildren().add(createSectionHeader("OPERACIÓN"));
             navContainer.getChildren().add(createNavButton("Supervisión de Cobros", "Cobros y Rutas"));
@@ -306,7 +381,7 @@ public final class CarteraApplication extends Application {
     }
 
     private HBox topBar() {
-        var bar = new HBox();
+        var bar = new HBox(14);
         bar.getStyleClass().add("top-bar");
         bar.setAlignment(Pos.CENTER_LEFT);
 
@@ -316,14 +391,63 @@ public final class CarteraApplication extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
+        // Selector Global de Ruta Activa
+        HBox routeSelectorBox = new HBox(8);
+        routeSelectorBox.setAlignment(Pos.CENTER_LEFT);
+        Label lblRoute = new Label("📍 Ruta Activa:");
+        lblRoute.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px; -fx-font-weight: bold;");
+
+        cmbGlobalRoute.setPrefWidth(220);
+        cmbGlobalRoute.getStyleClass().add("search-field");
+        reloadGlobalRoutes();
+        cmbGlobalRoute.setOnAction(e -> {
+            GlobalRouteOption opt = cmbGlobalRoute.getValue();
+            if (opt != null) {
+                UserSessionContext.setSelectedRouteId(opt.id());
+                refreshActiveViews();
+            }
+        });
+        routeSelectorBox.getChildren().addAll(lblRoute, cmbGlobalRoute);
+
         var status = new Label("OFFLINE \u2014 SQLite Activo");
         status.getStyleClass().add("status-ok");
 
-        bar.getChildren().addAll(topTitle, spacer, status);
+        bar.getChildren().addAll(topTitle, spacer, routeSelectorBox, status);
         return bar;
     }
 
+    private void reloadGlobalRoutes() {
+        String prevSelected = UserSessionContext.getSelectedRouteId();
+        cmbGlobalRoute.getItems().clear();
+        GlobalRouteOption allOption = new GlobalRouteOption("ALL", "Todas las Rutas (Consolidado)");
+        cmbGlobalRoute.getItems().add(allOption);
+
+        GlobalRouteOption targetSelection = allOption;
+        if (routeRepository != null) {
+            List<RouteEntity> routes = routeRepository.findAll();
+            for (RouteEntity r : routes) {
+                if (r.getActive() != null && r.getActive() == 0) continue;
+                GlobalRouteOption opt = new GlobalRouteOption(r.getId(), r.getName() + " (" + r.getId() + ")");
+                cmbGlobalRoute.getItems().add(opt);
+                if (prevSelected != null && prevSelected.equalsIgnoreCase(r.getId())) {
+                    targetSelection = opt;
+                }
+            }
+        }
+        cmbGlobalRoute.setValue(targetSelection);
+    }
+
+    private void refreshActiveViews() {
+        if (dashboardView != null) dashboardView.refresh();
+        if (todayCollectionsView != null) todayCollectionsView.refreshData();
+        if (customersView != null) customersView.refresh();
+        if (loansView != null) loansView.refresh();
+        if (settlementManagementView != null) settlementManagementView.refresh();
+        if (reportsView != null) reportsView.refresh();
+    }
+
     private void navigateTo(String viewName) {
+        this.currentViewKey = viewName;
         String effectiveTitle = viewName;
         String activeKey = viewName;
 
@@ -368,11 +492,13 @@ public final class CarteraApplication extends Application {
                 if (creditHistoryView != null) creditHistoryView.refresh();
                 viewNode = creditHistoryView;
                 break;
+            case "Administrativo":
+            case "Administrativo de Ruta":
             case "Tesorería y Cierres":
             case "Caja":
             case "Tesorería":
-                activeKey = "Tesorería y Cierres";
-                effectiveTitle = "Caja y Tesorería";
+                activeKey = "Administrativo";
+                effectiveTitle = "Administrativo de Ruta (Patrimonio, Base y Cierres)";
                 treasuryManagementView.refresh();
                 viewNode = treasuryManagementView;
                 break;

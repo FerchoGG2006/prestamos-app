@@ -69,8 +69,19 @@ public class RecordPaymentUseCase {
             BigDecimal allocatedAmount,
             int installmentsAffectedCount,
             BigDecimal remainingLoanBalance,
-            boolean isLoanFullyPaid
-    ) {}
+            boolean isLoanFullyPaid,
+            boolean alreadyExisted
+    ) {
+        public PaymentExecutionResult(
+                String paymentId,
+                BigDecimal allocatedAmount,
+                int installmentsAffectedCount,
+                BigDecimal remainingLoanBalance,
+                boolean isLoanFullyPaid
+        ) {
+            this(paymentId, allocatedAmount, installmentsAffectedCount, remainingLoanBalance, isLoanFullyPaid, false);
+        }
+    }
 
     @Transactional
     public PaymentExecutionResult execute(RecordPaymentCommand command) {
@@ -94,7 +105,7 @@ public class RecordPaymentUseCase {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             int affected = allocationRepository.findByPaymentId(p.getId()).size();
             return new PaymentExecutionResult(p.getId(), p.getAmount(), affected, balance,
-                    balance.signum() == 0);
+                    balance.signum() == 0, true);
         }
 
         LoanEntity loan = loanRepository.findById(command.loanId())
@@ -135,7 +146,7 @@ public class RecordPaymentUseCase {
         var domainResult = applicationService.allocate(new Money(command.amount()), domainInstallments, pDate);
 
         String paymentId = UUID.randomUUID().toString();
-        String nowStr = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        String nowStr = pDate.atTime(LocalDateTime.now().toLocalTime()).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
         PaymentEntity paymentEntity = new PaymentEntity(
                 paymentId,
@@ -194,10 +205,10 @@ public class RecordPaymentUseCase {
         String cashMovementId = UUID.randomUUID().toString();
         CashMovementEntity cashMovement = new CashMovementEntity(
                 cashMovementId,
-                loan.getRouteId(),
+                loan.getRouteId() != null ? loan.getRouteId() : "route-norte",
                 collectorId,
                 null,
-                "ENTRADA",
+                "INGRESO",
                 "PAGO_CUOTA",
                 command.amount(),
                 paymentId,
@@ -227,7 +238,8 @@ public class RecordPaymentUseCase {
                 command.amount(),
                 domainResult.allocations().size(),
                 remainingBalance,
-                allPaid
+                allPaid,
+                false
         );
     }
 }

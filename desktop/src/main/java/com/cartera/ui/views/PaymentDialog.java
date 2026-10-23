@@ -1,8 +1,11 @@
 package com.cartera.ui.views;
 
 import com.cartera.collections.application.TodayCollectionsService.CollectionItem;
+import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.payments.application.RecordPaymentUseCase.RecordPaymentCommand;
+import com.cartera.ui.util.CurrencyInputUtil;
+import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -14,6 +17,8 @@ import javafx.stage.Stage;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -25,6 +30,14 @@ public class PaymentDialog {
     }
 
     public static void show(Stage parentStage, CollectionItem item, RecordPaymentUseCase useCase, Consumer<Boolean> onFinished) {
+        show(parentStage, item, useCase, null, onFinished);
+    }
+
+    public static void show(Stage parentStage,
+                            CollectionItem item,
+                            RecordPaymentUseCase useCase,
+                            SystemSettingRepository settingRepository,
+                            Consumer<Boolean> onFinished) {
         Stage dialog = new Stage();
         dialog.initModality(Modality.WINDOW_MODAL);
         dialog.initOwner(parentStage);
@@ -35,7 +48,7 @@ public class PaymentDialog {
 
         VBox root = new VBox(16);
         root.setStyle("-fx-background-color: #ffffff; -fx-padding: 24;");
-        root.setPrefWidth(460);
+        root.setPrefWidth(480);
 
         Label title = new Label("Registrar Cobro");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
@@ -81,6 +94,10 @@ public class PaymentDialog {
         cmbMethod.setMaxWidth(Double.MAX_VALUE);
         cmbMethod.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 6;");
 
+        CheckBox chkSendWhatsApp = new CheckBox("📲 Enviar recibo digital por WhatsApp automáticamente al confirmar");
+        chkSendWhatsApp.setStyle("-fx-text-fill: #15803d; -fx-font-weight: bold; -fx-font-size: 12px;");
+        chkSendWhatsApp.setSelected(false);
+
         // Mensaje de estado
         Label lblFeedback = new Label();
         lblFeedback.setStyle("-fx-font-size: 12px; -fx-wrap-text: true;");
@@ -105,6 +122,16 @@ public class PaymentDialog {
                     return;
                 }
 
+                boolean allowPartial = settingRepository == null || settingRepository.findById("route_allow_partial_payments")
+                        .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
+                        .orElse(true);
+                BigDecimal minRequired = item.installmentPending().min(item.loanBalance());
+                if (!allowPartial && amount.compareTo(minRequired) < 0) {
+                    lblFeedback.setText("Los abonos parciales están deshabilitados en Configuración. Debe cobrar mínimo la cuota pendiente (" + CURRENCY.format(minRequired) + ").");
+                    lblFeedback.setStyle("-fx-text-fill: #dc2626;");
+                    return;
+                }
+
                 btnConfirm.setDisable(true);
                 lblFeedback.setText("Registrando pago transaccional en SQLite...");
                 lblFeedback.setStyle("-fx-text-fill: #2563eb;");
@@ -124,6 +151,13 @@ public class PaymentDialog {
 
                 var res = useCase.execute(cmd);
 
+                String companyName = settingRepository != null
+                        ? settingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("SISTEMA DE CARTERA")
+                        : "SISTEMA DE CARTERA";
+                String collectorName = com.cartera.infrastructure.security.UserSessionContext.getSession()
+                        .map(com.cartera.infrastructure.security.UserSession::fullName)
+                        .orElse("Carlos Cobrador");
+
                 var receiptData = new ReceiptDialog.ReceiptData(
                         res.paymentId(),
                         item.fullName(),
@@ -132,13 +166,27 @@ public class PaymentDialog {
                         res.allocatedAmount(),
                         res.remainingLoanBalance(),
                         res.installmentsAffectedCount(),
-                        com.cartera.infrastructure.security.UserSessionContext.getSession()
-                                .map(com.cartera.infrastructure.security.UserSession::fullName)
-                                .orElse("Carlos Cobrador"),
+                        collectorName,
                         cmbMethod.getValue(),
-                        "SISTEMA DE CARTERA",
-                        ""
+                        companyName,
+                        item.phone()
                 );
+
+                if (chkSendWhatsApp.isSelected()) {
+                    String msg = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
+                            companyName,
+                            res.paymentId(),
+                            item.fullName(),
+                            item.documentNumber(),
+                            res.allocatedAmount(),
+                            res.remainingLoanBalance(),
+                            res.installmentsAffectedCount(),
+                            cmbMethod.getValue(),
+                            collectorName,
+                            LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                    );
+                    WhatsAppReceiptUtil.sendViaWhatsApp(item.phone(), msg);
+                }
 
                 dialog.close();
                 new ReceiptDialog(receiptData, parentStage).showAndWait();
@@ -158,7 +206,7 @@ public class PaymentDialog {
 
         actions.getChildren().addAll(btnCancel, btnConfirm);
 
-        root.getChildren().addAll(title, infoCard, lblAmount, txtAmount, shortcuts, lblMethod, cmbMethod, lblFeedback, actions);
+        root.getChildren().addAll(title, infoCard, lblAmount, txtAmount, shortcuts, lblMethod, cmbMethod, chkSendWhatsApp, lblFeedback, actions);
 
         Scene scene = new Scene(root);
         var theme = PaymentDialog.class.getResource("/ui/theme.css");
@@ -167,30 +215,7 @@ public class PaymentDialog {
         dialog.showAndWait();
     }
 
-    /**
-     * Parses a user-typed peso amount. Accepts "$ 15.000", "15,000", "15000", "15000.00", "15.000,50".
-     * A lone separator followed by exactly 3 digits is a thousands separator; otherwise it is decimal.
-     */
     static BigDecimal parseAmount(String input) {
-        if (input == null) throw new NumberFormatException("vacío");
-        String s = input.trim().replace("$", "").replace(" ", "").replace("\u00a0", "");
-        if (s.isEmpty()) throw new NumberFormatException("vacío");
-        int lastDot = s.lastIndexOf('.');
-        int lastComma = s.lastIndexOf(',');
-        if (lastDot >= 0 && lastComma >= 0) {
-            char decimal = lastDot > lastComma ? '.' : ',';
-            char group = decimal == '.' ? ',' : '.';
-            s = s.replace(String.valueOf(group), "").replace(decimal, '.');
-        } else if (lastDot >= 0 || lastComma >= 0) {
-            char sep = lastDot >= 0 ? '.' : ',';
-            int count = (int) s.chars().filter(c -> c == sep).count();
-            int digitsAfter = s.length() - s.lastIndexOf(sep) - 1;
-            if (count > 1 || digitsAfter == 3) {
-                s = s.replace(String.valueOf(sep), "");
-            } else {
-                s = s.replace(sep, '.');
-            }
-        }
-        return new BigDecimal(s);
+        return CurrencyInputUtil.parseRequiredAmount(input);
     }
 }

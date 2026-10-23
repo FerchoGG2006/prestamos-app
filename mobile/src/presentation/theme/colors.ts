@@ -79,3 +79,5 @@ export const COLORS = {
   borderStrong: '#CBD5E1',
   overlayBackdrop: 'rgba(15, 23, 42, 0.45)',
 };
+
+export { TYPOGRAPHY, FONT_FAMILY, FONT_FAMILY_MONO } from './typography';

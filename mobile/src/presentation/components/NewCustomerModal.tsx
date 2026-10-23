@@ -9,12 +9,12 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { LoanFrequency } from '../../core/domain/types';
 import { calculateLoanSummary, calculatePaperworkFee } from '../../core/domain/calculator';
 import { formatCOP } from '../../core/config/business-rules';
-import { UserPlus, X, Zap, Check } from 'lucide-react-native';
+import { UserPlus, X, Zap } from 'lucide-react-native';
 
 interface NewCustomerModalProps {
   visible: boolean;
@@ -33,22 +33,27 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const [fullName, setFullName] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
   const [phone, setPhone] = useState('');
+  const [whatsappPhone, setWhatsappPhone] = useState('');
   const [address, setAddress] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [referenceName, setReferenceName] = useState('');
   const [referencePhone, setReferencePhone] = useState('');
+  const [selectedRouteId, setSelectedRouteId] = useState('route-norte');
+  const [routeOrderStr, setRouteOrderStr] = useState('');
+
+  const availableRoutes = localStore.getRoutes();
 
   // Datos del Préstamo Inmediato
   const [withLoan, setWithLoan] = useState(true);
   const [principalStr, setPrincipalStr] = useState('300000');
   const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
-  const [installmentCountStr, setInstallmentCountStr] = useState('24');
+  const [installmentCountStr, setInstallmentCountStr] = useState('30');
   const [interestPercentStr, setInterestPercentStr] = useState('20');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const principal = parseInt(principalStr.replace(/\D/g, ''), 10) || 0;
-  const installmentCount = parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 24;
+  const installmentCount = parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 30;
   const interestRate = (parseFloat(interestPercentStr) || 20) / 100;
 
   const summary =
@@ -61,7 +66,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const quickPrincipals = [150000, 200000, 300000, 500000];
 
   const frequencies: Array<{ key: LoanFrequency; label: string; defaultCount: number }> = [
-    { key: 'DAILY', label: 'Diario', defaultCount: 24 },
+    { key: 'DAILY', label: 'Diario (30d)', defaultCount: 30 },
     { key: 'WEEKLY', label: 'Semanal', defaultCount: 4 },
     { key: 'BIWEEKLY', label: 'Quincenal', defaultCount: 2 },
     { key: 'MONTHLY', label: 'Mensual', defaultCount: 1 },
@@ -76,6 +81,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setFullName('');
     setDocumentNumber('');
     setPhone('');
+    setWhatsappPhone('');
     setAddress('');
     setNeighborhood('');
     setBusinessName('');
@@ -83,13 +89,23 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setReferencePhone('');
     setPrincipalStr('300000');
     setFrequency('DAILY');
-    setInstallmentCountStr('24');
+    setInstallmentCountStr('30');
     setWithLoan(true);
   };
 
   const handleSaveCustomerAndLoan = async () => {
     if (!fullName.trim() || !documentNumber.trim()) {
       Alert.alert('Campos requeridos', 'Ingrese el nombre completo y número de cédula del cliente.');
+      return;
+    }
+
+    if (!phone.trim()) {
+      Alert.alert('Teléfono requerido', 'Ingrese el número telefónico para llamadas.');
+      return;
+    }
+
+    if (!whatsappPhone.trim()) {
+      Alert.alert('WhatsApp requerido', 'Ingrese el número de WhatsApp (puede ser el mismo de llamadas).');
       return;
     }
 
@@ -100,16 +116,20 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      const parsedOrder = parseInt(routeOrderStr.replace(/\D/g, ''), 10);
       // 1. Crear el cliente
       const newCustomer = await localStore.createCustomer({
         fullName,
         documentNumber,
         phone,
+        whatsappPhone,
         address,
         neighborhood,
         businessName,
         referenceName,
         referencePhone,
+        routeId: selectedRouteId,
+        orderIndex: !isNaN(parsedOrder) && parsedOrder > 0 ? parsedOrder : undefined,
         todayStr,
       });
 
@@ -121,6 +141,8 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
           interestRate,
           installmentCount,
           frequency,
+          routeId: selectedRouteId,
+          collectorId: newCustomer.assignedCollectorId,
           todayStr,
         });
 
@@ -180,26 +202,53 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
               />
             </View>
 
+            <View style={styles.filledInputBlock}>
+              <Text style={styles.floatingLabel}>CÉDULA / NIT (SOLO NÚMEROS) *</Text>
+              <TextInput
+                style={styles.filledTextInput}
+                keyboardType="numeric"
+                value={documentNumber}
+                onChangeText={(text) => setDocumentNumber(text.replace(/\D/g, ''))}
+                placeholder="Ej. 1045678901"
+                placeholderTextColor={COLORS.textMuted}
+              />
+            </View>
+
             <View style={styles.row2}>
               <View style={[styles.filledInputBlock, { flex: 1 }]}>
-                <Text style={styles.floatingLabel}>CÉDULA / NIT (SOLO NÚMEROS) *</Text>
-                <TextInput
-                  style={styles.filledTextInput}
-                  keyboardType="numeric"
-                  value={documentNumber}
-                  onChangeText={(text) => setDocumentNumber(text.replace(/\D/g, ''))}
-                  placeholder="1045..."
-                  placeholderTextColor={COLORS.textMuted}
-                />
-              </View>
-              <View style={[styles.filledInputBlock, { flex: 1 }]}>
-                <Text style={styles.floatingLabel}>CELULAR / WHATSAPP *</Text>
+                <Text style={styles.floatingLabel}>TELÉFONO LLAMADAS *</Text>
                 <TextInput
                   style={styles.filledTextInput}
                   keyboardType="phone-pad"
                   value={phone}
-                  onChangeText={setPhone}
-                  placeholder="300..."
+                  onChangeText={(val) => {
+                    setPhone(val);
+                    if (!whatsappPhone) {
+                      setWhatsappPhone(val);
+                    }
+                  }}
+                  placeholder="Ej. 3001234567"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </View>
+              <View style={[styles.filledInputBlock, { flex: 1 }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.floatingLabel}>TEL. WHATSAPP *</Text>
+                  {phone.trim().length > 0 && whatsappPhone !== phone && (
+                    <TouchableOpacity
+                      onPress={() => setWhatsappPhone(phone)}
+                      style={{ paddingHorizontal: 6, paddingVertical: 1, backgroundColor: '#E0F2FE', borderRadius: 4 }}
+                    >
+                      <Text style={{ fontSize: 9, color: '#0284C7', fontWeight: 'bold' }}>= Mismo</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TextInput
+                  style={styles.filledTextInput}
+                  keyboardType="phone-pad"
+                  value={whatsappPhone}
+                  onChangeText={setWhatsappPhone}
+                  placeholder="Ej. 3001234567"
                   placeholderTextColor={COLORS.textMuted}
                 />
               </View>
@@ -237,6 +286,51 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                 placeholder="Ej. Calle 54 # 43 - 10"
                 placeholderTextColor={COLORS.textMuted}
               />
+            </View>
+
+            {/* ÍTEM 3: ASIGNACIÓN DE RUTA Y ORDEN EN LA RUTA */}
+            <View style={{ marginBottom: 10 }}>
+              <Text style={[styles.floatingLabel, { marginBottom: 6 }]}>
+                RUTA ASIGNADA Y POSICIÓN DE VISITA
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {availableRoutes.map((rt) => {
+                  const isSel = selectedRouteId === rt.id;
+                  return (
+                    <TouchableOpacity
+                      key={rt.id}
+                      style={[
+                        styles.quickPill,
+                        isSel && styles.quickPillActive,
+                        { paddingHorizontal: 12, paddingVertical: 7 },
+                      ]}
+                      onPress={() => setSelectedRouteId(rt.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.quickPillText,
+                          isSel && styles.quickPillTextActive,
+                        ]}
+                      >
+                        🗺️ {rt.name} ({rt.code})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={styles.filledInputBlock}>
+                <Text style={styles.floatingLabel}>
+                  ORDEN EN LA RUTA (# DE PARADA OPCIONAL)
+                </Text>
+                <TextInput
+                  style={styles.filledTextInput}
+                  keyboardType="numeric"
+                  value={routeOrderStr}
+                  onChangeText={(t) => setRouteOrderStr(t.replace(/\D/g, ''))}
+                  placeholder="Automático al final de la ruta"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </View>
             </View>
 
             <View style={styles.row2}>
@@ -357,7 +451,9 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                 {/* Plazo y Tasa */}
                 <View style={styles.row2}>
                   <View style={[styles.filledInputBlock, { flex: 1 }]}>
-                    <Text style={styles.floatingLabel}>NÚMERO DE CUOTAS</Text>
+                    <Text style={styles.floatingLabel}>
+                      NÚMERO DE CUOTAS {frequency === 'DAILY' ? '(REC. 30 DÍAS)' : ''}
+                    </Text>
                     <TextInput
                       style={styles.filledTextInput}
                       keyboardType="numeric"
@@ -478,11 +574,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 18,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -499,6 +597,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionHeader: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -521,12 +620,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   floatingLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
     letterSpacing: 0.4,
   },
   filledTextInput: {
+    fontFamily: FONT_FAMILY,
     color: COLORS.textPrimary,
     fontSize: 14,
     fontWeight: '600',
@@ -549,11 +650,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primaryBorder,
   },
   loanToggleTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   loanToggleSubtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -571,6 +674,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
   togglePillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: COLORS.textSecondary,
@@ -601,6 +705,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.dockBg,
   },
   quickPillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -628,6 +733,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
   freqBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -658,36 +764,43 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   summaryLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
   summaryLabelHighlight: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textPrimary,
     fontWeight: '800',
   },
   summaryValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textPrimary,
     fontWeight: '700',
   },
   summaryValueMuted: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.danger,
     fontWeight: '700',
   },
   summaryValueHighlight: {
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     color: COLORS.success,
     fontWeight: '900',
   },
   summaryValueDark: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textPrimary,
     fontWeight: '800',
   },
   summaryValueGreen: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textPrimary,
     fontWeight: '800',
@@ -711,6 +824,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   saveBtnText: {
+    fontFamily: FONT_FAMILY,
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',

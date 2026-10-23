@@ -12,7 +12,6 @@ import {
   Payment,
   PaymentBreakdownItem,
   PaymentMethod,
-  Renewal,
   LoanFrequency,
 } from './types';
 import {
@@ -20,6 +19,7 @@ import {
   LoanBusinessConfig,
   PaperworkConfig,
   DelinquencyStrategyConfig,
+  addDays,
 } from '../config/business-rules';
 
 export interface LoanCalculationSummary {
@@ -145,6 +145,32 @@ export function generateInstallments(
   const installments: Installment[] = [];
   const currentDate = new Date(startDateStr + 'T00:00:00');
 
+  // Regla de Negocio: La primera fecha de cobro se genera desde el día siguiente (DIARIO),
+  // semana siguiente (SEMANAL), quincena siguiente (QUINCENAL) o mes siguiente (MENSUAL)
+  // respecto al día en que se originó el crédito (startDateStr).
+  switch (frequency) {
+    case 'WEEKLY':
+      currentDate.setDate(currentDate.getDate() + 7);
+      break;
+    case 'BIWEEKLY':
+      currentDate.setDate(currentDate.getDate() + 15);
+      break;
+    case 'MONTHLY':
+      currentDate.setMonth(currentDate.getMonth() + 1);
+      break;
+    case 'DAILY':
+    default:
+      currentDate.setDate(currentDate.getDate() + 1);
+      break;
+  }
+
+  const formatLocalDate = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   let count = 0;
   while (count < summary.installmentCount) {
     // Si excludeSundays es true y es domingo (getDay() === 0), saltar al lunes
@@ -154,7 +180,7 @@ export function generateInstallments(
     }
 
     count++;
-    const dueDateStr = currentDate.toISOString().split('T')[0];
+    const dueDateStr = formatLocalDate(currentDate);
 
     // Ajuste de redondeo en la última cuota si existieran diferencias de centavos
     const isLast = count === summary.installmentCount;
@@ -238,7 +264,11 @@ export function applyPaymentToLoan(params: {
     throw new Error('El monto a pagar debe ser mayor a 0');
   }
 
-  // Copia profunda para inmutabilidad
+  // Copia profunda para inmutabilidad y validación de saldo pendiente
+  const totalPending = currentInstallments.reduce((sum, inst) => sum + inst.pendingAmount, 0);
+  if (amountReceived > totalPending) {
+    throw new Error('El monto ingresado supera el saldo total pendiente del crédito');
+  }
   const updatedInstallments: Installment[] = currentInstallments.map((inst) => ({ ...inst }));
 
   // Ordenar cuotas por número para aplicación cronológica estricta
@@ -374,3 +404,24 @@ export function calculateDelinquencyMetrics(
     surchargeAmount,
   };
 }
+
+/**
+ * Utilidades de fecha para control operativo y renovación automática a las 00:00 horas
+ */
+export function getLocalTodayStr(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Alias histórico: la implementación única vive en business-rules.addDays. */
+export const addDaysToDate = addDays;
+export const getLocalDateStr = getLocalTodayStr;
+
+export function getMsUntilNextMidnight(): number {
+  const now = new Date();
+  const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+  return Math.max(1000, nextMidnight.getTime() - now.getTime());
+}
+

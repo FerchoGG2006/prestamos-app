@@ -43,12 +43,12 @@ public class DashboardView extends VBox {
         Label title = new Label("Operación y Métricas de Ruta");
         title.getStyleClass().add("section-title");
 
-        // Fila 1: Pilares Financieros de la Ruta (Audio 3)
+        // Fila 1: Pilares Financieros de la Ruta
         HBox pillars = new HBox(16);
         pillars.getChildren().addAll(
-                createMetricCard("💼 Administrativo (Patrimonio)", lblAdministrative, "metric-value-green"),
+                createMetricCard("💼 ADMINISTRATIVO (Préstamos + Intereses)", lblAdministrative, "metric-value-green"),
                 createMetricCard("📈 Cartera en Calle (Deuda)", lblActiveDebt, "metric-value"),
-                createMetricCard("💵 Base en Caja (Para Prestar)", lblCash, "metric-value")
+                createMetricCard("💵 BASE (Disponible para Prestar)", lblCash, "metric-value")
         );
 
         // Fila 2: Métricas de Operación Diaria
@@ -67,7 +67,7 @@ public class DashboardView extends VBox {
         VBox bannerText = new VBox(6);
         Label bannerTitle = new Label("Ruta de Cobro Activa");
         bannerTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
-        Label bannerDesc = new Label("Los datos financieros reflejan el patrimonio total de la ruta (Administrativo = Cartera + Base en Caja).");
+        Label bannerDesc = new Label("Los datos financieros reflejan el total de dinero de la ruta (Administrativo = Préstamos e Intereses + Base disponible).");
         bannerDesc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 13px;");
         bannerText.getChildren().addAll(bannerTitle, bannerDesc);
         HBox.setHgrow(bannerText, Priority.ALWAYS);

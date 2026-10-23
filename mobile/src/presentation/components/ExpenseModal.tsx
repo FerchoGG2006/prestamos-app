@@ -11,7 +11,7 @@ import {
 import { localStore } from '../../infrastructure/storage/local-store';
 import { formatCOP } from '../../core/config/business-rules';
 import { COLORS } from '../theme/colors';
-import { Fuel, X, Check, DollarSign } from 'lucide-react-native';
+import { Fuel, X } from 'lucide-react-native';
 
 interface ExpenseModalProps {
   visible: boolean;

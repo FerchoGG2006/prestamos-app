@@ -10,11 +10,14 @@ import {
   ScrollView,
   Share,
   Platform,
+  Linking,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   CollectionSession,
   Payment,
   DailyRouteMetrics,
+  DailySettlement,
 } from '../../core/domain/types';
 import { formatCOP } from '../../core/config/business-rules';
 import { COLORS } from '../theme/colors';
@@ -32,6 +35,10 @@ import {
   Download,
   FileText,
   Check,
+  MessageCircle,
+  Copy,
+  Wifi,
+  FileSpreadsheet,
 } from 'lucide-react-native';
 
 interface SettlementModalProps {
@@ -61,13 +68,24 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   const [deductPayroll, setDeductPayroll] = useState(false);
   const [payrollAmountStr, setPayrollAmountStr] = useState('');
   const [payrollReason, setPayrollReason] = useState('Consumo personal: gaseosa / almuerzo / agua');
+  const [settledRecord, setSettledRecord] = useState<DailySettlement | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [targetPhone, setTargetPhone] = useState('');
+  const [officeServerUrl, setOfficeServerUrl] = useState('http://192.168.1.10:8765');
+  const [wifiStatusText, setWifiStatusText] = useState('');
+  const [wifiConnected, setWifiConnected] = useState<boolean | null>(null);
+  const [isWifiBusy, setIsWifiBusy] = useState(false);
 
   const collectedCash = metrics.collectedCashToday;
   const expensesToday = metrics.expensesToday || 0;
-  const netCashExpected = Math.max(0, collectedCash - expensesToday);
+  const disbursedToday = metrics.disbursedToday || 0;
+  const recaudoRetiradoToday = metrics.recaudoRetiradoToday || 0;
+  const netCashExpected = Math.max(
+    0,
+    collectedCash - expensesToday - disbursedToday - recaudoRetiradoToday
+  );
   const collectedDigital = metrics.collectedDigitalToday;
   const totalCollected = metrics.collectedToday;
-  const disbursedToday = metrics.disbursedToday;
 
   const cashHandedOver = parseInt(cashHandedOverStr.replace(/\D/g, ''), 10) || 0;
   const cashDifference = netCashExpected - cashHandedOver;
@@ -80,6 +98,13 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       setImportJsonText('');
       setDeductPayroll(false);
       setPayrollAmountStr('');
+      setSettledRecord(null);
+      setCopied(false);
+      const conf = localStore.getOfficeConfig();
+      setTargetPhone(conf.supportPhone || '');
+      setOfficeServerUrl(conf.officeServerUrl || 'http://192.168.1.10:8765');
+      setWifiStatusText('');
+      setWifiConnected(null);
     }
   }, [visible, netCashExpected]);
 
@@ -121,19 +146,17 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      await localStore.closeDailySettlement({
+      const settlement = await localStore.closeDailySettlement({
         cashHandedOver,
         differenceJustification: justification.trim() || undefined,
         payrollDeductionAmount: payrollNum,
         payrollDeductionReason: deductPayroll ? payrollReason : undefined,
       });
 
-      Alert.alert(
-        '¡Jornada Liquidada!',
-        'El cuadre diario ha quedado registrado de forma inmutable en almacenamiento local.'
-      );
+      // Métrica cerrada y sellada con éxito.
+      // Guardamos el registro sellado para pasar de inmediato a la pantalla de envío oficial a la oficina.
+      setSettledRecord(settlement);
       onSuccess();
-      onClose();
     } catch (error: any) {
       Alert.alert('Error', error.message || 'No se pudo cerrar la liquidación');
     } finally {
@@ -168,14 +191,16 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
     }
 
     try {
+      setImportJsonText(jsonString);
+      setShowImportPanel(true);
       await Share.share({
-        title: `Paquete Ruta ${syncPkg.routeId} (${todayStr})`,
+        title: `paquete-ruta-${syncPkg.routeId}-${todayStr}.json`,
         message: jsonString,
       });
     } catch {
       Alert.alert(
         'Paquete JSON Generado',
-        `Contiene ${syncPkg.payments.length} cobros con idempotencyKey listos para importar en cartera.db.`
+        `Contiene ${syncPkg.payments.length} cobros listos para importar en cartera.db. El JSON completo está disponible en el cuadro de texto inferior para copiar.`
       );
     }
   };
@@ -238,23 +263,240 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
     await localStore.resetToDemoSeed();
     onSuccess();
     Alert.alert(
-      'Datos Demo Restaurados',
-      'Se reiniciaron los clientes, préstamos y saldos semilla de demostración.'
+      'Escenario Demo Cargado',
+      'Se cargaron con éxito los 40 clientes de la ruta y el Administrativo de $20.000.000 COP ($17.000.000 en Cartera + $3.000.000 en Base).'
     );
+  };
+
+  const handleTestWifiConnection = async () => {
+    setIsWifiBusy(true);
+    try {
+      const res = await localStore.testOfficeConnection(officeServerUrl);
+      setWifiConnected(res.ok);
+      setWifiStatusText(res.statusText);
+      if (res.ok) {
+        await localStore.updateOfficeConfig({ officeServerUrl: officeServerUrl.trim() });
+      }
+    } finally {
+      setIsWifiBusy(false);
+    }
+  };
+
+  const handlePushWifiToOffice = async () => {
+    setIsWifiBusy(true);
+    try {
+      const res = await localStore.pushSyncToOfficeServer(officeServerUrl, todayStr);
+      setWifiConnected(true);
+      setWifiStatusText(res.message);
+      Alert.alert('📤 Sincronización Exitosa con PC', res.message);
+    } catch (err: any) {
+      setWifiConnected(false);
+      setWifiStatusText(err?.message || 'Error al enviar datos al PC');
+      Alert.alert('Error de Red Local Wi-Fi', err?.message || 'No se pudo conectar al PC de Oficina.');
+    } finally {
+      setIsWifiBusy(false);
+    }
+  };
+
+  const handlePullWifiFromOffice = async () => {
+    setIsWifiBusy(true);
+    try {
+      const res = await localStore.pullRouteFromOfficeServer(officeServerUrl, session?.routeId);
+      setWifiConnected(true);
+      setWifiStatusText(
+        `Cartera actualizada desde PC (${res.importedCustomers} clientes, ${res.importedLoans} créditos).`
+      );
+      onSuccess();
+      Alert.alert(
+        '📥 Cartera Descargada del PC',
+        `Se sincronizaron ${res.importedCustomers} clientes y ${res.importedLoans} créditos desde el PC de Oficina.`
+      );
+    } catch (err: any) {
+      setWifiConnected(false);
+      setWifiStatusText(err?.message || 'Error al descargar cartera del PC');
+      Alert.alert('Error de Red Local Wi-Fi', err?.message || 'No se pudo descargar desde el PC de Oficina.');
+    } finally {
+      setIsWifiBusy(false);
+    }
+  };
+
+  const handleExportAccountingCSV = async () => {
+    const csvContent = localStore.generateAccountingReportCSV(todayStr);
+    const filename = `reporte-contable-cartera-${todayStr}.csv`;
+
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      try {
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        Alert.alert(
+          '📊 Reporte Contable Excel (.csv) Descargado',
+          `Archivo ${filename} generado con Resumen de Rentabilidad, Cartera Activa, Mora, Historial de Abonos y Libro de Caja.`
+        );
+        return;
+      } catch {
+        // Fallback a Share
+      }
+    }
+
+    try {
+      await Share.share({
+        title: filename,
+        message: csvContent,
+      });
+    } catch {
+      Alert.alert('📊 Reporte Contable Generado', 'El reporte CSV fue generado correctamente.');
+    }
+  };
+
+  const generateOfficialReportText = (st?: DailySettlement | null): string => {
+    const officeConfig = localStore.getOfficeConfig();
+    const companyName = officeConfig.companyName || 'Cartera & Préstamos';
+    const collectorName = st?.collectorId || session?.collectorId || 'Cobrador de Ruta';
+    const routeId = st?.routeId || session?.routeId || 'Ruta Principal';
+    const reportDate = st?.date || session?.date || todayStr;
+    const isSealed = Boolean(st);
+
+    const actualCol = st ? st.actualCollection : metrics.collectedToday;
+    const cashCol = st ? st.collectedCash : metrics.collectedCashToday;
+    const digCol = st ? st.collectedTransfers : metrics.collectedDigitalToday;
+    const salidas = st ? st.salidasCount : metrics.salidasCount;
+    const netDisbursed = st ? st.actualCashDisbursedTotal : metrics.disbursedToday;
+    const exp = expensesToday;
+    const handedOver = st ? st.cashHandedOver : cashHandedOver;
+    const diff = st ? st.cashDifference : cashDifference;
+    const diffJust = st?.differenceJustification || justification.trim();
+
+    const lines = [
+      '━━━━━━━━━━━━━━━━━━━━━━━━━',
+      `🏢 *${companyName.toUpperCase()}*`,
+      `📊 *CUADRE OFICIAL DE JORNADA ${isSealed ? 'CERRADA' : 'EN PROCESO'}*`,
+      '━━━━━━━━━━━━━━━━━━━━━━━━━',
+      `${isSealed ? '🔒 *ESTADO: SELLADO Y LIQUIDADO*' : '⚠️ *ESTADO: PREVIO AL CIERRE*'}`,
+      st ? `🔖 *Folio Liquidación:* #${st.id.toUpperCase()}` : '',
+      `📅 *Fecha:* ${reportDate}`,
+      `👤 *Cobrador:* ${collectorName} • *Ruta:* ${routeId}`,
+      st
+        ? `⏰ *Hora Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          })}`
+        : '',
+      '━━━━━━━━━━━━━━━━━━━━━━━━━',
+      '',
+      '📥 *1. COBRADO HOY (RECAUDO)*',
+      `• *Total Cobrado:* ${formatCOP(actualCol)}`,
+      `  - Efectivo en caja: ${formatCOP(cashCol)}`,
+      `  - Digital / Nequi: ${formatCOP(digCol)}`,
+      `• *Clientes Visitados:* ${metrics.visitedCustomersCount} de ${metrics.expectedCustomersCount} (${metrics.progressPercentage}%)`,
+      '',
+      '📤 *2. SALIDAS Y COLOCACIÓN*',
+      `• *Operaciones:* ${salidas} crédito(s)`,
+      `• *Desembolso Neto Entregado:* ${formatCOP(netDisbursed)}`,
+      '',
+      `⛽ *3. GASTOS DE RUTA DEDUCIDOS:* ${formatCOP(exp)}`,
+      '',
+      '💵 *4. ARQUEO Y RENDICIÓN DE EFECTIVO*',
+      `• Efectivo Neto Esperado: ${formatCOP(netCashExpected)}`,
+      `• Efectivo Entregado a Oficina: ${formatCOP(handedOver)}`,
+      `• Diferencia Arqueo: ${diff === 0 ? '✓ Exacto ($0)' : formatCOP(diff)}`,
+    ];
+
+    if (diffJust) {
+      lines.push(`• Observación / Nómina: ${diffJust}`);
+    }
+
+    lines.push(
+      '',
+      `📈 *5. ADMINISTRATIVO TOTAL:* ${formatCOP(metrics.totalAdministrativeCapital)}`,
+      `• Cartera en Calle: ${formatCOP(metrics.activeCapitalInStreet)}`,
+      `• Base en Caja: ${formatCOP(metrics.cashAvailableInHand)}`,
+      '',
+      '⚠️ *6. ESTADO DE MORA*',
+      `• Clientes en mora: ${metrics.overdueCustomersCount}`,
+      `• Saldo vencido acumulado: ${formatCOP(metrics.overdueTotalAmount)}`,
+      '━━━━━━━━━━━━━━━━━━━━━━━━━',
+      `🔐 *Sello SHA:* ${verificationHash}`,
+      `_Enviado desde App Móvil de Cobro_`
+    );
+
+    return lines.filter((l) => l !== '').join('\n');
+  };
+
+  const handleCopyReport = async (st?: DailySettlement | null) => {
+    const text = generateOfficialReportText(st);
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        await Share.share({
+          title: `Cuadre ${st?.date || todayStr}`,
+          message: text,
+        });
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+      Alert.alert(
+        '¡Reporte Copiado!',
+        'El comprobante oficial del cuadre fue copiado al portapapeles listo para compartir.'
+      );
+    } catch {
+      Alert.alert('Reporte Oficial', text);
+    }
+  };
+
+  const handleSendWhatsAppReport = (st?: DailySettlement | null) => {
+    const text = generateOfficialReportText(st);
+    let phone = (targetPhone || localStore.getOfficeConfig().supportPhone || '').replace(/\D/g, '');
+    if (phone.length === 10) phone = `57${phone}`;
+
+    if (!phone) {
+      Share.share({
+        title: `Cuadre ${st?.date || todayStr}`,
+        message: text,
+      }).catch(() => {
+        Alert.alert('Cuadre Oficial Generado', text);
+      });
+      return;
+    }
+
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    Linking.openURL(waUrl).catch(() => {
+      Share.share({
+        title: `Cuadre ${st?.date || todayStr}`,
+        message: text,
+      }).catch(() => {
+        Alert.alert('Cuadre Oficial Generado', text);
+      });
+    });
   };
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.overlay}
+      >
         <View style={styles.container}>
           <View style={styles.sheetHandle} />
 
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Mi Caja y Sincronización</Text>
+              <Text style={styles.title}>
+                {settledRecord ? 'Liquidación Oficial de Jornada' : 'Caja del Administrador'}
+              </Text>
               <Text style={styles.subtitle}>
-                Jornada {session.date} • {session.routeId} ({session.status})
+                {settledRecord
+                  ? `Jornada ${settledRecord.date} • Folio #${settledRecord.id.toUpperCase()}`
+                  : `Capital General • Ruta ${session.routeId} • Cartera.db`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -263,6 +505,196 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
           </View>
 
           <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+            {settledRecord ? (
+              <View style={styles.postCloseContainer}>
+                {/* 1. Header con sello de éxito e inmutabilidad */}
+                <View style={styles.postCloseSuccessCard}>
+                  <View style={styles.postCloseBadgeIcon}>
+                    <CheckCircle size={36} color="#16A34A" />
+                  </View>
+                  <Text style={styles.postCloseTitle}>¡Cuadre Cerrado y Sellado!</Text>
+                  <Text style={styles.postCloseSubtitle}>
+                    La métrica de la jornada {settledRecord.date} ha sido congelada y registrada de forma inmutable. La ruta se renovó automáticamente para el siguiente día.
+                  </Text>
+                  <View style={styles.folioBadgeRow}>
+                    <View style={styles.folioBadge}>
+                      <Text style={styles.folioBadgeText}>FOLIO: #{settledRecord.id.toUpperCase()}</Text>
+                    </View>
+                    <View style={styles.sealedStatusBadge}>
+                      <ShieldCheck size={12} color="#15803D" style={{ marginRight: 4 }} />
+                      <Text style={styles.sealedStatusText}>LIQUIDADO</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* 2. Comprobante Oficial Sellado */}
+                <View style={styles.sealedReceiptCard}>
+                  <Text style={styles.receiptHeaderCompany}>
+                    {localStore.getOfficeConfig().companyName || 'CARTERA & PRÉSTAMOS'}
+                  </Text>
+                  <Text style={styles.receiptSubHeader}>
+                    COMPROBANTE OFICIAL DE CIERRE Y LIQUIDACIÓN
+                  </Text>
+                  <View style={styles.receiptDashedDivider} />
+
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Fecha Liquidada:</Text>
+                    <Text style={styles.receiptValueBold}>{settledRecord.date}</Text>
+                  </View>
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Cobrador / Ruta:</Text>
+                    <Text style={styles.receiptValue}>
+                      {settledRecord.collectorId} • {settledRecord.routeId}
+                    </Text>
+                  </View>
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Hora de Cierre:</Text>
+                    <Text style={styles.receiptValue}>
+                      {new Date(settledRecord.settledAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })}
+                    </Text>
+                  </View>
+
+                  <View style={styles.receiptDashedDivider} />
+
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Total Cobrado Hoy:</Text>
+                    <Text style={[styles.receiptValueBold, { color: COLORS.success, fontSize: 15 }]}>
+                      {formatCOP(settledRecord.actualCollection)}
+                    </Text>
+                  </View>
+                  <View style={[styles.receiptRow, { paddingLeft: 8 }]}>
+                    <Text style={styles.receiptLabelSub}>• Efectivo:</Text>
+                    <Text style={styles.receiptValueSub}>{formatCOP(settledRecord.collectedCash)}</Text>
+                  </View>
+                  <View style={[styles.receiptRow, { paddingLeft: 8 }]}>
+                    <Text style={styles.receiptLabelSub}>• Digital (Nequi/Transf):</Text>
+                    <Text style={styles.receiptValueSub}>{formatCOP(settledRecord.collectedTransfers)}</Text>
+                  </View>
+
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>(-) Gastos Ruta Deducidos:</Text>
+                    <Text style={[styles.receiptValueBold, { color: '#ea580c' }]}>
+                      {formatCOP(expensesToday)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>(=) Efectivo Entregado a Oficina:</Text>
+                    <Text style={[styles.receiptValueBold, { color: COLORS.primary, fontSize: 15 }]}>
+                      {formatCOP(settledRecord.cashHandedOver)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Diferencia Arqueo:</Text>
+                    <Text
+                      style={[
+                        styles.receiptValueBold,
+                        {
+                          color: settledRecord.cashDifference === 0 ? COLORS.success : COLORS.danger,
+                        },
+                      ]}
+                    >
+                      {settledRecord.cashDifference === 0
+                        ? '✓ Exacto ($0)'
+                        : formatCOP(settledRecord.cashDifference)}
+                    </Text>
+                  </View>
+
+                  {settledRecord.differenceJustification ? (
+                    <View style={styles.receiptJustificationBox}>
+                      <Text style={styles.receiptJustificationLabel}>OBSERVACIÓN / NÓMINA:</Text>
+                      <Text style={styles.receiptJustificationText}>
+                        {settledRecord.differenceJustification}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.receiptDashedDivider} />
+                  <View style={styles.verificationHashBox}>
+                    <ShieldCheck size={12} color={COLORS.success} style={{ marginRight: 5 }} />
+                    <Text style={styles.verificationHashText}>Sello SHA: {verificationHash}</Text>
+                  </View>
+                </View>
+
+                {/* 3. Teléfono de Destino para WhatsApp */}
+                <View style={styles.phoneInputCard}>
+                  <View style={styles.phoneHeaderRow}>
+                    <MessageCircle size={14} color="#16a34a" />
+                    <Text style={styles.phoneLabel}>TELÉFONO WHATSAPP DE LA OFICINA / PATRÓN</Text>
+                  </View>
+                  <TextInput
+                    style={styles.phoneInput}
+                    value={targetPhone}
+                    onChangeText={setTargetPhone}
+                    placeholder="Ej: 3001234567 o 573001234567"
+                    placeholderTextColor={COLORS.textMuted}
+                    keyboardType="phone-pad"
+                  />
+                </View>
+
+                {/* 4. BOTÓN PRINCIPAL DESTACADO: ENVIAR A LA OFICINA */}
+                <TouchableOpacity
+                  style={styles.sendWhatsAppMainBtn}
+                  onPress={() => handleSendWhatsAppReport(settledRecord)}
+                  activeOpacity={0.85}
+                >
+                  <MessageCircle size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                  <Text style={styles.sendWhatsAppMainBtnText}>
+                    📲 Enviar Cuadre a la Oficina (WhatsApp)
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 5. Acciones Secundarias: Copiar Texto & Descargar .json */}
+                <View style={styles.postCloseSecondaryRow}>
+                  <TouchableOpacity
+                    style={styles.secondaryActionBtn}
+                    onPress={() => handleCopyReport(settledRecord)}
+                    activeOpacity={0.7}
+                  >
+                    {copied ? (
+                      <Check size={14} color="#16a34a" style={{ marginRight: 5 }} />
+                    ) : (
+                      <Copy size={14} color={COLORS.textSecondary} style={{ marginRight: 5 }} />
+                    )}
+                    <Text
+                      style={[
+                        styles.secondaryActionText,
+                        copied && { color: '#16a34a', fontWeight: 'bold' },
+                      ]}
+                    >
+                      {copied ? '¡Copiado!' : 'Copiar Reporte'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.secondaryActionBtn}
+                    onPress={handleExportSyncPackage}
+                    activeOpacity={0.7}
+                  >
+                    <Download size={14} color={COLORS.primary} style={{ marginRight: 5 }} />
+                    <Text style={styles.secondaryActionText}>Descargar .json</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 6. Botón de Salida: Pasar a la Nueva Ruta */}
+                <TouchableOpacity
+                  style={styles.finishAndContinueBtn}
+                  onPress={onClose}
+                  activeOpacity={0.85}
+                >
+                  <Check size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                  <Text style={styles.finishAndContinueBtnText}>
+                    ✓ Finalizar e Ir a la Nueva Jornada
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
             {/* 1. CUADRÍCULA BENTO: COBRO EFECTIVO, GASTOS RUTA Y NETO A RENDIR */}
             <View style={styles.splitRow}>
               <View style={styles.splitCard}>
@@ -275,7 +707,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   {formatCOP(collectedCash)}
                 </Text>
                 <Text style={styles.splitSub}>
-                  Recaudo bruto en calle
+                  Cobrado hoy en calle
                 </Text>
               </View>
 
@@ -300,6 +732,55 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 </Text>
               </View>
             </View>
+
+            {(disbursedToday > 0 || recaudoRetiradoToday > 0) && (
+              <View style={styles.splitRow}>
+                {disbursedToday > 0 && (
+                  <View
+                    style={[
+                      styles.splitCard,
+                      { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' },
+                    ]}
+                  >
+                    <Text style={[styles.splitLabel, { color: '#7e22ce' }]}>
+                      📤 (-) DESEMBOLSOS RUTA
+                    </Text>
+                    <Text
+                      style={[styles.splitValue, { color: '#7e22ce' }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      {formatCOP(disbursedToday)}
+                    </Text>
+                    <Text style={[styles.splitSub, { color: '#6b21a8' }]}>
+                      Préstamos y renovaciones hoy
+                    </Text>
+                  </View>
+                )}
+                {recaudoRetiradoToday > 0 && (
+                  <View
+                    style={[
+                      styles.splitCard,
+                      { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
+                    ]}
+                  >
+                    <Text style={[styles.splitLabel, { color: '#1d4ed8' }]}>
+                      🏦 (-) AVANCES OFICINA
+                    </Text>
+                    <Text
+                      style={[styles.splitValue, { color: '#1d4ed8' }]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      {formatCOP(recaudoRetiradoToday)}
+                    </Text>
+                    <Text style={[styles.splitSub, { color: '#1e40af' }]}>
+                      Entregado antes del cierre
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
 
             <View
               style={[
@@ -327,7 +808,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               <View style={styles.chartHeaderRow}>
                 <BarChart3 size={16} color={COLORS.primary} />
                 <Text style={styles.cardHeaderTitle}>
-                  Flujo del Día: Recaudo vs. Desembolsos
+                  Flujo del Día: Cobrado Hoy vs. Desembolsos
                 </Text>
               </View>
 
@@ -341,7 +822,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                         { backgroundColor: COLORS.successBright },
                       ]}
                     />
-                    <Text style={styles.barLabel}>Cobro Pleno (Recaudo Cuotas)</Text>
+                    <Text style={styles.barLabel}>Cobrado Hoy (Cuotas)</Text>
                   </View>
                   <Text style={[styles.barAmount, { color: COLORS.success }]}>
                     {formatCOP(totalCollected)}
@@ -386,7 +867,8 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 </View>
               </View>
 
-              {/* Barra 3: Programado a Cobrar Hoy */}
+              {/* Barra 3: Programado a Cobrar Hoy (Oculto a petición del usuario) */}
+              {/* 
               <View style={styles.barGroup}>
                 <View style={styles.barLabelRow}>
                   <View style={styles.legendRow}>
@@ -414,6 +896,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   />
                 </View>
               </View>
+              */}
             </View>
 
             {/* 3. ARQUEO FÍSICO DE EFECTIVO CON FILLED INPUTS */}
@@ -509,8 +992,8 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                       />
                     </View>
                   )}
-                  <Text style={{ fontSize: 10, color: '#b45309', fontStyle: 'italic', marginTop: 8 }}>
-                    💡 Audio 2: El gasto de ruta (pinchazo, datos) se descuenta de la ruta. Los gastos personales del cobrador (gaseosa, almuerzo) se descuentan de la nómina.
+                  <Text style={{ fontSize: 11, color: '#b45309', fontStyle: 'italic', marginTop: 8 }}>
+                    Nota operativa: Los gastos de ruta (combustible, imprevistos) se descuentan del efectivo de ruta. Los consumos personales se registran como deducción de nómina.
                   </Text>
                 </View>
               )}
@@ -532,7 +1015,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               )}
             </View>
 
-            {/* 4. TICKET DE CIERRE DIARIO Y PUENTE OFFLINE-FIRST (Mejora #5) */}
+            {/* 4. TICKET DE CIERRE DIARIO Y PUENTE OFFLINE-FIRST */}
             <View style={styles.syncTicketCard}>
               <View style={styles.syncHeaderRow}>
                 <FileText size={16} color={COLORS.primary} />
@@ -611,90 +1094,59 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               <View style={styles.verificationHashBox}>
                 <ShieldCheck size={13} color={COLORS.success} style={{ marginRight: 6 }} />
                 <Text style={styles.verificationHashText}>
-                  Hash SHA: {verificationHash}
+                  Sello Digital de Seguridad Auditado
                 </Text>
               </View>
 
               <View style={styles.dashedDivider} />
 
-              {/* Botones de acción Offline-First */}
-              <View style={styles.syncButtonsRow}>
-                <TouchableOpacity
-                  style={styles.syncExportBtn}
-                  onPress={handleExportSyncPackage}
-                >
-                  <Download size={13} color={COLORS.primary} style={{ marginRight: 5 }} />
-                  <Text style={styles.syncExportBtnText}>Descargar .json</Text>
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.syncFilePickBtn}
-                  onPress={handleFilePick}
-                >
-                  <Upload size={13} color={COLORS.purple} style={{ marginRight: 5 }} />
-                  <Text style={styles.syncFilePickBtnText}>Subir Archivo</Text>
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.syncImportToggleBtn}
-                  onPress={() => setShowImportPanel(!showImportPanel)}
-                >
-                  <Share2 size={13} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
-                  <Text style={styles.syncImportToggleText}>Pegar</Text>
-                </TouchableOpacity>
-              </View>
-
-              {showImportPanel && (
-                <View style={styles.importBox}>
-                  <Text style={styles.floatingInternalLabel}>
-                    PEGAR PAQUETE JSON DE CARTERA.DB
-                  </Text>
-                  <TextInput
-                    style={styles.importJsonInput}
-                    value={importJsonText}
-                    onChangeText={setImportJsonText}
-                    placeholder='{"newCustomers": [...], "newLoans": [...]}'
-                    placeholderTextColor={COLORS.textMuted}
-                    multiline
-                  />
-                  <TouchableOpacity
-                    style={styles.applyImportBtn}
-                    onPress={handleImportPackage}
-                  >
-                    <Text style={styles.applyImportBtnText}>
-                      Procesar Paquete JSON
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
+              {/* ÍTEM 4: EXPORTACIÓN DE REPORTE CONTABLE ESTRUCTURADO EN EXCEL (.CSV) */}
               <TouchableOpacity
-                style={styles.resetDemoBtn}
-                onPress={handleResetDemoData}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#f0fdf4',
+                  borderWidth: 1,
+                  borderColor: '#86efac',
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  marginBottom: 10,
+                }}
+                onPress={handleExportAccountingCSV}
               >
-                <RotateCcw size={13} color={COLORS.textSecondary} style={{ marginRight: 6 }} />
-                <Text style={styles.resetDemoBtnText}>
-                  Restaurar Datos Demo Semilla
+                <FileSpreadsheet size={15} color="#15803d" style={{ marginRight: 6 }} />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#15803d' }}>
+                  📊 Exportar Reporte Contable Excel (.csv)
+                </Text>
+              </TouchableOpacity>
+
+
+            </View>
+          </View>
+        )}
+        </ScrollView>
+
+          {/* Footer: solo visible en Fase 1 (Antes del cierre) */}
+          {!settledRecord && (
+            <View style={styles.footer}>
+              <TouchableOpacity
+                style={[styles.confirmBtn, isSubmitting && styles.confirmBtnDisabled]}
+                onPress={handleCloseSettlement}
+                disabled={isSubmitting}
+              >
+                <Landmark size={18} color="#ffffff" style={{ marginRight: 8 }} />
+                <Text style={styles.confirmBtnText}>
+                  {isSubmitting ? 'Cerrando y Sellando Métrica...' : 'Cerrar Cuadre y Sellar Jornada'}
                 </Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
-
-          {/* Footer */}
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={[styles.confirmBtn, isSubmitting && styles.confirmBtnDisabled]}
-              onPress={handleCloseSettlement}
-              disabled={isSubmitting}
-            >
-              <Landmark size={18} color="#ffffff" style={{ marginRight: 8 }} />
-              <Text style={styles.confirmBtnText}>
-                {isSubmitting ? 'Cerrando Jornada...' : 'Cerrar Jornada y Liquidar'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -980,12 +1432,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     letterSpacing: 0.3,
   },
-  syncHashText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textMuted,
-    marginTop: 3,
-  },
   dashedDivider: {
     height: 1,
     borderWidth: 1,
@@ -1104,6 +1550,242 @@ const styles = StyleSheet.create({
   confirmBtnText: {
     color: '#ffffff',
     fontSize: 15,
+    fontWeight: '800',
+  },
+  postCloseContainer: {
+    paddingVertical: 10,
+    paddingBottom: 24,
+  },
+  postCloseSuccessCard: {
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#BBF7D0',
+    marginBottom: 14,
+  },
+  postCloseBadgeIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  postCloseTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#15803D',
+    letterSpacing: -0.3,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  postCloseSubtitle: {
+    fontSize: 12,
+    color: '#166534',
+    textAlign: 'center',
+    lineHeight: 16,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+  },
+  folioBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  folioBadge: {
+    backgroundColor: '#15803D',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  folioBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  sealedStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  sealedStatusText: {
+    color: '#15803D',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  sealedReceiptCard: {
+    backgroundColor: COLORS.receiptPaper,
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+    marginBottom: 14,
+  },
+  receiptHeaderCompany: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  receiptSubHeader: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 10,
+    letterSpacing: 0.3,
+  },
+  receiptDashedDivider: {
+    height: 1,
+    borderWidth: 0.8,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    marginVertical: 10,
+  },
+  receiptRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 3,
+  },
+  receiptLabel: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  receiptLabelSub: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  receiptValue: {
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  receiptValueSub: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  receiptValueBold: {
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    fontWeight: '900',
+  },
+  receiptJustificationBox: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.warning,
+  },
+  receiptJustificationLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: COLORS.textSecondary,
+    marginBottom: 2,
+  },
+  receiptJustificationText: {
+    fontSize: 11,
+    color: COLORS.textPrimary,
+    fontWeight: '600',
+  },
+  phoneInputCard: {
+    backgroundColor: COLORS.surfaceSoft,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: COLORS.inputBorder,
+    marginBottom: 12,
+  },
+  phoneHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  phoneLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.3,
+  },
+  phoneInput: {
+    height: 42,
+    backgroundColor: COLORS.bgSecondary,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: COLORS.inputBorder,
+  },
+  sendWhatsAppMainBtn: {
+    backgroundColor: '#16A34A',
+    flexDirection: 'row',
+    height: 54,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  sendWhatsAppMainBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+  postCloseSecondaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  secondaryActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 40,
+    backgroundColor: COLORS.surfaceSoft,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  finishAndContinueBtn: {
+    backgroundColor: COLORS.dockBg,
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finishAndContinueBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '800',
   },
 });

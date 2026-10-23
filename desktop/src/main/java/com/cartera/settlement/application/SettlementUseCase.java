@@ -1,5 +1,6 @@
 package com.cartera.settlement.application;
 
+import com.cartera.infrastructure.backup.DatabaseBackupService;
 import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
 import com.cartera.infrastructure.persistence.entity.CollectionSessionEntity;
@@ -11,6 +12,7 @@ import com.cartera.infrastructure.persistence.repository.CashMovementRepository;
 import com.cartera.infrastructure.persistence.repository.CollectionSessionRepository;
 import com.cartera.infrastructure.persistence.repository.DailySettlementRepository;
 import com.cartera.infrastructure.persistence.repository.PaymentRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,6 +52,7 @@ public class SettlementUseCase {
     private final AuditLogRepository auditLogRepository;
     private final CashMovementRepository cashMovementRepository;
     private final AppUserRepository userRepository;
+    private final DatabaseBackupService databaseBackupService;
 
     public SettlementUseCase(
             CollectionSessionRepository sessionRepository,
@@ -59,12 +62,26 @@ public class SettlementUseCase {
             CashMovementRepository cashMovementRepository,
             AppUserRepository userRepository
     ) {
+        this(sessionRepository, settlementRepository, paymentRepository, auditLogRepository, cashMovementRepository, userRepository, null);
+    }
+
+    @Autowired
+    public SettlementUseCase(
+            CollectionSessionRepository sessionRepository,
+            DailySettlementRepository settlementRepository,
+            PaymentRepository paymentRepository,
+            AuditLogRepository auditLogRepository,
+            CashMovementRepository cashMovementRepository,
+            AppUserRepository userRepository,
+            DatabaseBackupService databaseBackupService
+    ) {
         this.sessionRepository = sessionRepository;
         this.settlementRepository = settlementRepository;
         this.paymentRepository = paymentRepository;
         this.auditLogRepository = auditLogRepository;
         this.cashMovementRepository = cashMovementRepository;
         this.userRepository = userRepository;
+        this.databaseBackupService = databaseBackupService;
     }
 
     public static boolean isRouteExpenseCategory(String category) {
@@ -74,7 +91,24 @@ public class SettlementUseCase {
                 || cat.contains("PINCHAZO")
                 || cat.contains("DATOS")
                 || cat.contains("GASOLINA")
-                || cat.contains("VIATICOS");
+                || cat.contains("VIATICOS")
+                || "EXPENSE".equals(cat)
+                || "GASTO_OPERATIVO".equals(cat);
+    }
+
+    public static String normalizeRouteId(String routeId) {
+        if (routeId == null || routeId.isBlank() || "route-1".equalsIgnoreCase(routeId.trim())) {
+            return "route-norte";
+        }
+        return routeId.trim();
+    }
+
+    private static boolean isValidPaymentStatus(String status) {
+        return "APLICADO".equalsIgnoreCase(status) || "REGISTRADO".equalsIgnoreCase(status);
+    }
+
+    private static boolean isOutflowMovement(String movementType) {
+        return "EGRESO".equalsIgnoreCase(movementType) || "SALIDA".equalsIgnoreCase(movementType);
     }
 
     public record DaySettlementSummary(
@@ -105,8 +139,8 @@ public class SettlementUseCase {
                 .orElse(collector);
 
         List<PaymentEntity> payments = paymentRepository.findAll().stream()
-                .filter(p -> "REGISTRADO".equalsIgnoreCase(p.getStatus()))
-                .filter(p -> p.getCreatedAt().startsWith(dateStr))
+                .filter(p -> isValidPaymentStatus(p.getStatus()))
+                .filter(p -> p.getCreatedAt() != null && p.getCreatedAt().startsWith(dateStr))
                 .filter(p -> collector.equalsIgnoreCase(p.getCollectorId()))
                 .toList();
 
@@ -116,7 +150,7 @@ public class SettlementUseCase {
 
         // Obtener gastos operativos de la ruta registrados hoy para este cobrador
         List<CashMovementEntity> routeExpensesList = cashMovementRepository.findAll().stream()
-                .filter(m -> "EGRESO".equalsIgnoreCase(m.getMovementType()))
+                .filter(m -> isOutflowMovement(m.getMovementType()))
                 .filter(m -> collector.equalsIgnoreCase(m.getCollectorId()))
                 .filter(m -> m.getCreatedAt() != null && m.getCreatedAt().startsWith(dateStr))
                 .filter(m -> isRouteExpenseCategory(m.getCategory()))
@@ -153,7 +187,9 @@ public class SettlementUseCase {
                 });
 
         Optional<DailySettlementEntity> optSettlement = settlementRepository.findBySessionId(session.getId());
-        boolean closed = optSettlement.isPresent() || "CERRADA".equalsIgnoreCase(session.getStatus());
+        boolean closed = optSettlement.isPresent()
+                || "CERRADA".equalsIgnoreCase(session.getStatus())
+                || "CERRADO".equalsIgnoreCase(session.getStatus());
 
         return new DaySettlementSummary(
                 session.getId(),
@@ -191,9 +227,13 @@ public class SettlementUseCase {
         String nowTime = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
         DaySettlementSummary summary = getOrCreateDaySummary(collectorId, today);
 
+        if (summary.isClosed()) {
+            throw new IllegalStateException("No se pueden registrar gastos operativos en una liquidación que ya se encuentra en estado CERRADO.");
+        }
+
         String cat = (category != null && !category.isBlank()) ? category : CAT_GASTO_OTRO;
         String desc = (description != null && !description.isBlank()) ? description : "Gasto operativo de ruta";
-        String route = (routeId != null && !routeId.isBlank()) ? routeId : "route-1";
+        String route = normalizeRouteId(routeId);
 
         CashMovementEntity movement = new CashMovementEntity(
                 UUID.randomUUID().toString(),
@@ -227,6 +267,7 @@ public class SettlementUseCase {
     /**
      * Cierra de forma inmutable y autorizada la liquidación diaria del cobrador.
      * Si hubo faltante o consumo personal, permite imputar el monto para Descuento de Nómina.
+     * Además, dispara automáticamente una copia de seguridad silenciosa de cartera.db.
      */
     @Transactional
     public DailySettlementEntity closeSettlement(
@@ -240,7 +281,9 @@ public class SettlementUseCase {
         CollectionSessionEntity session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("No se encontró la sesión de cobranza con ID: " + sessionId));
 
-        if (settlementRepository.findBySessionId(sessionId).isPresent()) {
+        if (settlementRepository.findBySessionId(sessionId).isPresent()
+                || "CERRADA".equalsIgnoreCase(session.getStatus())
+                || "CERRADO".equalsIgnoreCase(session.getStatus())) {
             throw new IllegalStateException("Esta jornada de cobro ya fue liquidada y cerrada previamente. Los cierres son inmutables.");
         }
 
@@ -249,8 +292,9 @@ public class SettlementUseCase {
 
         // Calcular gastos operativos de la ruta de esta sesión
         List<CashMovementEntity> routeExpenses = cashMovementRepository.findAll().stream()
-                .filter(m -> sessionId.equals(m.getSessionId()) || (collectorId.equalsIgnoreCase(m.getCollectorId()) && m.getCreatedAt().startsWith(sessionDate)))
-                .filter(m -> "EGRESO".equalsIgnoreCase(m.getMovementType()))
+                .filter(m -> sessionId.equals(m.getSessionId())
+                        || (collectorId.equalsIgnoreCase(m.getCollectorId()) && m.getCreatedAt() != null && m.getCreatedAt().startsWith(sessionDate)))
+                .filter(m -> isOutflowMovement(m.getMovementType()))
                 .filter(m -> isRouteExpenseCategory(m.getCategory()))
                 .toList();
 
@@ -260,8 +304,8 @@ public class SettlementUseCase {
 
         // Recaudado en sistema por cuotas
         List<PaymentEntity> payments = paymentRepository.findAll().stream()
-                .filter(p -> "REGISTRADO".equalsIgnoreCase(p.getStatus()))
-                .filter(p -> p.getCreatedAt().startsWith(sessionDate))
+                .filter(p -> isValidPaymentStatus(p.getStatus()))
+                .filter(p -> p.getCreatedAt() != null && p.getCreatedAt().startsWith(sessionDate))
                 .filter(p -> collectorId.equalsIgnoreCase(p.getCollectorId()))
                 .toList();
 
@@ -275,6 +319,10 @@ public class SettlementUseCase {
         }
 
         BigDecimal difference = actualDelivered.subtract(netExpectedCash);
+        if (difference.compareTo(BigDecimal.ZERO) != 0 && (justification == null || justification.isBlank())) {
+            throw new IllegalArgumentException("Debe ingresar una justificación obligatoria cuando existe descuadre de efectivo.");
+        }
+
         String nowTime = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
         StringBuilder fullJustification = new StringBuilder();
@@ -297,7 +345,7 @@ public class SettlementUseCase {
 
             CashMovementEntity payrollMovement = new CashMovementEntity(
                     UUID.randomUUID().toString(),
-                    session.getRouteId(),
+                    normalizeRouteId(session.getRouteId()),
                     collectorId,
                     sessionId,
                     "EGRESO",
@@ -355,6 +403,15 @@ public class SettlementUseCase {
                 "Cierre inmutable de liquidación diaria autorizada",
                 nowTime
         ));
+
+        // Backup automático silencioso tras cierre de liquidación diaria
+        if (databaseBackupService != null) {
+            try {
+                databaseBackupService.createBackup("Backup automático por cierre de liquidación de ruta (" + sessionDate + ")");
+            } catch (Exception ignored) {
+                // No abortar la transacción si el backup en disco falla
+            }
+        }
 
         return settlement;
     }

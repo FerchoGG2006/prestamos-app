@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,12 @@ import {
   ScrollView,
 } from 'react-native';
 import { Customer, Loan, LoanFrequency } from '../../core/domain/types';
-import { formatCOP } from '../../core/config/business-rules';
+import { formatCOP, addDays as addDaysToDate } from '../../core/config/business-rules';
 import {
   calculateLoanSummary,
   calculatePaperworkFee,
 } from '../../core/domain/calculator';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { FilePlus2, X, Calendar } from 'lucide-react-native';
 
@@ -24,40 +24,56 @@ interface NewLoanModalProps {
   customers: Customer[];
   loans: Loan[];
   todayStr: string;
+  baseAvailable?: number;
+  preselectedCustomerId?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
-
-const addDaysToDate = (baseDateStr: string, days: number): string => {
-  const d = new Date(baseDateStr + 'T00:00:00');
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
-};
 
 export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   visible,
   customers,
   loans,
   todayStr,
+  baseAvailable,
+  preselectedCustomerId,
   onClose,
   onSuccess,
 }) => {
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(preselectedCustomerId || '');
   const [principalStr, setPrincipalStr] = useState('200000');
   const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
   const [installmentCountStr, setInstallmentCountStr] = useState('30');
   const [fixedDueDateStr, setFixedDueDateStr] = useState<string>(() => addDaysToDate(todayStr, 7));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (visible && preselectedCustomerId) {
+      setSelectedCustomerId(preselectedCustomerId);
+    }
+  }, [visible, preselectedCustomerId]);
+
   const principal = parseInt(principalStr.replace(/\D/g, ''), 10) || 0;
   const isFixedDate = frequency === 'FIXED_DATE';
   const installmentCount = isFixedDate ? 1 : (parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 30);
+
+  const getFirstDueDate = (): string => {
+    if (isFixedDate) return fixedDueDateStr;
+    if (frequency === 'DAILY') return addDaysToDate(todayStr, 1);
+    if (frequency === 'WEEKLY') return addDaysToDate(todayStr, 7);
+    if (frequency === 'BIWEEKLY') return addDaysToDate(todayStr, 15);
+    if (frequency === 'MONTHLY') return addDaysToDate(todayStr, 30);
+    return addDaysToDate(todayStr, 1);
+  };
+  const firstDueDateStr = getFirstDueDate();
 
   const summary =
     principal > 0 && installmentCount > 0
       ? calculateLoanSummary(principal, 0.2, installmentCount)
       : null;
-  const paperwork = principal > 0 ? calculatePaperworkFee(principal) : 0;
+  const officeConfig = localStore.getOfficeConfig();
+  const isPaperworkEnabled = officeConfig.paperworkFeeEnabled ?? true;
+  const paperwork = principal > 0 && isPaperworkEnabled ? calculatePaperworkFee(principal) : 0;
   const netCashToDeliver = Math.max(0, principal - paperwork);
 
   const quickPrincipals = [100000, 150000, 200000, 300000, 500000];
@@ -70,7 +86,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     defaultCount: number;
     options: number[];
   }> = [
-    { key: 'DAILY', label: 'Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles?', defaultCount: 24, options: [12, 20, 24, 30, 40] },
+    { key: 'DAILY', label: 'Diario (30d)', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
     { key: 'WEEKLY', label: 'Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
     { key: 'BIWEEKLY', label: 'Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
     { key: 'MONTHLY', label: 'Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
@@ -117,7 +133,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         '¡Crédito Desembolsado!',
         `Crédito ${res.loan.loanNumber} creado exitosamente.\n\n` +
         `• Modalidad: ${isFixedDate ? `Fecha Fija (Vence: ${fixedDueDateStr})` : `${installmentCount} ${currentFreqConfig.unitLabel}`}\n` +
-        `• Total a recaudar: ${formatCOP(res.loan.totalAgreed)}\n` +
+        `• Total a cobrar: ${formatCOP(res.loan.totalAgreed)}\n` +
         `• Cuota: ${formatCOP(res.loan.installmentAmount)}\n` +
         `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
         `• Efectivo neto a entregar: ${formatCOP(netCashToDeliver)}`
@@ -198,6 +214,19 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 onChangeText={setPrincipalStr}
               />
             </View>
+
+            {baseAvailable !== undefined && (
+              <View style={[styles.baseAvailableBox, principal > baseAvailable && styles.baseExceededBox]}>
+                <Text style={styles.baseAvailableText}>
+                  💵 Base disponible para prestar: <Text style={{ fontWeight: '800' }}>{formatCOP(baseAvailable)}</Text>
+                </Text>
+                {principal > baseAvailable && (
+                  <Text style={styles.baseExceededWarning}>
+                    ⚠️ El monto supera la Base disponible en caja ({formatCOP(baseAvailable)})
+                  </Text>
+                )}
+              </View>
+            )}
 
             <ScrollView
               horizontal
@@ -340,17 +369,22 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   <Text style={styles.calcVal}>+ {formatCOP(summary.interestAmount)}</Text>
                 </View>
                 <View style={styles.calcRow}>
-                  <Text style={styles.calcLabel}>Total a recaudar:</Text>
+                  <Text style={styles.calcLabel}>Total a cobrar:</Text>
                   <Text style={[styles.calcVal, { color: COLORS.primary }]}>
                     {formatCOP(summary.totalAgreed)}
                   </Text>
                 </View>
                 <View style={styles.calcRow}>
-                  <Text style={styles.calcLabel}>
-                    {isFixedDate
-                      ? `Modalidad: Pago único el ${fixedDueDateStr}`
-                      : `Valor Cuota (${installmentCount} cuotas ${currentFreqConfig.unitLabel}):`}
-                  </Text>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.calcLabel}>
+                      {isFixedDate
+                        ? 'Modalidad: Pago único'
+                        : `Valor Cuota (${installmentCount} cuotas ${currentFreqConfig.unitLabel}):`}
+                    </Text>
+                    <Text style={styles.calcDateUnderAmount}>
+                      📅 {isFixedDate ? `Vence: ${fixedDueDateStr}` : `1ª cuota: ${firstDueDateStr} • Cobro ${currentFreqConfig.label.toLowerCase()}`}
+                    </Text>
+                  </View>
                   <Text style={[styles.calcVal, { color: COLORS.textPrimary, fontSize: 16 }]}>
                     {formatCOP(summary.installmentAmount)}
                   </Text>
@@ -422,12 +456,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: -0.4,
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -446,6 +482,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   label: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -467,11 +504,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purple,
   },
   customerChipName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   customerChipSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textMuted,
     marginTop: 2,
@@ -487,6 +526,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   floatingInternalLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -494,6 +534,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   amountInput: {
+    fontFamily: FONT_FAMILY,
     height: 38,
     fontSize: 24,
     fontWeight: '900',
@@ -515,6 +556,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purple,
   },
   quickAmtText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -538,6 +580,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.dockBg,
   },
   cntPillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: COLORS.textSecondary,
@@ -555,10 +598,12 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   calcLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textSecondary,
   },
   calcVal: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '900',
     color: COLORS.textPrimary,
@@ -579,6 +624,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   confirmBtnText: {
+    fontFamily: FONT_FAMILY,
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '800',
@@ -594,6 +640,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.inputBorder,
   },
   fixedDateInput: {
+    fontFamily: FONT_FAMILY,
     flex: 1,
     color: COLORS.textPrimary,
     fontSize: 14,
@@ -601,6 +648,7 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   fixedDateHint: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.primary,
     fontWeight: '800',
@@ -620,8 +668,42 @@ const styles = StyleSheet.create({
     borderColor: COLORS.dockBg,
   },
   quickDaysText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textSecondary,
+  },
+  baseAvailableBox: {
+    backgroundColor: '#f0f9ff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+  },
+  baseExceededBox: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  baseAvailableText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    color: '#0369a1',
+    fontWeight: '600',
+  },
+  baseExceededWarning: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    color: '#dc2626',
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  calcDateUnderAmount: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10,
+    color: COLORS.primary,
+    fontWeight: '700',
+    marginTop: 2,
   },
 });

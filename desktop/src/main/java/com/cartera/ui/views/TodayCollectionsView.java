@@ -1,14 +1,19 @@
 package com.cartera.ui.views;
- 
+
 import com.cartera.collections.application.TodayCollectionsService;
 import com.cartera.collections.application.TodayCollectionsService.CollectionItem;
+import com.cartera.infrastructure.persistence.repository.*;
+import com.cartera.loans.application.CreateLoanUseCase;
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.settlement.application.SettlementUseCase;
-import com.cartera.infrastructure.persistence.repository.CashMovementRepository;
+import com.cartera.sync.application.MobileSyncProcessorService;
+import com.cartera.sync.infrastructure.LanSyncServerService;
+import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
+import javafx.collections.transformation.SortedList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
@@ -18,6 +23,11 @@ import javafx.stage.Stage;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 
 public class TodayCollectionsView extends VBox {
@@ -30,12 +40,23 @@ public class TodayCollectionsView extends VBox {
     private final RecordPaymentUseCase paymentUseCase;
     private final SettlementUseCase settlementUseCase;
     private final CashMovementRepository cashMovementRepository;
+    private final CustomerRepository customerRepository;
+    private final LoanRepository loanRepository;
+    private final InstallmentRepository installmentRepository;
+    private final CreateLoanUseCase createLoanUseCase;
+    private final RenewalRepository renewalRepository;
+    private final PaymentPromiseRepository paymentPromiseRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final SystemSettingRepository systemSettingRepository;
+    private final MobileSyncProcessorService syncProcessorService;
+    private final LanSyncServerService lanSyncServerService;
     private final Stage primaryStage;
     private final Runnable onDataUpdated;
 
     private VBox routeContainer;
 
     private final ObservableList<CollectionItem> masterData = FXCollections.observableArrayList();
+    private FilteredList<CollectionItem> filteredData;
     private final TableView<CollectionItem> table = new TableView<>();
     private final Label lblCounter = new Label();
 
@@ -57,14 +78,64 @@ public class TodayCollectionsView extends VBox {
                                 CashMovementRepository cashMovementRepository,
                                 Stage primaryStage,
                                 Runnable onDataUpdated) {
+        this(collectionsService, paymentUseCase, settlementUseCase, cashMovementRepository,
+                null, null, null, null, null, null, null, null, null, null, primaryStage, onDataUpdated);
+    }
+
+    public TodayCollectionsView(TodayCollectionsService collectionsService,
+                                RecordPaymentUseCase paymentUseCase,
+                                SettlementUseCase settlementUseCase,
+                                CashMovementRepository cashMovementRepository,
+                                CustomerRepository customerRepository,
+                                LoanRepository loanRepository,
+                                InstallmentRepository installmentRepository,
+                                CreateLoanUseCase createLoanUseCase,
+                                RenewalRepository renewalRepository,
+                                PaymentPromiseRepository paymentPromiseRepository,
+                                AuditLogRepository auditLogRepository,
+                                SystemSettingRepository systemSettingRepository,
+                                Stage primaryStage,
+                                Runnable onDataUpdated) {
+        this(collectionsService, paymentUseCase, settlementUseCase, cashMovementRepository,
+                customerRepository, loanRepository, installmentRepository, createLoanUseCase,
+                renewalRepository, paymentPromiseRepository, auditLogRepository, systemSettingRepository,
+                null, null, primaryStage, onDataUpdated);
+    }
+
+    public TodayCollectionsView(TodayCollectionsService collectionsService,
+                                RecordPaymentUseCase paymentUseCase,
+                                SettlementUseCase settlementUseCase,
+                                CashMovementRepository cashMovementRepository,
+                                CustomerRepository customerRepository,
+                                LoanRepository loanRepository,
+                                InstallmentRepository installmentRepository,
+                                CreateLoanUseCase createLoanUseCase,
+                                RenewalRepository renewalRepository,
+                                PaymentPromiseRepository paymentPromiseRepository,
+                                AuditLogRepository auditLogRepository,
+                                SystemSettingRepository systemSettingRepository,
+                                MobileSyncProcessorService syncProcessorService,
+                                LanSyncServerService lanSyncServerService,
+                                Stage primaryStage,
+                                Runnable onDataUpdated) {
         this.collectionsService = collectionsService;
         this.paymentUseCase = paymentUseCase;
         this.settlementUseCase = settlementUseCase;
         this.cashMovementRepository = cashMovementRepository;
+        this.customerRepository = customerRepository;
+        this.loanRepository = loanRepository;
+        this.installmentRepository = installmentRepository;
+        this.createLoanUseCase = createLoanUseCase;
+        this.renewalRepository = renewalRepository;
+        this.paymentPromiseRepository = paymentPromiseRepository;
+        this.auditLogRepository = auditLogRepository;
+        this.systemSettingRepository = systemSettingRepository;
+        this.syncProcessorService = syncProcessorService;
+        this.lanSyncServerService = lanSyncServerService;
         this.primaryStage = primaryStage;
         this.onDataUpdated = onDataUpdated;
 
-        setSpacing(18);
+        setSpacing(16);
         setPadding(new Insets(24));
         setStyle("-fx-background-color: #f8fafc;");
 
@@ -100,7 +171,11 @@ public class TodayCollectionsView extends VBox {
         String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
                 .map(com.cartera.infrastructure.security.UserSession::userId)
                 .orElse("usr-col-1");
-        RouteExpenseDialog.show(primaryStage, collectorId, "route-1", settlementUseCase, saved -> {
+        String routeId = com.cartera.infrastructure.security.UserSessionContext.getSelectedRouteId();
+        if ("ALL".equalsIgnoreCase(routeId)) {
+            routeId = "route-norte";
+        }
+        RouteExpenseDialog.show(primaryStage, collectorId, routeId, settlementUseCase, saved -> {
             if (saved) {
                 refreshData();
                 if (onDataUpdated != null) onDataUpdated.run();
@@ -109,17 +184,16 @@ public class TodayCollectionsView extends VBox {
     }
 
     private void buildContentArea() {
-        // Contenedor de Ruta puro para el cobrador
-        routeContainer = new VBox(14);
+        routeContainer = new VBox(12);
         VBox.setVgrow(routeContainer, Priority.ALWAYS);
 
-        HBox searchRow = new HBox(12);
+        HBox searchRow = new HBox(10);
         searchRow.setAlignment(Pos.CENTER_LEFT);
 
         TextField searchField = new TextField();
         searchField.setPromptText("Buscar cliente por nombre, cédula, dirección o barrio...");
         searchField.getStyleClass().add("search-field");
-        searchField.setPrefWidth(380);
+        searchField.setPrefWidth(320);
 
         Label lblFreq = new Label("Modalidad:");
         lblFreq.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px; -fx-font-weight: bold;");
@@ -128,13 +202,17 @@ public class TodayCollectionsView extends VBox {
         cmbFreqFilter.getItems().addAll("TODAS", "DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
         cmbFreqFilter.setValue("TODAS");
         cmbFreqFilter.getStyleClass().add("search-field");
-        cmbFreqFilter.setPrefWidth(140);
+        cmbFreqFilter.setPrefWidth(130);
 
-        FilteredList<CollectionItem> filtered = new FilteredList<>(masterData, p -> true);
+        filteredData = new FilteredList<>(masterData, p -> true);
+        SortedList<CollectionItem> sortedData = new SortedList<>(filteredData);
+        sortedData.comparatorProperty().bind(table.comparatorProperty());
+        table.setItems(sortedData);
+
         Runnable applyFilter = () -> {
             String q = searchField.getText() != null ? searchField.getText().toLowerCase().trim() : "";
             String selectedFreq = cmbFreqFilter.getValue();
-            filtered.setPredicate(item -> {
+            filteredData.setPredicate(item -> {
                 boolean matchesFreq = selectedFreq == null || "TODAS".equalsIgnoreCase(selectedFreq)
                         || selectedFreq.equalsIgnoreCase(item.frequency());
                 if (!matchesFreq) return false;
@@ -145,25 +223,93 @@ public class TodayCollectionsView extends VBox {
                         || item.neighborhood().toLowerCase().contains(q)
                         || item.businessName().toLowerCase().contains(q);
             });
-            updateStats(filtered.size());
+            updateStats(filteredData);
         };
 
         searchField.textProperty().addListener((obs, oldVal, newVal) -> applyFilter.run());
         cmbFreqFilter.valueProperty().addListener((obs, oldVal, newVal) -> applyFilter.run());
+
+        // Controles de Ordenamiento Inteligente de Ruta
+        Button btnMoveUp = new Button("⬆ Subir");
+        btnMoveUp.getStyleClass().add("btn-secondary");
+        btnMoveUp.setStyle("-fx-font-size: 11px; -fx-padding: 6 10;");
+        btnMoveUp.setTooltip(new Tooltip("Subir cliente seleccionado en el orden de visita"));
+        btnMoveUp.setOnAction(e -> moveSelectedRow(-1));
+
+        Button btnMoveDown = new Button("⬇ Bajar");
+        btnMoveDown.getStyleClass().add("btn-secondary");
+        btnMoveDown.setStyle("-fx-font-size: 11px; -fx-padding: 6 10;");
+        btnMoveDown.setTooltip(new Tooltip("Bajar cliente seleccionado en el orden de visita"));
+        btnMoveDown.setOnAction(e -> moveSelectedRow(1));
+
+        Button btnAutoSort = new Button("⚡ Auto-Ordenar Prioridad: Mora → Cobro Hoy → Promesas");
+        btnAutoSort.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 6 12; -fx-cursor: hand;");
+        btnAutoSort.setOnAction(e -> autoSortByPriority());
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button btnSyncMobile = new Button("📥 Importar Móvil (JSON)");
+        Button btnSyncMobile = new Button("📡 Sincronizar Móvil (Wi-Fi / JSON)");
         btnSyncMobile.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 7 14; -fx-background-radius: 8; -fx-cursor: hand;");
         btnSyncMobile.setOnAction(e -> {
-            new ImportMobileSyncDialog(primaryStage, paymentUseCase, cashMovementRepository, () -> {
-                refreshData();
-                if (onDataUpdated != null) onDataUpdated.run();
-            }).show();
+            new ImportMobileSyncDialog(
+                    primaryStage,
+                    paymentUseCase,
+                    cashMovementRepository,
+                    customerRepository,
+                    loanRepository,
+                    installmentRepository,
+                    createLoanUseCase,
+                    renewalRepository,
+                    paymentPromiseRepository,
+                    auditLogRepository,
+                    syncProcessorService,
+                    lanSyncServerService,
+                    () -> {
+                        refreshData();
+                        if (onDataUpdated != null) onDataUpdated.run();
+                    }
+            ).show();
         });
+
+        searchRow.getChildren().addAll(searchField, lblFreq, cmbFreqFilter, btnMoveUp, btnMoveDown, btnAutoSort, spacer, btnSyncMobile);
 
         routeContainer.getChildren().addAll(searchRow, buildTableCard());
         getChildren().add(routeContainer);
+    }
+
+    private void moveSelectedRow(int delta) {
+        CollectionItem selected = table.getSelectionModel().getSelectedItem();
+        if (selected == null) return;
+        table.getSortOrder().clear();
+        int idx = masterData.indexOf(selected);
+        int targetIdx = idx + delta;
+        if (idx >= 0 && targetIdx >= 0 && targetIdx < masterData.size()) {
+            masterData.remove(idx);
+            masterData.add(targetIdx, selected);
+            table.getSelectionModel().select(selected);
+        }
+    }
+
+    private void autoSortByPriority() {
+        table.getSortOrder().clear();
+        List<CollectionItem> sorted = new ArrayList<>(masterData);
+        sorted.sort(Comparator
+                .comparingInt(this::priorityRank)
+                .thenComparing((CollectionItem i) -> i.overdueTotal() != null ? i.overdueTotal() : BigDecimal.ZERO, Comparator.reverseOrder())
+                .thenComparing((CollectionItem i) -> i.installmentPending() != null ? i.installmentPending() : BigDecimal.ZERO, Comparator.reverseOrder())
+                .thenComparing(CollectionItem::neighborhood, Comparator.nullsLast(String::compareToIgnoreCase))
+                .thenComparing(CollectionItem::fullName, Comparator.nullsLast(String::compareToIgnoreCase)));
+        masterData.setAll(sorted);
+    }
+
+    private int priorityRank(CollectionItem item) {
+        String st = item.statusText() != null ? item.statusText().toUpperCase() : "";
+        if (st.contains("EN MORA") || st.contains("VENCIDA")) return 1;
+        if (!item.isPaidToday() && (st.contains("PENDIENTE") || st.contains("COBRO HOY"))) return 2;
+        if (st.contains("PROMESA")) return 3;
+        if (st.contains("PRÓXIMA CUOTA")) return 4;
+        return 5; // PAGADO HOY
     }
 
     @SuppressWarnings("unchecked")
@@ -212,9 +358,9 @@ public class TodayCollectionsView extends VBox {
                 }
             }
         });
-        colCustomer.setPrefWidth(240);
+        colCustomer.setPrefWidth(220);
 
-        // 2. Columna Dirección con Pin
+        // 2. Columna Dirección con Pin y Botón Google Maps
         TableColumn<CollectionItem, CollectionItem> colAddress = new TableColumn<>("DIRECCIÓN / BARRIO");
         colAddress.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue()));
         colAddress.setCellFactory(col -> new TableCell<>() {
@@ -233,13 +379,13 @@ public class TodayCollectionsView extends VBox {
                     Label address = new Label(item.address());
                     address.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 13px; -fx-font-weight: 500;");
 
-                    Button btnMap = new Button("📍");
-                    btnMap.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 0 4; -fx-font-size: 11px;");
-                    btnMap.setTooltip(new Tooltip("Ver en Google Maps"));
+                    Button btnMap = new Button("📍 Ver en Mapa");
+                    btnMap.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #0f172a; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-padding: 1 6; -fx-font-size: 10px; -fx-font-weight: bold;");
+                    btnMap.setTooltip(new Tooltip("Abrir dirección en Google Maps"));
                     btnMap.setOnAction(e -> openMap(item.address(), item.neighborhood()));
                     addrRow.getChildren().addAll(address, btnMap);
 
-                    Label neighborhood = new Label("Barrio " + item.neighborhood());
+                    Label neighborhood = new Label("Barrio " + item.neighborhood() + " • " + item.routeId());
                     neighborhood.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     box.getChildren().addAll(addrRow, neighborhood);
@@ -248,7 +394,7 @@ public class TodayCollectionsView extends VBox {
                 }
             }
         });
-        colAddress.setPrefWidth(210);
+        colAddress.setPrefWidth(220);
 
         // 3. Columna Cuota del Día
         TableColumn<CollectionItem, CollectionItem> colCuota = new TableColumn<>("CUOTA DEL DÍA");
@@ -264,7 +410,8 @@ public class TodayCollectionsView extends VBox {
                     VBox box = new VBox(2);
                     box.setAlignment(Pos.CENTER_LEFT);
 
-                    boolean isPending = item.installmentPending().compareTo(BigDecimal.ZERO) > 0;
+                    boolean isFuture = item.statusText() != null && item.statusText().contains("PRÓXIMA CUOTA");
+                    boolean isPending = !isFuture && item.installmentPending().compareTo(BigDecimal.ZERO) > 0;
                     Label amount = new Label(CURRENCY.format(item.installmentPending()));
                     amount.setStyle(isPending
                             ? "-fx-text-fill: #059669; -fx-font-weight: bold; -fx-font-size: 13px;"
@@ -286,7 +433,7 @@ public class TodayCollectionsView extends VBox {
                 }
             }
         });
-        colCuota.setPrefWidth(160);
+        colCuota.setPrefWidth(150);
 
         // 4. Columna Saldo Total
         TableColumn<CollectionItem, CollectionItem> colBalance = new TableColumn<>("SALDO TOTAL");
@@ -313,7 +460,7 @@ public class TodayCollectionsView extends VBox {
                 }
             }
         });
-        colBalance.setPrefWidth(140);
+        colBalance.setPrefWidth(130);
 
         // 5. Columna Estado (Pill Badge)
         TableColumn<CollectionItem, CollectionItem> colStatus = new TableColumn<>("ESTADO");
@@ -329,13 +476,20 @@ public class TodayCollectionsView extends VBox {
                     Label badge = new Label();
                     badge.setAlignment(Pos.CENTER);
                     String baseStyle = "-fx-padding: 4 12; -fx-background-radius: 20; -fx-font-weight: bold; -fx-font-size: 11px;";
+                    String st = item.statusText() != null ? item.statusText().toUpperCase() : "";
 
-                    if (item.isPaidToday()) {
-                        badge.setText("AL DÍA / PAGADO");
+                    if (item.isPaidToday() && !st.contains("EN MORA")) {
+                        badge.setText("PAGADO HOY");
                         badge.setStyle(baseStyle + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 20;");
-                    } else if (item.statusText().contains("VENCIDA")) {
-                        badge.setText("VENCIDA");
+                    } else if (st.contains("EN MORA") || st.contains("VENCIDA")) {
+                        badge.setText("EN MORA");
                         badge.setStyle(baseStyle + "-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 20;");
+                    } else if (st.contains("PROMESA")) {
+                        badge.setText("PROMESA");
+                        badge.setStyle(baseStyle + "-fx-background-color: #fffbeb; -fx-text-fill: #d97706; -fx-border-color: #fde68a; -fx-border-radius: 20;");
+                    } else if (st.contains("PRÓXIMA CUOTA")) {
+                        badge.setText("PRÓXIMA CUOTA");
+                        badge.setStyle(baseStyle + "-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-border-color: #cbd5e1; -fx-border-radius: 20;");
                     } else {
                         badge.setText("COBRO HOY");
                         badge.setStyle(baseStyle + "-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 20;");
@@ -345,24 +499,11 @@ public class TodayCollectionsView extends VBox {
                 }
             }
         });
-        colStatus.setPrefWidth(150);
+        colStatus.setPrefWidth(130);
 
-        // 6. Columna Acción
+        // 6. Columna Acción (Cobrar + Recibo/Recordatorio WhatsApp)
         TableColumn<CollectionItem, Void> colAction = new TableColumn<>("ACCIÓN");
         colAction.setCellFactory(col -> new TableCell<>() {
-            private final Button btnPay = new Button("Cobrar");
-            {
-                btnPay.setOnAction(e -> {
-                    CollectionItem item = getTableView().getItems().get(getIndex());
-                    PaymentDialog.show(primaryStage, item, paymentUseCase, success -> {
-                        if (success) {
-                            refreshData();
-                            if (onDataUpdated != null) onDataUpdated.run();
-                        }
-                    });
-                });
-            }
-
             @Override
             protected void updateItem(Void val, boolean empty) {
                 super.updateItem(val, empty);
@@ -370,14 +511,18 @@ public class TodayCollectionsView extends VBox {
                     setGraphic(null);
                 } else {
                     CollectionItem item = getTableView().getItems().get(getIndex());
-                    if (item.isPaidToday()) {
-                        HBox actBox = new HBox(6);
-                        actBox.setAlignment(Pos.CENTER);
+                    HBox actBox = new HBox(6);
+                    actBox.setAlignment(Pos.CENTER_LEFT);
 
+                    Button btnWhatsApp = new Button("📲 WhatsApp");
+                    btnWhatsApp.setStyle("-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-cursor: hand;");
+                    btnWhatsApp.setOnAction(e -> sendQuickWhatsAppFor(item));
+
+                    if (item.isPaidToday()) {
                         Button btnExtra = new Button("Abonar +");
-                        btnExtra.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 10; -fx-background-radius: 6; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-cursor: hand;");
+                        btnExtra.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-cursor: hand;");
                         btnExtra.setOnAction(e -> {
-                            PaymentDialog.show(primaryStage, item, paymentUseCase, success -> {
+                            PaymentDialog.show(primaryStage, item, paymentUseCase, systemSettingRepository, success -> {
                                 if (success) {
                                     refreshData();
                                     if (onDataUpdated != null) onDataUpdated.run();
@@ -386,21 +531,29 @@ public class TodayCollectionsView extends VBox {
                         });
 
                         Button btnReceipt = new Button("Recibo");
-                        btnReceipt.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 10; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-cursor: hand;");
+                        btnReceipt.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-cursor: hand;");
                         btnReceipt.setOnAction(e -> showReceiptFor(item));
 
-                        actBox.getChildren().addAll(btnExtra, btnReceipt);
-                        setGraphic(actBox);
+                        actBox.getChildren().addAll(btnExtra, btnReceipt, btnWhatsApp);
                     } else {
-                        btnPay.setText("Cobrar");
-                        btnPay.setDisable(false);
-                        btnPay.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 6 16; -fx-background-radius: 6; -fx-cursor: hand; -fx-effect: dropshadow(gaussian, rgba(5,150,105,0.2), 4, 0, 0, 1);");
-                        setGraphic(btnPay);
+                        Button btnPay = new Button("Cobrar");
+                        btnPay.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 5 14; -fx-background-radius: 6; -fx-cursor: hand;");
+                        btnPay.setOnAction(e -> {
+                            PaymentDialog.show(primaryStage, item, paymentUseCase, systemSettingRepository, success -> {
+                                if (success) {
+                                    refreshData();
+                                    if (onDataUpdated != null) onDataUpdated.run();
+                                }
+                            });
+                        });
+
+                        actBox.getChildren().addAll(btnPay, btnWhatsApp);
                     }
+                    setGraphic(actBox);
                 }
             }
         });
-        colAction.setPrefWidth(160);
+        colAction.setPrefWidth(210);
 
         table.getColumns().addAll(colCustomer, colAddress, colCuota, colBalance, colStatus, colAction);
 
@@ -426,20 +579,23 @@ public class TodayCollectionsView extends VBox {
     public void refreshData() {
         var items = collectionsService.getTodayCollectionItems(LocalDate.now());
         masterData.setAll(items);
-        updateStats(items.size());
+        updateStats(filteredData != null ? filteredData : masterData);
     }
 
-    private void updateStats(int total) {
-        long pending = masterData.stream().filter(i -> !i.isPaidToday()).count();
-        BigDecimal totalCuotas = masterData.stream()
-                .filter(i -> !i.isPaidToday())
+    private void updateStats(List<CollectionItem> items) {
+        int total = items.size();
+        long pending = items.stream()
+                .filter(i -> !i.isPaidToday() && (i.statusText() == null || !i.statusText().contains("PRÓXIMA CUOTA")))
+                .count();
+        BigDecimal totalCuotas = items.stream()
+                .filter(i -> !i.isPaidToday() && (i.statusText() == null || !i.statusText().contains("PRÓXIMA CUOTA")))
                 .map(CollectionItem::installmentPending)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal totalBalance = masterData.stream()
+        BigDecimal totalBalance = items.stream()
                 .map(CollectionItem::loanBalance)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        lblCounter.setText(total + " clientes en ruta • " + pending + " pendientes de cobro");
+        lblCounter.setText(total + " clientes en ruta • " + pending + " pendientes de cobro hoy");
         lblFooterClients.setText("Total en ruta: " + total);
         lblFooterPending.setText("Pendientes hoy: " + pending);
         lblFooterTotalCuotas.setText("Cuotas hoy: " + CURRENCY.format(totalCuotas));
@@ -464,7 +620,50 @@ public class TodayCollectionsView extends VBox {
         } catch (Exception ignored) {}
     }
 
+    private void sendQuickWhatsAppFor(CollectionItem item) {
+        String companyName = systemSettingRepository != null
+                ? systemSettingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("SISTEMA DE CARTERA")
+                : "SISTEMA DE CARTERA";
+        String collectorName = com.cartera.infrastructure.security.UserSessionContext.getSession()
+                .map(com.cartera.infrastructure.security.UserSession::fullName)
+                .orElse("Cobrador de Ruta");
+
+        String msg;
+        if (item.isPaidToday()) {
+            msg = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
+                    companyName,
+                    "REC-" + item.loanId(),
+                    item.fullName(),
+                    item.documentNumber(),
+                    item.installmentAmount(),
+                    item.loanBalance(),
+                    1,
+                    "EFECTIVO",
+                    collectorName,
+                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+            );
+        } else {
+            BigDecimal paid = item.loanTotal().subtract(item.loanBalance()).max(BigDecimal.ZERO);
+            int overdueCount = (item.overdueTotal() != null && item.overdueTotal().compareTo(BigDecimal.ZERO) > 0) ? 1 : 0;
+            msg = WhatsAppReceiptUtil.generateAccountStatementMessage(
+                    companyName,
+                    item.fullName(),
+                    item.loanId(),
+                    item.loanTotal(),
+                    paid,
+                    item.loanBalance(),
+                    overdueCount,
+                    item.installmentPending(),
+                    LocalDate.now().toString()
+            );
+        }
+        WhatsAppReceiptUtil.sendViaWhatsApp(item.phone(), msg);
+    }
+
     private void showReceiptFor(CollectionItem item) {
+        String companyName = systemSettingRepository != null
+                ? systemSettingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("SISTEMA DE CARTERA")
+                : "SISTEMA DE CARTERA";
         ReceiptDialog.ReceiptData rData = new ReceiptDialog.ReceiptData(
                 "REC-" + (item.loanId().length() > 8 ? item.loanId().substring(0, 8) : item.loanId()),
                 item.fullName(),
@@ -475,7 +674,7 @@ public class TodayCollectionsView extends VBox {
                 1,
                 "Cobrador de Ruta",
                 "EFECTIVO",
-                "SISTEMA DE CARTERA",
+                companyName,
                 item.phone()
         );
         new ReceiptDialog(rData, primaryStage).show();

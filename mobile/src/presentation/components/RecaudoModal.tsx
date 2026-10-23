@@ -8,11 +8,13 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { formatCOP } from '../../core/config/business-rules';
 import { COLORS } from '../theme/colors';
-import { Landmark, X, Check, ArrowDownCircle, AlertCircle, Sparkles } from 'lucide-react-native';
+import { Landmark, X, Check, ArrowDownCircle, AlertCircle } from 'lucide-react-native';
 
 interface RecaudoModalProps {
   visible: boolean;
@@ -96,7 +98,10 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.modalOverlay}
+      >
         <View style={styles.modalCard}>
           {/* Header */}
           <View style={styles.headerRow}>
@@ -248,7 +253,7 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

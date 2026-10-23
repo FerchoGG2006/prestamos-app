@@ -7,6 +7,9 @@ import {
   StyleSheet,
   Linking,
   Alert,
+  Platform,
+  Modal,
+  TextInput,
 } from 'react-native';
 import {
   Customer,
@@ -15,10 +18,17 @@ import {
   Payment,
   Renewal,
   PaymentPromise,
+  UserRole,
 } from '../../../core/domain/types';
 import { formatCOP } from '../../../core/config/business-rules';
 import { calculateDelinquencyMetrics } from '../../../core/domain/calculator';
-import { COLORS } from '../../theme/colors';
+import { localStore } from '../../../infrastructure/storage/local-store';
+import {
+  formatAccountStatementReminder,
+  formatDigitalPaymentReceipt,
+  openWhatsAppReceipt,
+} from '../../../core/utils/whatsapp-receipt';
+import { COLORS, TYPOGRAPHY, FONT_FAMILY } from '../../theme/colors';
 import {
   ArrowLeft,
   Phone,
@@ -35,6 +45,11 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Trash2,
+  Edit3,
+  RotateCcw,
+  Ban,
+  ShieldAlert,
 } from 'lucide-react-native';
 
 interface CustomerDetailViewProps {
@@ -45,12 +60,17 @@ interface CustomerDetailViewProps {
   renewals: Renewal[];
   promises: PaymentPromise[];
   todayStr: string;
+  userRole?: UserRole;
+  currentUserId?: string;
+  onDataChanged?: () => void;
   onBack: () => void;
   onPayLoan: (customer: Customer, loan: Loan) => void;
   onRenewLoan: (customer: Customer, loan: Loan) => void;
   onPromiseLoan?: (customer: Customer, loan: Loan) => void;
   onNonPayment?: (customer: Customer, loan: Loan) => void;
   onOpenCreditHistory?: (customer: Customer) => void;
+  onDeleteCustomer?: (customer: Customer, force?: boolean) => void;
+  onEditCustomer?: (customer: Customer) => void;
 }
 
 export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
@@ -60,13 +80,20 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
   payments,
   promises,
   todayStr,
+  userRole = 'COBRADOR',
+  currentUserId = 'usr-col-1',
+  onDataChanged,
   onBack,
   onPayLoan,
   onRenewLoan,
   onPromiseLoan,
   onNonPayment,
   onOpenCreditHistory,
+  onDeleteCustomer,
+  onEditCustomer,
 }) => {
+  const isAdminOrSupervisor =
+    userRole === 'ADMIN' || userRole === 'SUPERVISOR' || userRole === 'SUPER_ADMIN';
   const customerLoans = loans.filter((l) => l.customerId === customer.id);
   const activeLoan = customerLoans.find((l) => l.status === 'ACTIVE');
 
@@ -95,6 +122,14 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
   const customerPromises = promises.filter((p) => p.customerId === customer.id);
 
   const [showAllInstallments, setShowAllInstallments] = useState(false);
+  const [auditModalState, setAuditModalState] = useState<{
+    visible: boolean;
+    mode: 'REVERSE_PAYMENT' | 'CANCEL_LOAN';
+    targetPayment?: Payment;
+    targetLoan?: Loan;
+  }>({ visible: false, mode: 'REVERSE_PAYMENT' });
+  const [auditReason, setAuditReason] = useState('');
+  const [isProcessingAudit, setIsProcessingAudit] = useState(false);
 
   const getInstallmentPaymentDetails = (inst: Installment) => {
     const isPaid = inst.pendingAmount <= 0;
@@ -139,17 +174,22 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
     Linking.openURL(`tel:${phoneNumber}`).catch(() => {});
   };
 
-  const handleWhatsApp = () => {
-    const cleanPhone = customer.phone.replace(/\D/g, '');
-    const fullPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
-    const msg = activeLoan
-      ? `Hola *${customer.fullName}*, estado de tu crédito *${activeLoan.loanNumber}*: Saldo pendiente *${formatCOP(
-          currentRemainingBalance
-        )}*.`
-      : `Hola *${customer.fullName}*, te escribimos de Cartera Móvil.`;
-    Linking.openURL(`https://wa.me/${fullPhone}?text=${encodeURIComponent(msg)}`).catch(
-      () => Alert.alert('WhatsApp', msg)
-    );
+  const handleWhatsApp = async () => {
+    const companyConfig = localStore.getOfficeConfig();
+    const waPhone = customer.whatsappPhone || customer.phone;
+    if (activeLoan) {
+      const msg = formatAccountStatementReminder({
+        companyConfig,
+        customer,
+        loan: activeLoan,
+        installments: activeInstallments,
+        todayStr,
+      });
+      await openWhatsAppReceipt(waPhone, msg);
+    } else {
+      const msg = `Hola *${customer.fullName}*, le escribimos de *${companyConfig.companyName}*. Actualmente su cuenta se encuentra a paz y salvo.`;
+      await openWhatsAppReceipt(waPhone, msg);
+    }
   };
 
   const handleOpenMap = () => {
@@ -159,6 +199,131 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
     Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${q}`).catch(
       () => {}
     );
+  };
+
+  const handleSharePaymentWhatsApp = async (pay: Payment) => {
+    const companyConfig = localStore.getOfficeConfig();
+    const targetLoan =
+      customerLoans.find((l) => l.id === pay.loanId) ||
+      activeLoan ||
+      customerLoans[0];
+    if (!targetLoan) return;
+    const loanInsts = installments.filter((i) => i.loanId === targetLoan.id);
+    const remBal = loanInsts.reduce((s, i) => s + i.pendingAmount, 0);
+
+    const receiptText = formatDigitalPaymentReceipt({
+      companyConfig,
+      customer,
+      loan: targetLoan,
+      payment: pay,
+      remainingBalance: remBal,
+      installments: loanInsts,
+    });
+
+    const waPhone = customer.whatsappPhone || customer.phone;
+    await openWhatsAppReceipt(waPhone, receiptText);
+  };
+
+  const handleOpenReversePaymentModal = (pay: Payment) => {
+    if (!isAdminOrSupervisor) return;
+    setAuditReason('');
+    setAuditModalState({
+      visible: true,
+      mode: 'REVERSE_PAYMENT',
+      targetPayment: pay,
+    });
+  };
+
+  const handleOpenCancelLoanModal = (loan: Loan) => {
+    if (!isAdminOrSupervisor) return;
+    setAuditReason('');
+    setAuditModalState({
+      visible: true,
+      mode: 'CANCEL_LOAN',
+      targetLoan: loan,
+    });
+  };
+
+  const handleConfirmAuditAction = async () => {
+    if (!isAdminOrSupervisor) {
+      Alert.alert('Acceso denegado', 'Operación exclusiva para Administradores y Supervisores.');
+      return;
+    }
+    if (auditReason.trim().length < 5) {
+      Alert.alert(
+        'Motivo obligatorio',
+        'Por favor escriba un motivo de auditoría de al menos 5 caracteres.'
+      );
+      return;
+    }
+
+    setIsProcessingAudit(true);
+    try {
+      if (auditModalState.mode === 'REVERSE_PAYMENT' && auditModalState.targetPayment) {
+        await localStore.reversePayment({
+          paymentId: auditModalState.targetPayment.id,
+          reason: auditReason.trim(),
+          userRole,
+          userId: currentUserId,
+          todayStr,
+        });
+        Alert.alert(
+          '↩ Abono Anulado',
+          'El abono fue revertido de las cuotas y se registró el movimiento compensatorio en caja y auditoría.'
+        );
+      } else if (auditModalState.mode === 'CANCEL_LOAN' && auditModalState.targetLoan) {
+        await localStore.cancelLoan({
+          loanId: auditModalState.targetLoan.id,
+          reason: auditReason.trim(),
+          userRole,
+          userId: currentUserId,
+          todayStr,
+        });
+        Alert.alert(
+          '🚫 Crédito Anulado',
+          'El crédito fue marcado como CANCELLED y su desembolso fue reintegrado a la base de caja con registro en auditoría.'
+        );
+      }
+      setAuditModalState({ visible: false, mode: 'REVERSE_PAYMENT' });
+      setAuditReason('');
+      onDataChanged?.();
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'No se pudo procesar la anulación.');
+    } finally {
+      setIsProcessingAudit(false);
+    }
+  };
+
+  const handleDeletePress = () => {
+    if (!onDeleteCustomer) return;
+    const hasActive = !!activeLoan;
+    const alertTitle = hasActive
+      ? '⚠️ Cliente con Crédito Activo'
+      : 'Eliminar Cliente';
+    const alertMessage = hasActive
+      ? `El cliente ${customer.fullName} tiene un crédito activo (${activeLoan?.loanNumber || 'en curso'}). Si lo elimina, el crédito se archivará como cancelado. ¿Desea continuar de todas formas?`
+      : `¿Está seguro de eliminar a ${customer.fullName}? Esta acción lo removerá de la ruta y del directorio.`;
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`${alertTitle}\n\n${alertMessage}`);
+      if (confirmed) {
+        onDeleteCustomer(customer, hasActive);
+      }
+    } else {
+      Alert.alert(
+        alertTitle,
+        alertMessage,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: hasActive ? 'Eliminar de todas formas' : 'Eliminar',
+            style: 'destructive',
+            onPress: () => onDeleteCustomer(customer, hasActive),
+          },
+        ],
+        { cancelable: true }
+      );
+    }
   };
 
   return (
@@ -174,24 +339,44 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
             Cédula {customer.documentNumber} • {customer.neighborhood}
           </Text>
         </View>
-        <View
-          style={[
-            styles.semanticStatusPill,
-            delinquency.hasDelinquency ? styles.pillMora : styles.pillAlDia,
-          ]}
-        >
-          <Text
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View
             style={[
-              styles.semanticStatusText,
-              delinquency.hasDelinquency
-                ? { color: COLORS.danger }
-                : { color: COLORS.success },
+              styles.semanticStatusPill,
+              delinquency.hasDelinquency ? styles.pillMora : styles.pillAlDia,
             ]}
           >
-            {delinquency.hasDelinquency
-              ? `Mora ${delinquency.overdueDays}d`
-              : '✓ Al día'}
-          </Text>
+            <Text
+              style={[
+                styles.semanticStatusText,
+                delinquency.hasDelinquency
+                  ? { color: COLORS.danger }
+                  : { color: COLORS.success },
+              ]}
+            >
+              {delinquency.hasDelinquency
+                ? `Mora ${delinquency.overdueDays}d`
+                : '✓ Al día'}
+            </Text>
+          </View>
+          {onEditCustomer && (
+            <TouchableOpacity
+              onPress={() => onEditCustomer(customer)}
+              style={styles.headerEditBtn}
+              activeOpacity={0.7}
+            >
+              <Edit3 size={15} color="#2563eb" />
+            </TouchableOpacity>
+          )}
+          {onDeleteCustomer && (
+            <TouchableOpacity
+              onPress={handleDeletePress}
+              style={styles.headerDeleteBtn}
+              activeOpacity={0.7}
+            >
+              <Trash2 size={16} color="#dc2626" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -202,7 +387,29 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
       >
         {/* 1. Tarjeta Principal del Titular + Píldoras de Contacto en 1 Toque */}
         <View style={styles.profileCard}>
-          <Text style={styles.customerName}>{customer.fullName}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <Text style={styles.customerName}>{customer.fullName}</Text>
+            {onEditCustomer && (
+              <TouchableOpacity
+                style={styles.editProfileSmallBtn}
+                onPress={() => onEditCustomer(customer)}
+                activeOpacity={0.7}
+              >
+                <Edit3 size={12} color="#2563eb" style={{ marginRight: 4 }} />
+                <Text style={styles.editProfileSmallBtnText}>Editar Datos</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.contactMetaRow}>
+            <Phone size={14} color={COLORS.textMuted} />
+            <Text style={styles.contactText}>
+              Llamadas: {customer.phone}
+              {customer.whatsappPhone && customer.whatsappPhone !== customer.phone
+                ? ` • WhatsApp: ${customer.whatsappPhone}`
+                : ' • (WhatsApp activo)'}
+            </Text>
+          </View>
 
           <View style={styles.contactMetaRow}>
             <MapPin size={14} color={COLORS.textMuted} />
@@ -401,6 +608,55 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               </View>
             </View>
 
+            {/* Acciones de Estado de Cuenta por WhatsApp y Anulación Auditada (EXCLUSIVO ADMIN/SUPERVISOR) */}
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  minWidth: 180,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#f0fdf4',
+                  borderWidth: 1,
+                  borderColor: '#bbf7d0',
+                  borderRadius: 10,
+                  paddingVertical: 9,
+                  paddingHorizontal: 12,
+                }}
+                onPress={handleWhatsApp}
+                activeOpacity={0.75}
+              >
+                <MessageCircle size={14} color="#16a34a" style={{ marginRight: 6 }} />
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#15803d' }}>
+                  📲 Enviar Estado de Cuenta por WhatsApp
+                </Text>
+              </TouchableOpacity>
+
+              {isAdminOrSupervisor && (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#fef2f2',
+                    borderWidth: 1,
+                    borderColor: '#fecaca',
+                    borderRadius: 10,
+                    paddingVertical: 9,
+                    paddingHorizontal: 12,
+                  }}
+                  onPress={() => handleOpenCancelLoanModal(activeLoan)}
+                  activeOpacity={0.75}
+                >
+                  <Ban size={14} color="#dc2626" style={{ marginRight: 5 }} />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#dc2626' }}>
+                    🚫 Anular Crédito
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
             <View style={styles.dashedDivider} />
 
             <View style={styles.planHeaderRow}>
@@ -551,22 +807,91 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               Aún no se han registrado abonos para este cliente en la sesión.
             </Text>
           ) : (
-            customerPayments.map((pay) => (
-              <View key={pay.id} style={styles.paymentTicketItem}>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.paymentTicketAmount}>
-                    {formatCOP(pay.amountReceived)}
-                  </Text>
-                  <View style={styles.methodPill}>
-                    <Text style={styles.methodPillText}>{pay.paymentMethod}</Text>
+            customerPayments.map((pay) => {
+              const isReversed = pay.status === 'REVERSED' || pay.status === 'ANNULLED';
+              return (
+                <View
+                  key={pay.id}
+                  style={[
+                    styles.paymentTicketItem,
+                    isReversed && { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
+                  ]}
+                >
+                  <View style={styles.rowBetween}>
+                    <Text
+                      style={[
+                        styles.paymentTicketAmount,
+                        isReversed && {
+                          textDecorationLine: 'line-through',
+                          color: '#991b1b',
+                        },
+                      ]}
+                    >
+                      {formatCOP(pay.amountReceived)}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {isReversed && (
+                        <View
+                          style={{
+                            backgroundColor: '#fee2e2',
+                            paddingHorizontal: 7,
+                            paddingVertical: 2,
+                            borderRadius: 6,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '800', color: '#dc2626' }}>
+                            ANULADO
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.methodPill}>
+                        <Text style={styles.methodPillText}>{pay.paymentMethod}</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.paymentTicketActionRow}>
+                    <Text style={[styles.paymentTicketMeta, { flex: 1 }]}>
+                      Fecha: {pay.createdAt} • {pay.installmentsBreakdown.length} cuota(s) • Ref:{' '}
+                      {pay.id}
+                      {pay.notes ? `\n${pay.notes}` : ''}
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {!isReversed && (
+                        <TouchableOpacity
+                          style={styles.shareTicketWhatsAppBtn}
+                          onPress={() => handleSharePaymentWhatsApp(pay)}
+                          activeOpacity={0.7}
+                        >
+                          <MessageCircle size={12} color="#16a34a" style={{ marginRight: 4 }} />
+                          <Text style={styles.shareTicketWhatsAppText}>WhatsApp</Text>
+                        </TouchableOpacity>
+                      )}
+                      {isAdminOrSupervisor && !isReversed && (
+                        <TouchableOpacity
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: '#fef2f2',
+                            borderWidth: 1,
+                            borderColor: '#fecaca',
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 6,
+                          }}
+                          onPress={() => handleOpenReversePaymentModal(pay)}
+                          activeOpacity={0.7}
+                        >
+                          <RotateCcw size={11} color="#dc2626" style={{ marginRight: 3 }} />
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#dc2626' }}>
+                            ↩ Anular Abono
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 </View>
-                <Text style={styles.paymentTicketMeta}>
-                  Fecha: {pay.createdAt} • {pay.installmentsBreakdown.length} cuota(s) • Ref:{' '}
-                  {pay.id}
-                </Text>
-              </View>
-            ))
+              );
+            })
           )}
         </View>
 
@@ -594,12 +919,244 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
             ))}
           </View>
         )}
+
+        {/* 6. Zona de Peligro / Gestión de Cliente */}
+        {onDeleteCustomer && (
+          <View style={styles.dangerZoneCard}>
+            <View style={styles.dangerZoneHeader}>
+              <Trash2 size={16} color="#dc2626" style={{ marginRight: 6 }} />
+              <Text style={styles.dangerZoneTitle}>GESTIÓN / ELIMINAR CLIENTE</Text>
+            </View>
+            <Text style={styles.dangerZoneDesc}>
+              Remover este cliente del directorio y la ruta activa. La operación quedará registrada en auditoría.
+            </Text>
+            <TouchableOpacity
+              style={styles.dangerZoneBtn}
+              activeOpacity={0.8}
+              onPress={handleDeletePress}
+            >
+              <Trash2 size={15} color="#ffffff" style={{ marginRight: 6 }} />
+              <Text style={styles.dangerZoneBtnText}>Eliminar este Cliente</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
+
+      {/* Modal de Reverso / Anulación Auditada (EXCLUSIVO ADMIN Y SUPERVISOR) */}
+      {isAdminOrSupervisor && (
+        <Modal
+          visible={auditModalState.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={() =>
+            setAuditModalState({ visible: false, mode: 'REVERSE_PAYMENT' })
+          }
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(15, 23, 42, 0.65)',
+              justifyContent: 'center',
+              padding: 20,
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: '#ffffff',
+                borderRadius: 18,
+                padding: 20,
+                borderWidth: 1,
+                borderColor: '#fecaca',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <ShieldAlert size={20} color="#dc2626" style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 16, fontWeight: '900', color: '#991b1b', flex: 1 }}>
+                  {auditModalState.mode === 'REVERSE_PAYMENT'
+                    ? '↩ Anular Abono (Auditoría)'
+                    : '🚫 Anular Crédito (Auditoría)'}
+                </Text>
+              </View>
+
+              <Text style={{ fontSize: 12, color: '#475569', lineHeight: 18, marginBottom: 12 }}>
+                {auditModalState.mode === 'REVERSE_PAYMENT'
+                  ? `Se revertirá el abono de ${formatCOP(
+                      auditModalState.targetPayment?.amountReceived || 0
+                    )} sobre las cuotas del cliente ${
+                      customer.fullName
+                    } y se descontará de la caja del día.`
+                  : `Se anulará el crédito ${
+                      auditModalState.targetLoan?.loanNumber || ''
+                    } de ${customer.fullName} y se reintegrará el desembolso a la base de caja.`}
+              </Text>
+
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  color: '#334155',
+                  marginBottom: 6,
+                }}
+              >
+                MOTIVO OBLIGATORIO DE AUDITORÍA (MÍN. 5 CARACTERES):
+              </Text>
+              <TextInput
+                style={{
+                  backgroundColor: '#f8fafc',
+                  borderWidth: 1,
+                  borderColor: '#cbd5e1',
+                  borderRadius: 10,
+                  padding: 12,
+                  fontSize: 13,
+                  color: '#0f172a',
+                  minHeight: 72,
+                  textAlignVertical: 'top',
+                  marginBottom: 14,
+                }}
+                placeholder="Ej: Error de digitación en monto, abono aplicado al cliente equivocado..."
+                placeholderTextColor="#94a3b8"
+                multiline
+                value={auditReason}
+                onChangeText={setAuditReason}
+              />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+                <TouchableOpacity
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    borderRadius: 10,
+                    backgroundColor: '#f1f5f9',
+                  }}
+                  onPress={() =>
+                    setAuditModalState({ visible: false, mode: 'REVERSE_PAYMENT' })
+                  }
+                  disabled={isProcessingAudit}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#475569' }}>
+                    Cancelar
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    borderRadius: 10,
+                    backgroundColor: '#dc2626',
+                    opacity: isProcessingAudit ? 0.6 : 1,
+                  }}
+                  onPress={handleConfirmAuditAction}
+                  disabled={isProcessingAudit}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#ffffff' }}>
+                    {isProcessingAudit ? 'Procesando...' : 'Confirmar Anulación'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  headerEditBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  headerDeleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  editProfileSmallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  editProfileSmallBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2563eb',
+  },
+  paymentTicketActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  shareTicketWhatsAppBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  shareTicketWhatsAppText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#16a34a',
+  },
+  dangerZoneCard: {
+    backgroundColor: '#fff5f5',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    padding: 16,
+    marginTop: 16,
+  },
+  dangerZoneHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  dangerZoneTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#dc2626',
+    letterSpacing: 0.5,
+  },
+  dangerZoneDesc: {
+    fontSize: 12,
+    color: '#7f1d1d',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  dangerZoneBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc2626',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  dangerZoneBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: COLORS.bgPrimary,
@@ -624,11 +1181,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
   headerSubtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '600',
@@ -648,6 +1207,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.dangerBorder,
   },
   semanticStatusText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -664,6 +1224,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   customerName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: -0.4,
@@ -677,6 +1238,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   contactText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     fontWeight: '600',

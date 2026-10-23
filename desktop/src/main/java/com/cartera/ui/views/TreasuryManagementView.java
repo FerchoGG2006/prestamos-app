@@ -38,9 +38,9 @@ public class TreasuryManagementView extends BorderPane {
         topBar.setStyle("-fx-background-color: #ffffff; -fx-border-color: #e2e8f0; -fx-border-width: 0 0 1 0;");
 
         var titleBox = new VBox(2);
-        var mainTitle = new Label("Tesorería y Cierres");
+        var mainTitle = new Label("Administrativo de Ruta");
         mainTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
-        subTitle = new Label("Control de efectivo, ingresos por cobros y arqueos");
+        subTitle = new Label("Patrimonio total de la ruta (préstamos + intereses), base disponible y liquidaciones");
         subTitle.getStyleClass().add("muted");
         titleBox.getChildren().addAll(mainTitle, subTitle);
 
@@ -52,7 +52,7 @@ public class TreasuryManagementView extends BorderPane {
         segmentBar.getStyleClass().add("segment-bar");
         segmentBar.setAlignment(Pos.CENTER);
 
-        btnCash = new Button("Arqueo y Caja");
+        btnCash = new Button("Base y Arqueo de Caja");
         btnCash.getStyleClass().addAll("segment-btn", "segment-btn-active");
         btnCash.setOnAction(e -> showSection("cash"));
 

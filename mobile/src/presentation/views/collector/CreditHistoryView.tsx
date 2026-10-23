@@ -16,8 +16,8 @@ import {
   CreditHistoryReport,
   LoanHistoryRecord,
 } from '../../../core/domain/credit-history';
-import { formatCOP } from '../../../core/config/business-rules';
-import { COLORS } from '../../theme/colors';
+import { formatCOP, getFrequencyLabel, getInitials } from '../../../core/config/business-rules';
+import { COLORS, FONT_FAMILY } from '../../theme/colors';
 import {
   Search,
   UserCheck,
@@ -25,8 +25,6 @@ import {
   AlertOctagon,
   Info,
   Calendar,
-  DollarSign,
-  Clock,
   Phone,
   MessageCircle,
   FileText,
@@ -120,29 +118,6 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
     Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`).catch(() => {
       Alert.alert('WhatsApp', msg);
     });
-  };
-
-  const getInitials = (name: string) => {
-    if (!name) return 'CL';
-    const p = name.trim().split(/\s+/);
-    if (p.length === 1) return p[0].substring(0, 2).toUpperCase();
-    return (p[0][0] + p[1][0]).toUpperCase();
-  };
-
-  const getFrequencyLabel = (freq?: string) => {
-    switch (freq) {
-      case 'WEEKLY':
-        return 'Semanal';
-      case 'BIWEEKLY':
-        return 'Quincenal';
-      case 'MONTHLY':
-        return 'Mensual';
-      case 'FIXED_DATE':
-        return 'Fecha Fija';
-      case 'DAILY':
-      default:
-        return 'Diario';
-    }
   };
 
   return (
@@ -614,11 +589,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   screenTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
   },
   screenSubtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
@@ -637,6 +614,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   searchPrompt: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: '#1E293B',
@@ -652,6 +630,7 @@ const styles = StyleSheet.create({
     height: 44,
   },
   textInput: {
+    fontFamily: FONT_FAMILY,
     flex: 1,
     fontSize: 14,
     color: '#0F172A',
@@ -667,6 +646,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   suggestionsTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: '#64748B',
@@ -689,16 +669,19 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   suggestionAvatarText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: '#3730A3',
   },
   suggestionName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: '#0F172A',
   },
   suggestionDoc: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#64748B',
   },
@@ -706,6 +689,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   chipsSectionTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: '#64748B',
@@ -725,6 +709,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   chipText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: '#334155',
@@ -748,6 +733,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emptyStateTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '800',
     color: '#0F172A',
@@ -755,6 +741,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   emptyStateDesc: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#64748B',
     textAlign: 'center',
@@ -785,16 +772,19 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   avatarInitials: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '800',
     color: '#FFFFFF',
   },
   customerName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '800',
     color: '#0F172A',
   },
   customerDoc: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#64748B',
     marginTop: 1,
@@ -823,10 +813,12 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   verdictLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
   },
   verdictExplanation: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     lineHeight: 16,
     fontWeight: '600',
@@ -846,17 +838,20 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   kpiLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
     color: '#64748B',
   },
   kpiValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '800',
     color: '#2563EB',
     marginTop: 2,
   },
   kpiSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9.5,
     color: '#94A3B8',
     marginTop: 2,
@@ -875,6 +870,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   actionBtnPrimaryText: {
+    fontFamily: FONT_FAMILY,
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
@@ -891,6 +887,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   actionBtnSecondaryText: {
+    fontFamily: FONT_FAMILY,
     color: '#059669',
     fontWeight: '700',
     fontSize: 13,
@@ -899,6 +896,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   historySectionTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     color: '#0F172A',
@@ -913,6 +911,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   noLoansText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#64748B',
   },
@@ -936,11 +935,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   loanIdText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: '#0F172A',
   },
   loanDateText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#64748B',
   },
@@ -959,6 +960,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9',
   },
   loanStatusText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -969,6 +971,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   loanVerdictText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     fontWeight: '700',
   },
@@ -984,11 +987,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loanStatLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '700',
     color: '#64748B',
   },
   loanStatValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#0F172A',
@@ -1004,6 +1009,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   viewInstallmentsBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: '#2563EB',
@@ -1030,11 +1036,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   modalTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '800',
     color: '#0F172A',
   },
   modalSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#64748B',
     marginTop: 2,
@@ -1054,11 +1062,13 @@ const styles = StyleSheet.create({
     width: 80,
   },
   instNumText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: '#0F172A',
   },
   instDueDate: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     color: '#64748B',
   },
@@ -1067,10 +1077,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   instExpected: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#475569',
   },
   instPaid: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     color: '#059669',
     fontWeight: '600',
@@ -1087,6 +1099,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
   },
   instStatusPillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
   },
@@ -1098,6 +1111,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   modalCloseFooterBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: '#475569',

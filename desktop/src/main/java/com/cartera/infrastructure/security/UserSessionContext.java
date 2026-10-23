@@ -4,11 +4,12 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Contenedor centralizado para la sesión del usuario actual en la aplicación de escritorio.
+ * Contenedor centralizado para la sesión del usuario actual y filtro global de ruta activa.
  */
 public final class UserSessionContext {
 
     private static final AtomicReference<UserSession> CURRENT = new AtomicReference<>();
+    private static final AtomicReference<String> SELECTED_ROUTE_ID = new AtomicReference<>("ALL");
 
     private UserSessionContext() {}
 
@@ -28,7 +29,26 @@ public final class UserSessionContext {
         return session;
     }
 
+    public static String getSelectedRouteId() {
+        String r = SELECTED_ROUTE_ID.get();
+        return (r == null || r.isBlank()) ? "ALL" : r;
+    }
+
+    public static void setSelectedRouteId(String routeId) {
+        SELECTED_ROUTE_ID.set((routeId == null || routeId.isBlank()) ? "ALL" : routeId.trim());
+    }
+
+    public static boolean isAllRoutesSelected() {
+        return "ALL".equalsIgnoreCase(getSelectedRouteId());
+    }
+
+    public static boolean canCurrentUserReverseOrCancel() {
+        UserSession s = CURRENT.get();
+        return s != null && s.canReverseOrCancel() && !s.isCollector();
+    }
+
     public static void clear() {
         CURRENT.set(null);
+        SELECTED_ROUTE_ID.set("ALL");
     }
 }

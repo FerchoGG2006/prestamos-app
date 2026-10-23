@@ -48,7 +48,7 @@ export function calculateCustomerCreditHistory(
   customer: Customer,
   loans: Loan[],
   installments: Installment[],
-  payments: Payment[],
+  _payments: Payment[],
   todayStr: string
 ): CreditHistoryReport {
   const customerLoans = loans
@@ -87,6 +87,7 @@ export function calculateCustomerCreditHistory(
 
     let loanPaid = 0;
     let loanPending = 0;
+    let loanOverdueAmount = 0;
     let paidInstCount = 0;
     let overdueInstCount = 0;
     let maxLoanDelayDays = 0;
@@ -107,8 +108,30 @@ export function calculateCustomerCreditHistory(
 
         if (diffDays > 0 && inst.pendingAmount > 0) {
           overdueInstCount++;
+          loanOverdueAmount += inst.pendingAmount;
           if (diffDays > maxLoanDelayDays) {
             maxLoanDelayDays = diffDays;
+          }
+        } else if (inst.pendingAmount <= 0) {
+          // Verificar si la cuota ya pagada se canceló con atraso respecto a su fecha de vencimiento
+          const paidDateRaw =
+            inst.lastPaymentDate ||
+            _payments.find(
+              (p) =>
+                p.status === 'COMPLETED' &&
+                p.installmentsBreakdown?.some((b) => b.installmentId === inst.id)
+            )?.createdAt;
+          const paidDateStr = paidDateRaw ? paidDateRaw.split('T')[0] : undefined;
+          if (paidDateStr && paidDateStr > inst.dueDate) {
+            const paidDate = new Date(paidDateStr + 'T00:00:00');
+            const paidDiffDays = Math.floor(
+              (paidDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            if (paidDiffDays > 0) {
+              if (paidDiffDays > maxLoanDelayDays) {
+                maxLoanDelayDays = paidDiffDays;
+              }
+            }
           }
         }
       }
@@ -120,7 +143,9 @@ export function calculateCustomerCreditHistory(
       currentRemainingBalance += loanPending;
       if (overdueInstCount > 0) {
         hasActiveOverdueLoans = true;
-        currentOverdueAmount += loanPending;
+        currentOverdueAmount += loanOverdueAmount;
+      } else if (maxLoanDelayDays > 0) {
+        hasPastLoansWithDelay = true;
       }
     }
 
@@ -150,8 +175,14 @@ export function calculateCustomerCreditHistory(
         behaviorColor = '#2563EB';
       }
     } else {
-      behaviorVerdict = '• Renovado / Liquidado';
-      behaviorColor = '#64748B';
+      if (maxLoanDelayDays > 0) {
+        hasPastLoansWithDelay = true;
+        behaviorVerdict = `• Renovado con Atraso previo (${maxLoanDelayDays} días máx)`;
+        behaviorColor = '#D97706';
+      } else {
+        behaviorVerdict = '• Renovado / Liquidado';
+        behaviorColor = '#64748B';
+      }
     }
 
     loanRecords.push({

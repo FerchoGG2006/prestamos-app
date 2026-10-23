@@ -1,8 +1,8 @@
 package com.cartera.ui.views;
 
+import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.print.PrinterJob;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -19,7 +19,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * Diálogo modal para visualizar, imprimir o compartir el comprobante de cobro oficial.
+ * Diálogo modal para visualizar y compartir el comprobante digital de cobro por WhatsApp o portapapeles.
  */
 public class ReceiptDialog extends Stage {
 
@@ -49,7 +49,7 @@ public class ReceiptDialog extends Stage {
 
         initModality(Modality.WINDOW_MODAL);
         initOwner(ownerStage);
-        setTitle("Comprobante de Pago #" + (data.receiptId().length() > 8 ? data.receiptId().substring(0, 8) : data.receiptId()));
+        setTitle("Comprobante Digital de Pago #" + (data.receiptId().length() > 8 ? data.receiptId().substring(0, 8) : data.receiptId()));
         setResizable(false);
 
         buildUI();
@@ -59,9 +59,8 @@ public class ReceiptDialog extends Stage {
         VBox root = new VBox(16);
         root.setPadding(new Insets(24));
         root.setStyle("-fx-background-color: #f1f5f9;");
-        root.setPrefWidth(420);
+        root.setPrefWidth(440);
 
-        // Tarjeta estilo Ticket Térmico
         VBox ticketCard = new VBox(8);
         ticketCard.setAlignment(Pos.CENTER);
         ticketCard.setPadding(new Insets(20));
@@ -72,7 +71,7 @@ public class ReceiptDialog extends Stage {
         Label company = new Label(data.companyName() != null && !data.companyName().isBlank() ? data.companyName().toUpperCase() : "SISTEMA DE CARTERA");
         company.setStyle("-fx-text-fill: #111827; -fx-font-weight: bold; -fx-font-size: 15px; -fx-font-family: 'Consolas', monospace;");
 
-        Label sub = new Label("RECIBO OFICIAL DE COBRO");
+        Label sub = new Label("RECIBO DIGITAL DE COBRO");
         sub.setStyle("-fx-text-fill: #4b5563; -fx-font-size: 11px; -fx-font-family: 'Consolas', monospace;");
 
         Label divider1 = new Label("----------------------------------------");
@@ -103,29 +102,62 @@ public class ReceiptDialog extends Stage {
         Label divider3 = new Label("----------------------------------------");
         divider3.setStyle("-fx-text-fill: #9ca3af; -fx-font-family: 'Consolas', monospace;");
 
-        Label footer = new Label("¡Gracias por su puntual cumplimiento!\nConserve este recibo como soporte.");
+        Label footer = new Label("¡Gracias por su puntual cumplimiento!\nComprobante digital listo para enviar por WhatsApp.");
         footer.setStyle("-fx-text-fill: #6b7280; -fx-font-size: 10px; -fx-text-alignment: center; -fx-font-family: 'Consolas', monospace;");
 
         ticketCard.getChildren().addAll(company, sub, divider1, details, divider2, financial, divider3, footer);
 
-        // Feedback de copia
         Label lblCopied = new Label();
         lblCopied.setVisible(false);
         lblCopied.setManaged(false);
+        lblCopied.setWrapText(true);
 
-        // Botones de acción
         HBox actions = new HBox(10);
         actions.setAlignment(Pos.CENTER);
 
-        Button btnPrint = new Button("Imprimir Recibo");
-        btnPrint.getStyleClass().add("btn-primary");
-        btnPrint.setOnAction(e -> printTicket(ticketCard));
+        Button btnWhatsApp = new Button("📲 Enviar Recibo por WhatsApp");
+        btnWhatsApp.setStyle("-fx-background-color: #16a34a; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnWhatsApp.setOnAction(e -> {
+            String message = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
+                    data.companyName(),
+                    data.receiptId(),
+                    data.customerName(),
+                    data.customerDoc(),
+                    data.amountPaid(),
+                    data.remainingBalance(),
+                    data.installmentsAffected(),
+                    data.paymentMethod(),
+                    data.collectorName(),
+                    now
+            );
+            WhatsAppReceiptUtil.sendViaWhatsApp(data.companyPhone(), message);
+            lblCopied.setText("Recibo copiado y enviado a WhatsApp.");
+            lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+            lblCopied.setVisible(true);
+            lblCopied.setManaged(true);
+        });
 
-        Button btnCopy = new Button("Copiar Texto");
-        btnCopy.getStyleClass().add("btn-success");
+        Button btnCopy = new Button("📋 Copiar Texto");
+        btnCopy.getStyleClass().add("btn-secondary");
         btnCopy.setOnAction(e -> {
-            copyToClipboard(now);
-            lblCopied.setText("Texto de recibo copiado al portapapeles.");
+            String message = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
+                    data.companyName(),
+                    data.receiptId(),
+                    data.customerName(),
+                    data.customerDoc(),
+                    data.amountPaid(),
+                    data.remainingBalance(),
+                    data.installmentsAffected(),
+                    data.paymentMethod(),
+                    data.collectorName(),
+                    now
+            );
+            Clipboard clipboard = Clipboard.getSystemClipboard();
+            ClipboardContent content = new ClipboardContent();
+            content.putString(message);
+            clipboard.setContent(content);
+
+            lblCopied.setText("Recibo copiado al portapapeles.");
             lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
             lblCopied.setVisible(true);
             lblCopied.setManaged(true);
@@ -135,7 +167,7 @@ public class ReceiptDialog extends Stage {
         btnClose.getStyleClass().add("btn-secondary");
         btnClose.setOnAction(e -> close());
 
-        actions.getChildren().addAll(btnPrint, btnCopy, btnClose);
+        actions.getChildren().addAll(btnWhatsApp, btnCopy, btnClose);
 
         root.getChildren().addAll(ticketCard, lblCopied, actions);
 
@@ -161,49 +193,5 @@ public class ReceiptDialog extends Stage {
 
         row.getChildren().addAll(l, sp, v);
         return row;
-    }
-
-    private void printTicket(javafx.scene.Node node) {
-        PrinterJob job = PrinterJob.createPrinterJob();
-        if (job != null) {
-            boolean proceed = job.showPrintDialog(this);
-            if (proceed) {
-                boolean success = job.printPage(node);
-                if (success) {
-                    job.endJob();
-                }
-            }
-        }
-    }
-
-    private void copyToClipboard(String now) {
-        String text = String.format("""
-                COMPROBANTE DE PAGO
-                %s
-                ===================================
-                Fecha: %s
-                Recibo No: %s
-                Cliente: %s
-                Documento: %s
-                Valor Pagado: %s
-                Saldo Pendiente: %s
-                Cobrador: %s
-                ===================================
-                Comprobante emitido por el sistema.
-                """,
-                data.companyName() != null ? data.companyName() : "SISTEMA DE CARTERA",
-                now,
-                data.receiptId().substring(0, Math.min(8, data.receiptId().length())).toUpperCase(),
-                data.customerName(),
-                data.customerDoc(),
-                CURRENCY.format(data.amountPaid()),
-                CURRENCY.format(data.remainingBalance()),
-                data.collectorName()
-        );
-
-        Clipboard clipboard = Clipboard.getSystemClipboard();
-        ClipboardContent content = new ClipboardContent();
-        content.putString(text);
-        clipboard.setContent(content);
     }
 }

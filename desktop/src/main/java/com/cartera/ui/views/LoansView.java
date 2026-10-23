@@ -5,6 +5,9 @@ import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
+import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
+import com.cartera.infrastructure.security.UserSessionContext;
+import com.cartera.loans.application.CancelLoanUseCase;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -17,6 +20,7 @@ import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class LoansView extends VBox {
@@ -29,7 +33,9 @@ public class LoansView extends VBox {
     private final CustomerRepository customerRepository;
     private final com.cartera.loans.application.CreateLoanUseCase createLoanUseCase;
     private final com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase;
+    private final CancelLoanUseCase cancelLoanUseCase;
     private final InstallmentRepository installmentRepository;
+    private final SystemSettingRepository settingRepository;
     private final javafx.stage.Stage ownerStage;
     private final Runnable onLoanCreatedCallback;
     private final ObservableList<LoanEntity> loansList = FXCollections.observableArrayList();
@@ -46,11 +52,36 @@ public class LoansView extends VBox {
                      com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase,
                      javafx.stage.Stage ownerStage,
                      Runnable onLoanCreatedCallback) {
+        this(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, null, null, ownerStage, onLoanCreatedCallback);
+    }
+
+    public LoansView(LoanRepository loanRepository,
+                     CustomerRepository customerRepository,
+                     InstallmentRepository installmentRepository,
+                     com.cartera.loans.application.CreateLoanUseCase createLoanUseCase,
+                     com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase,
+                     SystemSettingRepository settingRepository,
+                     javafx.stage.Stage ownerStage,
+                     Runnable onLoanCreatedCallback) {
+        this(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, null, settingRepository, ownerStage, onLoanCreatedCallback);
+    }
+
+    public LoansView(LoanRepository loanRepository,
+                     CustomerRepository customerRepository,
+                     InstallmentRepository installmentRepository,
+                     com.cartera.loans.application.CreateLoanUseCase createLoanUseCase,
+                     com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase,
+                     CancelLoanUseCase cancelLoanUseCase,
+                     SystemSettingRepository settingRepository,
+                     javafx.stage.Stage ownerStage,
+                     Runnable onLoanCreatedCallback) {
         this.loanRepository = loanRepository;
         this.customerRepository = customerRepository;
         this.installmentRepository = installmentRepository;
         this.createLoanUseCase = createLoanUseCase;
         this.renewLoanUseCase = renewLoanUseCase;
+        this.cancelLoanUseCase = cancelLoanUseCase;
+        this.settingRepository = settingRepository;
         this.ownerStage = ownerStage;
         this.onLoanCreatedCallback = onLoanCreatedCallback;
 
@@ -70,7 +101,7 @@ public class LoansView extends VBox {
         VBox titleBox = new VBox(4);
         Label title = new Label("Créditos Otorgados");
         title.getStyleClass().add("section-title");
-        Label subtitle = new Label("Listado de contratos y acuerdos de pago");
+        Label subtitle = new Label("Listado de contratos, renovaciones y control de anulación auditada");
         subtitle.getStyleClass().add("muted");
         titleBox.getChildren().addAll(title, subtitle);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
@@ -79,10 +110,23 @@ public class LoansView extends VBox {
         btnNewLoan.getStyleClass().add("btn-primary");
         btnNewLoan.setOnAction(e -> {
             if (createLoanUseCase != null) {
-                new CreateLoanDialog(createLoanUseCase, customerRepository, ownerStage, l -> {
+                new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, ownerStage, l -> {
                     refresh();
                     if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
                 }).showAndWait();
+            }
+        });
+
+        Button btnMigrate = new Button("📋 Migrar Cartulina Física");
+        btnMigrate.setStyle("-fx-background-color: #fef3c7; -fx-text-fill: #92400e; -fx-font-weight: 800; -fx-font-size: 12px; -fx-border-color: #fde68a; -fx-border-radius: 8; -fx-background-radius: 8; -fx-cursor: hand; -fx-padding: 7 14;");
+        btnMigrate.setOnAction(e -> {
+            if (createLoanUseCase != null) {
+                var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, ownerStage, l -> {
+                    refresh();
+                    if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
+                });
+                dlg.setMigrationMode(true);
+                dlg.showAndWait();
             }
         });
 
@@ -90,7 +134,7 @@ public class LoansView extends VBox {
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
-        top.getChildren().addAll(titleBox, btnNewLoan, btnRefresh);
+        top.getChildren().addAll(titleBox, btnMigrate, btnNewLoan, btnRefresh);
         getChildren().add(top);
     }
 
@@ -131,7 +175,7 @@ public class LoansView extends VBox {
                     Label lblName = new Label(name);
                     lblName.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px;");
 
-                    Label lblId = new Label("Contrato ID: " + l.getId());
+                    Label lblId = new Label("Contrato ID: " + l.getId() + " • Ruta: " + (l.getRouteId() != null ? l.getRouteId() : "route-norte"));
                     lblId.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     textGroup.getChildren().addAll(lblName, lblId);
@@ -216,7 +260,7 @@ public class LoansView extends VBox {
                 }
             }
         });
-        colTerms.setPrefWidth(160);
+        colTerms.setPrefWidth(150);
 
         // 5. Fecha Inicio
         TableColumn<LoanEntity, LoanEntity> colDate = new TableColumn<>("FECHA INICIO");
@@ -241,7 +285,7 @@ public class LoansView extends VBox {
                 }
             }
         });
-        colDate.setPrefWidth(130);
+        colDate.setPrefWidth(120);
 
         // 6. Estado
         TableColumn<LoanEntity, String> colStatus = new TableColumn<>("ESTADO");
@@ -257,9 +301,15 @@ public class LoansView extends VBox {
                     Label badge = new Label();
                     badge.setAlignment(Pos.CENTER);
                     String base = "-fx-padding: 4 12; -fx-background-radius: 20; -fx-font-weight: bold; -fx-font-size: 11px;";
-                    if ("FINALIZADO".equalsIgnoreCase(text)) {
+                    if ("FINALIZADO".equalsIgnoreCase(text) || "PAGADO".equalsIgnoreCase(text)) {
                         badge.setText("FINALIZADO");
                         badge.setStyle(base + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 20;");
+                    } else if ("RENOVADO".equalsIgnoreCase(text)) {
+                        badge.setText("RENOVADO");
+                        badge.setStyle(base + "-fx-background-color: #f5f3ff; -fx-text-fill: #6d28d9; -fx-border-color: #ddd6fe; -fx-border-radius: 20;");
+                    } else if ("ANULADO".equalsIgnoreCase(text)) {
+                        badge.setText("ANULADO");
+                        badge.setStyle(base + "-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 20;");
                     } else {
                         badge.setText(text.toUpperCase());
                         badge.setStyle(base + "-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 20;");
@@ -269,27 +319,12 @@ public class LoansView extends VBox {
                 }
             }
         });
-        colStatus.setPrefWidth(140);
+        colStatus.setPrefWidth(130);
 
-        // 7. Acciones
+        // 7. Acciones (Renovar y Anular Crédito solo para ADMIN/SUPERVISOR)
         TableColumn<LoanEntity, LoanEntity> colAction = new TableColumn<>("ACCIONES");
         colAction.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
         colAction.setCellFactory(col -> new TableCell<>() {
-            private final Button btnRenew = new Button("Renovar");
-            {
-                btnRenew.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
-                btnRenew.setOnAction(e -> {
-                    LoanEntity loan = getItem();
-                    if (loan != null && "ACTIVO".equalsIgnoreCase(loan.getStatus()) && renewLoanUseCase != null) {
-                        String name = customerNames.getOrDefault(loan.getCustomerId(), "Cliente #" + loan.getCustomerId());
-                        new RenewLoanDialog(loan, name, renewLoanUseCase, installmentRepository, ownerStage, res -> {
-                            refresh();
-                            if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
-                        }).showAndWait();
-                    }
-                });
-            }
-
             @Override
             protected void updateItem(LoanEntity l, boolean empty) {
                 super.updateItem(l, empty);
@@ -298,7 +333,31 @@ public class LoansView extends VBox {
                     setText(null);
                 } else {
                     if ("ACTIVO".equalsIgnoreCase(l.getStatus())) {
-                        setGraphic(btnRenew);
+                        HBox box = new HBox(6);
+                        box.setAlignment(Pos.CENTER_LEFT);
+
+                        Button btnRenew = new Button("Renovar");
+                        btnRenew.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
+                        btnRenew.setOnAction(e -> {
+                            if (renewLoanUseCase != null) {
+                                String name = customerNames.getOrDefault(l.getCustomerId(), "Cliente #" + l.getCustomerId());
+                                new RenewLoanDialog(l, name, renewLoanUseCase, installmentRepository, settingRepository, ownerStage, res -> {
+                                    refresh();
+                                    if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
+                                }).showAndWait();
+                            }
+                        });
+                        box.getChildren().add(btnRenew);
+
+                        // Solo ADMIN y SUPERVISOR ven el botón de Anular Crédito
+                        if (cancelLoanUseCase != null && UserSessionContext.canCurrentUserReverseOrCancel()) {
+                            Button btnCancelLoan = new Button("🚫 Anular");
+                            btnCancelLoan.setStyle("-fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-text-fill: #dc2626; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
+                            btnCancelLoan.setOnAction(e -> promptAndCancelLoan(l));
+                            box.getChildren().add(btnCancelLoan);
+                        }
+
+                        setGraphic(box);
                     } else {
                         setGraphic(null);
                     }
@@ -306,7 +365,7 @@ public class LoansView extends VBox {
                 }
             }
         });
-        colAction.setPrefWidth(110);
+        colAction.setPrefWidth(170);
 
         table.getColumns().addAll(colCustomer, colPrincipal, colTotal, colTerms, colDate, colStatus, colAction);
         table.setItems(loansList);
@@ -329,16 +388,58 @@ public class LoansView extends VBox {
         getChildren().add(tableCard);
     }
 
+    private void promptAndCancelLoan(LoanEntity loan) {
+        if (!UserSessionContext.canCurrentUserReverseOrCancel()) {
+            new Alert(Alert.AlertType.ERROR, "Operación restringida exclusivamente a Administradores y Supervisores.").showAndWait();
+            return;
+        }
+        String customerName = customerNames.getOrDefault(loan.getCustomerId(), "Cliente #" + loan.getCustomerId());
+        TextInputDialog dialog = new TextInputDialog();
+        if (ownerStage != null) dialog.initOwner(ownerStage);
+        dialog.setTitle("Anulación Auditada de Crédito");
+        dialog.setHeaderText("🚫 Anular Crédito de " + customerName + " (" + CURRENCY.format(loan.getPrincipal()) + ")");
+        dialog.setContentText("Ingrese el motivo obligatorio de auditoría:");
+
+        Optional<String> result = dialog.showAndWait();
+        if (result.isPresent()) {
+            String reason = result.get().trim();
+            if (reason.isEmpty()) {
+                new Alert(Alert.AlertType.WARNING, "Debe especificar un motivo de auditoría válido.").showAndWait();
+                return;
+            }
+            try {
+                cancelLoanUseCase.execute(loan.getId(), reason);
+                refresh();
+                if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
+                new Alert(Alert.AlertType.INFORMATION, "Crédito anulado y desembolso reintegrado a caja exitosamente.").showAndWait();
+            } catch (Exception ex) {
+                new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait();
+            }
+        }
+    }
+
     public void refresh() {
         customerNames = customerRepository.findAll().stream()
                 .collect(Collectors.toMap(CustomerEntity::getId, CustomerEntity::getFullName, (a, b) -> a));
-        var loans = loanRepository.findAll();
+
+        String selectedRoute = UserSessionContext.getSelectedRouteId();
+        boolean filterRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute);
+
+        var loans = loanRepository.findAll().stream()
+                .filter(l -> !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId() != null ? l.getRouteId() : "route-norte"))
+                .toList();
         loansList.setAll(loans);
 
-        BigDecimal sumPrincipal = loans.stream().map(LoanEntity::getPrincipal).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal sumTotalAgreed = loans.stream().map(LoanEntity::getTotalAgreed).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sumPrincipal = loans.stream()
+                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()))
+                .map(LoanEntity::getPrincipal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sumTotalAgreed = loans.stream()
+                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()))
+                .map(LoanEntity::getTotalAgreed)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        lblFooterCount.setText("Contratos activos: " + loans.size());
+        lblFooterCount.setText("Total contratos: " + loans.size());
         lblFooterPrincipal.setText("Capital total prestado: " + CURRENCY.format(sumPrincipal));
         lblFooterTotalAgreed.setText("Cartera total pactada: " + CURRENCY.format(sumTotalAgreed));
     }

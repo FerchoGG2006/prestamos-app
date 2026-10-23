@@ -67,6 +67,8 @@ public class CashMovementEntity {
     public void setSessionId(String sessionId) { this.sessionId = sessionId; }
     public String getMovementType() { return movementType; }
     public void setMovementType(String movementType) { this.movementType = movementType; }
+    public String getType() { return movementType; }
+    public void setType(String type) { this.movementType = type; }
     public String getCategory() { return category; }
     public void setCategory(String category) { this.category = category; }
     public BigDecimal getAmount() { return amount; }

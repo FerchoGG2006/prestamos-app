@@ -18,6 +18,7 @@ import javafx.stage.Stage;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
 
@@ -321,7 +322,7 @@ public class CreditHistoryView extends VBox {
         strip.setAlignment(Pos.CENTER_LEFT);
 
         VBox c1 = createMetricCard("Préstamos Totales", report.totalLoansCount() + " contratos",
-                report.completedLoansCount() + " pagados • " + report.activeLoansCount() + " activos", "#2563eb");
+                report.completedLoansCount() + " cerrados • " + report.activeLoansCount() + " activos", "#2563eb");
         HBox.setHgrow(c1, Priority.ALWAYS);
 
         VBox c2 = createMetricCard("Total Desembolsado", CURRENCY.format(report.totalBorrowed()),
@@ -332,9 +333,9 @@ public class CreditHistoryView extends VBox {
                 "Cumplimiento en cuotas", "#059669");
         HBox.setHgrow(c3, Priority.ALWAYS);
 
-        String balColor = report.currentRemainingBalance().compareTo(BigDecimal.ZERO) > 0 ? "#dc2626" : "#059669";
+        String balColor = report.currentOverdueAmount().compareTo(BigDecimal.ZERO) > 0 ? "#dc2626" : "#059669";
         VBox c4 = createMetricCard("Saldo Activo Pendiente", CURRENCY.format(report.currentRemainingBalance()),
-                report.currentOverdueAmount().compareTo(BigDecimal.ZERO) > 0 ? "Mora: " + CURRENCY.format(report.currentOverdueAmount()) : "Sin mora activa", balColor);
+                report.currentOverdueAmount().compareTo(BigDecimal.ZERO) > 0 ? "Monto en Mora: " + CURRENCY.format(report.currentOverdueAmount()) : "Sin mora activa", balColor);
         HBox.setHgrow(c4, Priority.ALWAYS);
 
         String delayText = report.maxOverdueDaysRecorded() == 0 ? "0 días (Puntual)" : report.maxOverdueDaysRecorded() + " días máx";
@@ -420,9 +421,14 @@ public class CreditHistoryView extends VBox {
                 } else {
                     String st = item.loan().getStatus() != null ? item.loan().getStatus().toUpperCase() : "DESCONOCIDO";
                     Label badge = new Label(st);
-                    if ("PAGADO".equals(st) || "PAID".equals(st)) {
+                    if ("FINALIZADO".equals(st) || "PAGADO".equals(st) || "PAID".equals(st)) {
+                        badge.setText("PAGADO");
                         badge.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-padding: 2 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    } else if ("RENOVADO".equals(st)) {
+                        badge.setText("RENOVADO");
+                        badge.setStyle("-fx-background-color: #eef2ff; -fx-text-fill: #4338ca; -fx-padding: 2 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
                     } else if ("ACTIVO".equals(st) || "ACTIVE".equals(st)) {
+                        badge.setText("ACTIVO");
                         badge.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-padding: 2 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
                     } else {
                         badge.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #64748b; -fx-padding: 2 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
@@ -538,6 +544,7 @@ public class CreditHistoryView extends VBox {
         colPending.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().getPendingAmount())));
         colPending.setPrefWidth(95);
 
+        LocalDate today = LocalDate.now();
         TableColumn<InstallmentEntity, InstallmentEntity> colStatus = new TableColumn<>("ESTADO");
         colStatus.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
         colStatus.setCellFactory(c -> new TableCell<>() {
@@ -548,14 +555,28 @@ public class CreditHistoryView extends VBox {
                     setGraphic(null);
                     setText(null);
                 } else {
-                    BigDecimal pend = inst.getPendingAmount();
+                    BigDecimal pend = inst.getPendingAmount() != null ? inst.getPendingAmount() : BigDecimal.ZERO;
+                    BigDecimal paid = inst.getPaidAmount() != null ? inst.getPaidAmount() : BigDecimal.ZERO;
+                    boolean isOverdue = false;
+                    if (inst.getDueDate() != null && !inst.getDueDate().isBlank()) {
+                        try {
+                            isOverdue = LocalDate.parse(inst.getDueDate()).isBefore(today);
+                        } catch (Exception ignored) {}
+                    }
+
                     Label b = new Label();
-                    if (pend.compareTo(BigDecimal.ZERO) <= 0) {
+                    if (pend.compareTo(BigDecimal.ZERO) <= 0 || "PAGADA".equalsIgnoreCase(inst.getStatus())) {
                         b.setText("PAGADA");
-                        b.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-padding: 2 6; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
+                        b.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
+                    } else if (isOverdue || "VENCIDA".equalsIgnoreCase(inst.getStatus())) {
+                        b.setText("VENCIDA");
+                        b.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
+                    } else if (paid.compareTo(BigDecimal.ZERO) > 0 || "PARCIAL".equalsIgnoreCase(inst.getStatus())) {
+                        b.setText("PARCIAL");
+                        b.setStyle("-fx-background-color: #fffbeb; -fx-text-fill: #d97706; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
                     } else {
                         b.setText("PENDIENTE");
-                        b.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-padding: 2 6; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
+                        b.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
                     }
                     setGraphic(b);
                     setText(null);

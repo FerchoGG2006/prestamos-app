@@ -5,6 +5,7 @@ import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
 import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.persistence.repository.CashMovementRepository;
 import com.cartera.infrastructure.security.UserSessionContext;
+import com.cartera.ui.util.CurrencyInputUtil;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -61,6 +62,14 @@ public class CashManagementView extends VBox {
         buildMetrics();
         buildTableCard();
         refresh();
+    }
+
+    private static boolean isInflow(String type) {
+        return "INGRESO".equalsIgnoreCase(type) || "ENTRADA".equalsIgnoreCase(type);
+    }
+
+    private static boolean isOutflow(String type) {
+        return "EGRESO".equalsIgnoreCase(type) || "SALIDA".equalsIgnoreCase(type);
     }
 
     private void buildHeader() {
@@ -147,13 +156,13 @@ public class CashManagementView extends VBox {
                     setGraphic(null);
                     setText(null);
                 } else {
-                    Label badge = new Label(type);
+                    Label badge = new Label(type.toUpperCase());
                     badge.setAlignment(Pos.CENTER);
                     String base = "-fx-padding: 3 10; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 11px;";
-                    if ("INGRESO".equalsIgnoreCase(type)) {
-                        badge.setStyle(base + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 12;");
+                    if (isInflow(type)) {
+                        badge.setStyle(base + "-fx-background-color: #ecfdf5; -fx-text-fill: #10b981; -fx-border-color: #a7f3d0; -fx-border-radius: 12;");
                     } else {
-                        badge.setStyle(base + "-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 12;");
+                        badge.setStyle(base + "-fx-background-color: #fef2f2; -fx-text-fill: #ef4444; -fx-border-color: #fecaca; -fx-border-radius: 12;");
                     }
                     setGraphic(badge);
                     setText(null);
@@ -177,10 +186,12 @@ public class CashManagementView extends VBox {
                 if (empty || m == null) {
                     setText(null);
                 } else {
-                    boolean isIncome = "INGRESO".equalsIgnoreCase(m.getMovementType());
-                    String sign = isIncome ? "+ " : "- ";
+                    boolean income = isInflow(m.getMovementType());
+                    String sign = income ? "+ " : "- ";
                     setText(sign + CURRENCY.format(m.getAmount()));
-                    setStyle(isIncome ? "-fx-text-fill: #059669; -fx-font-weight: bold;" : "-fx-text-fill: #dc2626; -fx-font-weight: bold;" );
+                    setStyle(income
+                            ? "-fx-text-fill: #10b981; -fx-font-weight: bold;"
+                            : "-fx-text-fill: #ef4444; -fx-font-weight: bold;");
                 }
             }
         });
@@ -205,12 +216,12 @@ public class CashManagementView extends VBox {
         movementsList.setAll(list);
 
         BigDecimal inflow = list.stream()
-                .filter(m -> "INGRESO".equalsIgnoreCase(m.getMovementType()))
+                .filter(m -> isInflow(m.getMovementType()))
                 .map(CashMovementEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal outflow = list.stream()
-                .filter(m -> "EGRESO".equalsIgnoreCase(m.getMovementType()))
+                .filter(m -> isOutflow(m.getMovementType()))
                 .map(CashMovementEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -249,7 +260,7 @@ public class CashManagementView extends VBox {
         cmbCategory.getStyleClass().add("search-field");
 
         TextField txtAmount = new TextField();
-        txtAmount.setPromptText("Ej. 20000");
+        txtAmount.setPromptText("Ej. 20.000");
         txtAmount.getStyleClass().add("search-field");
 
         TextField txtDesc = new TextField();
@@ -271,8 +282,8 @@ public class CashManagementView extends VBox {
         btnSave.getStyleClass().add("btn-primary");
         btnSave.setOnAction(e -> {
             try {
-                String clean = txtAmount.getText().replaceAll("[^0-9.]", "").trim();
-                if (clean.isEmpty() || new BigDecimal(clean).compareTo(BigDecimal.ZERO) <= 0) {
+                BigDecimal amount = CurrencyInputUtil.parseAmount(txtAmount.getText());
+                if (amount.compareTo(BigDecimal.ZERO) <= 0) {
                     lblFeedback.setText("Ingresa un monto mayor a cero.");
                     lblFeedback.setStyle("-fx-text-fill: #ef4444;");
                     lblFeedback.setVisible(true);
@@ -280,7 +291,6 @@ public class CashManagementView extends VBox {
                     return;
                 }
 
-                BigDecimal amount = new BigDecimal(clean);
                 String desc = txtDesc.getText() != null && !txtDesc.getText().isBlank() ? txtDesc.getText().trim() : cmbCategory.getValue();
                 String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
                 String userId = UserSessionContext.getSession()
@@ -327,10 +337,10 @@ public class CashManagementView extends VBox {
 
         root.getChildren().addAll(
                 title,
-                new VBox(4, new Label("Tipo de Movimiento *") {{ setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px;"); }}, cmbType),
-                new VBox(4, new Label("Categoría *") {{ setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px;"); }}, cmbCategory),
-                new VBox(4, new Label("Monto ($) *") {{ setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px;"); }}, txtAmount),
-                new VBox(4, new Label("Descripción / Justificación *") {{ setStyle("-fx-text-fill: #cbd5e1; -fx-font-size: 11px;"); }}, txtDesc),
+                new VBox(4, new Label("Tipo de Movimiento *") {{ setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, cmbType),
+                new VBox(4, new Label("Categoría *") {{ setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, cmbCategory),
+                new VBox(4, new Label("Monto ($) *") {{ setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, txtAmount),
+                new VBox(4, new Label("Descripción / Justificación *") {{ setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, txtDesc),
                 lblFeedback,
                 actions
         );
@@ -359,11 +369,11 @@ public class CashManagementView extends VBox {
         // Calcular base disponible actual
         List<CashMovementEntity> list = cashMovementRepository.findAll();
         BigDecimal inflow = list.stream()
-                .filter(m -> "INGRESO".equalsIgnoreCase(m.getMovementType()) || "ENTRADA".equalsIgnoreCase(m.getMovementType()))
+                .filter(m -> isInflow(m.getMovementType()))
                 .map(CashMovementEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal outflow = list.stream()
-                .filter(m -> "EGRESO".equalsIgnoreCase(m.getMovementType()) || "SALIDA".equalsIgnoreCase(m.getMovementType()))
+                .filter(m -> isOutflow(m.getMovementType()))
                 .map(CashMovementEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal currentBase = inflow.subtract(outflow).max(BigDecimal.ZERO);
@@ -377,7 +387,7 @@ public class CashManagementView extends VBox {
         baseBox.getChildren().addAll(lblBaseTitle, lblBaseVal);
 
         TextField txtAmount = new TextField();
-        txtAmount.setPromptText("Ej. 300000");
+        txtAmount.setPromptText("Ej. 300.000");
         txtAmount.getStyleClass().add("search-field");
 
         ComboBox<String> cmbDestination = new ComboBox<>(FXCollections.observableArrayList(
@@ -409,16 +419,12 @@ public class CashManagementView extends VBox {
         btnSave.setStyle("-fx-background-color: #0284c7; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 16; -fx-background-radius: 8;");
         btnSave.setOnAction(e -> {
             try {
-                String clean = txtAmount.getText().replaceAll("[^0-9.]", "").trim();
-                if (clean.isBlank()) {
-                    throw new IllegalArgumentException("Debe ingresar el monto a recaudar.");
-                }
-                BigDecimal amount = new BigDecimal(clean);
+                BigDecimal amount = CurrencyInputUtil.parseAmount(txtAmount.getText());
                 if (amount.compareTo(BigDecimal.ZERO) <= 0) {
                     throw new IllegalArgumentException("El monto a recaudar debe ser mayor a cero.");
                 }
                 if (amount.compareTo(currentBase) > 0) {
-                    throw new IllegalArgumentException("Base insuficiente (" + CURRENCY.format(currentBase) + "). No se puede retirar de donde no hay plata.");
+                    throw new IllegalArgumentException("Base insuficiente (" + CURRENCY.format(currentBase) + "). No se puede retirar más de lo disponible.");
                 }
 
                 String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
@@ -472,9 +478,9 @@ public class CashManagementView extends VBox {
         root.getChildren().addAll(
                 title,
                 baseBox,
-                new VBox(4, new Label("Monto a Recaudar / Retirar ($) *") {{ setStyle("-fx-text-fill: #475569; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, txtAmount),
-                new VBox(4, new Label("Destino del Recaudo *") {{ setStyle("-fx-text-fill: #475569; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, cmbDestination),
-                new VBox(4, new Label("Detalle / Observación") {{ setStyle("-fx-text-fill: #475569; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, txtNotes),
+                new VBox(4, new Label("Monto a Recaudar / Retirar ($) *") {{ setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, txtAmount),
+                new VBox(4, new Label("Destino del Recaudo *") {{ setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, cmbDestination),
+                new VBox(4, new Label("Detalle / Observación") {{ setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, txtNotes),
                 lblFeedback,
                 actions
         );
