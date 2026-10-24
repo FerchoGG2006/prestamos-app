@@ -223,13 +223,25 @@ class LocalStore {
       }
 
       if (needInitialSeed) {
-        // Inicialización única cuando el almacenamiento local está vacío
-        this.customers = [...INITIAL_CUSTOMERS];
-        this.loans = [...INITIAL_LOANS];
-        this.installments = [...INITIAL_INSTALLMENTS];
-        this.cashMovements = [...INITIAL_CASH_MOVEMENTS];
-        this.activeSession = { ...INITIAL_SESSION };
-        this.promises = [...INITIAL_PROMISES];
+        // Inicialización limpia para operación real en producción (sin datos demo)
+        this.customers = [];
+        this.loans = [];
+        this.installments = [];
+        this.cashMovements = [];
+        this.activeSession = {
+          id: `ses-${getLocalTodayStr()}`,
+          routeId: 'route-norte',
+          date: getLocalTodayStr(),
+          collectorId: 'usr-col-1',
+          status: 'OPEN',
+          startTime: '07:30:00',
+          expectedCollection: 0,
+          collectedAmount: 0,
+          expectedCustomersCount: 0,
+          visitedCustomersCount: 0,
+          notes: 'Inicio de operación limpia',
+        };
+        this.promises = [];
         this.payments = [];
         this.renewals = [];
         this.settlements = [];
@@ -2507,6 +2519,43 @@ class LocalStore {
     }
 
     return BOM + lines.join('\r\n');
+  }
+
+  public async resetToCleanProduction(): Promise<void> {
+    this.customers = [];
+    this.loans = [];
+    this.installments = [];
+    this.payments = [];
+    this.renewals = [];
+    this.settlements = [];
+    this.promises = [];
+    this.cashMovements = [];
+    this.nonPaymentVisits = [];
+    this.activeSession = {
+      id: `ses-${getLocalTodayStr()}`,
+      routeId: 'route-norte',
+      date: getLocalTodayStr(),
+      collectorId: 'usr-col-1',
+      status: 'OPEN',
+      startTime: '07:30:00',
+      expectedCollection: 0,
+      collectedAmount: 0,
+      expectedCustomersCount: 0,
+      visitedCustomersCount: 0,
+      notes: 'Operación limpia iniciada',
+    };
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
+      safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
+      safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
+      safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments)),
+      safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify(this.renewals)),
+      safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(this.settlements)),
+      safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
+      safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
+      safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession)),
+    ]);
+    this.notify();
   }
 }
 

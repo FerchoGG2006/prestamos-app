@@ -21,6 +21,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f6311b34-505c-4645-854b-b40e739cfb66"
+      }
+    },
+    "owner": "ferchogg2007"
   }
 }

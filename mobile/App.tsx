@@ -382,8 +382,8 @@ export default function App() {
   };
 
   const mobileContent = (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bgPrimary} />
+    <SafeAreaView style={[styles.safeArea, { paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0 }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" translucent={false} />
 
       {/* Top Bar Móvil Limpio (Fintech Punto de Venta UI) */}
       <View style={styles.topBar}>
@@ -1313,18 +1313,20 @@ export default function App() {
     </SafeAreaView>
   );
 
-  const loginContent = (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: '#090D16' }]}>
-      <StatusBar barStyle="light-content" backgroundColor="#090D16" />
-      <LoginView
-        users={localStore.getUsers()}
-        onLoginSuccess={handleLoginSuccess}
-      />
-    </SafeAreaView>
-  );
-
-  // Si no hay sesión iniciada, muestra la pantalla de autenticación y selección de ruta
+  // Si no hay sesión iniciada, muestra la pantalla de autenticación y selección de rol
   if (!currentUser) {
+    const loginContent = (
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: '#0F172A', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0 }]}>
+        <StatusBar barStyle="light-content" backgroundColor="#0F172A" translucent={false} />
+        <LoginView
+          users={localStore.getUsers()}
+          routes={routes}
+          onLoginSuccess={handleLoginSuccess}
+          onDataReset={syncFromStore}
+        />
+      </SafeAreaView>
+    );
+
     if (isWideViewport && phoneFrameEnabled) {
       return (
         <View style={styles.simulatorBackdrop}>
@@ -1413,6 +1415,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bgPrimary,
     position: 'relative',
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   topBar: {
     flexDirection: 'row',
@@ -1757,7 +1760,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 12,
+    bottom: Platform.OS === 'android' ? 24 : 12,
     alignItems: 'center',
   },
   floatingDockPill: {

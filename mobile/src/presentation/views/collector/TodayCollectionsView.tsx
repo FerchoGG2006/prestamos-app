@@ -1305,6 +1305,36 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               </View>
             )}
 
+            {/* AVISO DE RUTA LIMPIA / SIN CLIENTES CARGADOS */}
+            {pendingRouteCards.length === 0 && completedRouteCards.length === 0 && (
+              <View style={styles.emptyState}>
+                <MapPin size={34} color={COLORS.primary} style={{ marginBottom: 10 }} />
+                <Text style={styles.emptyTitle}>Hoja de Ruta Lista para Operar</Text>
+                <Text style={[styles.emptyText, { textAlign: 'center', marginBottom: 16 }]}>
+                  {searchQuery || activeFilter !== 'TODOS'
+                    ? 'No se encontraron clientes para el filtro actual.'
+                    : 'Aún no hay clientes registrados en esta ruta. Puedes registrar tu primer cliente o recibir la ruta desde la oficina.'}
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: COLORS.primary,
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                  }}
+                  activeOpacity={0.8}
+                  onPress={onOpenNewLoan}
+                >
+                  <FilePlus2 size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                  <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>
+                    + Registrar Cliente / Crédito
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* SECCIÓN 2: CLIENTES YA GESTIONADOS / COBRADOS HOY (AL FINAL DE LA LISTA) */}
             {completedRouteCards.length > 0 && (
               <View style={{ marginTop: 8 }}>
