@@ -266,7 +266,7 @@ public class RenewLoanDialog extends Stage {
 
             String author = UserSessionContext.getSession()
                     .map(com.cartera.infrastructure.security.UserSession::userId)
-                    .orElse("usr-col-1");
+                    .orElse("admin");
 
             var cmd = new RenewLoanCommand(
                     currentLoan.getId(),

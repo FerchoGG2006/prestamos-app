@@ -440,7 +440,14 @@ public class ConfigurationView extends VBox {
                 lblErr.setManaged(true);
                 return;
             }
-            String collectorId = cmbCollector.getValue() != null ? cmbCollector.getValue().getId() : "usr-col-1";
+            if (cmbCollector.getValue() == null) {
+                lblErr.setText("Debe seleccionar un cobrador para la ruta.");
+                lblErr.setStyle("-fx-text-fill: #ef4444;");
+                lblErr.setVisible(true);
+                lblErr.setManaged(true);
+                return;
+            }
+            String collectorId = cmbCollector.getValue().getId();
             String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
             routeRepository.save(new RouteEntity(id, name, collectorId, 1, now));
             refreshUsers();
@@ -608,11 +615,11 @@ public class ConfigurationView extends VBox {
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
 
         TextField txtName = new TextField();
-        txtName.setPromptText("Ej. Carlos Cobrador");
+        txtName.setPromptText("Ej. Cobrador Ruta Norte");
         txtName.getStyleClass().add("search-field");
 
         TextField txtUser = new TextField();
-        txtUser.setPromptText("Ej. ruta1");
+        txtUser.setPromptText("Ej. cobrador1");
         txtUser.getStyleClass().add("search-field");
 
         PasswordField txtPass = new PasswordField();
@@ -661,7 +668,7 @@ public class ConfigurationView extends VBox {
 
             String author = UserSessionContext.getSession()
                     .map(com.cartera.infrastructure.security.UserSession::userId)
-                    .orElse("usr-admin-1");
+                    .orElse("admin");
 
             auditLogRepository.save(new AuditLogEntity(
                     UUID.randomUUID().toString(),

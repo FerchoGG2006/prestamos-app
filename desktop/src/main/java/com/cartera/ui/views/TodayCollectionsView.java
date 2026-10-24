@@ -694,10 +694,16 @@ public class TodayCollectionsView extends VBox {
     private void openReportExpenseDialog() {
         String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
                 .map(com.cartera.infrastructure.security.UserSession::userId)
-                .orElse("usr-col-1");
+                .orElse("admin");
         String routeId = com.cartera.infrastructure.security.UserSessionContext.getSelectedRouteId();
-        if ("ALL".equalsIgnoreCase(routeId)) {
-            routeId = "route-norte";
+        if (routeId == null || "ALL".equalsIgnoreCase(routeId)) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.initOwner(primaryStage);
+            alert.setTitle("Selección de Ruta Requerida");
+            alert.setHeaderText("Ruta no seleccionada");
+            alert.setContentText("Seleccione una ruta específica en la barra superior antes de registrar un gasto operativo.");
+            alert.showAndWait();
+            return;
         }
         RouteExpenseDialog.show(primaryStage, collectorId, routeId, settlementUseCase, saved -> {
             if (saved) {

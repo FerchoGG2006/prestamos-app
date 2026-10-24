@@ -138,7 +138,7 @@ public class PaymentDialog {
 
                 String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
                         .map(com.cartera.infrastructure.security.UserSession::userId)
-                        .orElse("usr-col-1");
+                        .orElse("admin");
 
                 var cmd = new RecordPaymentCommand(
                         item.loanId(),
@@ -156,7 +156,7 @@ public class PaymentDialog {
                         : "SISTEMA DE CARTERA";
                 String collectorName = com.cartera.infrastructure.security.UserSessionContext.getSession()
                         .map(com.cartera.infrastructure.security.UserSession::fullName)
-                        .orElse("Carlos Cobrador");
+                        .orElse("Administración Central");
 
                 var receiptData = new ReceiptDialog.ReceiptData(
                         res.paymentId(),

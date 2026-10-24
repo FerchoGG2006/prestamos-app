@@ -152,16 +152,14 @@ public class CustomerDialog extends Stage {
                 cmbRoute.getItems().add(opt);
                 if (activeFilter != null && activeFilter.equalsIgnoreCase(r.getId())) {
                     defaultOpt = opt;
-                } else if (defaultOpt == null && "route-norte".equalsIgnoreCase(r.getId())) {
-                    defaultOpt = opt;
                 }
             }
         }
         if (cmbRoute.getItems().isEmpty()) {
-            defaultOpt = new RouteOption("route-norte", "Ruta Norte", "usr-col-1");
+            defaultOpt = new RouteOption("ruta-principal", "Ruta Principal", "admin");
             cmbRoute.getItems().add(defaultOpt);
         }
-        if (defaultOpt == null) {
+        if (defaultOpt == null && !cmbRoute.getItems().isEmpty()) {
             defaultOpt = cmbRoute.getItems().get(0);
         }
         cmbRoute.setValue(defaultOpt);
@@ -456,11 +454,16 @@ public class CustomerDialog extends Stage {
         try {
             String authorId = UserSessionContext.getSession()
                     .map(com.cartera.infrastructure.security.UserSession::userId)
-                    .orElse("usr-col-1");
+                    .orElse("sistema");
 
             RouteOption selectedRoute = cmbRoute.getValue();
-            String routeId = selectedRoute != null ? selectedRoute.id() : "route-norte";
-            String collectorId = (selectedRoute != null && selectedRoute.collectorId() != null && !selectedRoute.collectorId().isBlank())
+            if (selectedRoute == null) {
+                showError("Debe seleccionar una ruta para registrar al cliente.");
+                btnSave.setDisable(false);
+                return;
+            }
+            String routeId = selectedRoute.id();
+            String collectorId = (selectedRoute.collectorId() != null && !selectedRoute.collectorId().isBlank())
                     ? selectedRoute.collectorId()
                     : authorId;
 

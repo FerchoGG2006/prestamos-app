@@ -635,3 +635,60 @@
 .hero-card .progress-bar > .bar {
     -fx-background-color: #10b981;
 }
+
+/* Estado Vacío Estándar (Empty State) */
+.empty-state-box {
+    -fx-alignment: center;
+    -fx-padding: 36 24;
+    -fx-spacing: 8;
+    -fx-background-color: transparent;
+}
+
+.empty-state-title {
+    -fx-text-fill: #334155;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-alignment: center;
+}
+
+.empty-state-hint {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 12px;
+    -fx-alignment: center;
+    -fx-wrap-text: true;
+    -fx-text-alignment: center;
+}
+
+/* Colores Contables y Financieros */
+.amount-positive {
+    -fx-text-fill: #059669;
+    -fx-font-weight: bold;
+}
+
+.amount-negative {
+    -fx-text-fill: #dc2626;
+    -fx-font-weight: bold;
+}
+
+.amount-neutral {
+    -fx-text-fill: #475569;
+    -fx-font-weight: bold;
+}
+
+/* Diálogos y Modales */
+.dialog-root {
+    -fx-background-color: #ffffff;
+    -fx-padding: 24;
+}
+
+.dialog-title {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.field-label {
+    -fx-text-fill: #475569;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}

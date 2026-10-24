@@ -121,8 +121,12 @@ public class TodayCollectionsService {
     }
 
     public DailyMetrics getDailyMetrics(LocalDate date) {
+        return getDailyMetricsForRoute(date, UserSessionContext.getSelectedRouteId());
+    }
+
+    public DailyMetrics getDailyMetricsForRoute(LocalDate date, String routeFilter) {
         String todayStr = date.format(DateTimeFormatter.ISO_LOCAL_DATE);
-        String selectedRoute = UserSessionContext.getSelectedRouteId();
+        String selectedRoute = routeFilter;
         boolean filterByRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute);
         String normalizedSelectedRoute = filterByRoute ? normalizeRouteId(selectedRoute) : "ALL";
 
@@ -137,7 +141,7 @@ public class TodayCollectionsService {
                 .map(PaymentEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        List<CollectionItem> items = getTodayCollectionItems(date);
+        List<CollectionItem> items = getTodayCollectionItemsForRoute(date, routeFilter);
         List<CollectionItem> actionableToday = items.stream()
                 .filter(i -> !"PRÓXIMA CUOTA".equalsIgnoreCase(i.statusText()))
                 .toList();
@@ -172,8 +176,12 @@ public class TodayCollectionsService {
     }
 
     public List<CollectionItem> getTodayCollectionItems(LocalDate date) {
+        return getTodayCollectionItemsForRoute(date, UserSessionContext.getSelectedRouteId());
+    }
+
+    public List<CollectionItem> getTodayCollectionItemsForRoute(LocalDate date, String routeFilter) {
         String dateStr = date.format(DateTimeFormatter.ISO_LOCAL_DATE);
-        String selectedRoute = UserSessionContext.getSelectedRouteId();
+        String selectedRoute = routeFilter;
         boolean filterByRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute);
         String normalizedSelectedRoute = filterByRoute ? normalizeRouteId(selectedRoute) : "ALL";
 
@@ -295,25 +303,5 @@ public class TodayCollectionsService {
         }
 
         return result;
-    }
-
-    public List<CollectionItem> getTodayCollectionItemsForRoute(LocalDate date, String routeId) {
-        String saved = UserSessionContext.getSelectedRouteId();
-        try {
-            UserSessionContext.setSelectedRouteId(routeId);
-            return getTodayCollectionItems(date);
-        } finally {
-            UserSessionContext.setSelectedRouteId(saved);
-        }
-    }
-
-    public DailyMetrics getDailyMetricsForRoute(LocalDate date, String routeId) {
-        String saved = UserSessionContext.getSelectedRouteId();
-        try {
-            UserSessionContext.setSelectedRouteId(routeId);
-            return getDailyMetrics(date);
-        } finally {
-            UserSessionContext.setSelectedRouteId(saved);
-        }
     }
 }

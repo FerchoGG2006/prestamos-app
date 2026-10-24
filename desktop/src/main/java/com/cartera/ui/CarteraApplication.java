@@ -83,6 +83,7 @@ public final class CarteraApplication extends Application {
     private CreditHistoryView creditHistoryView;
     private SettlementManagementView settlementManagementView;
     private TreasuryManagementView treasuryManagementView;
+    private CashManagementView cashManagementView;
     private ReportsView reportsView;
     private ConfigurationView configurationView;
 
@@ -198,7 +199,8 @@ public final class CarteraApplication extends Application {
             creditHistoryView.queryByDocument(doc);
         });
 
-        var cashManagementView = new CashManagementView(cashMovementRepository, auditLogRepository, stage);
+        var cashMovementUseCase = context.getBean(com.cartera.settlement.application.CashMovementUseCase.class);
+        cashManagementView = new CashManagementView(cashMovementRepository, cashMovementUseCase, routeRepository, stage);
 
         settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository, userRepository, routeRepository, stage);
         treasuryManagementView = new TreasuryManagementView(cashManagementView, settlementManagementView);
@@ -426,7 +428,7 @@ public final class CarteraApplication extends Application {
             List<RouteEntity> routes = routeRepository.findAll();
             for (RouteEntity r : routes) {
                 if (r.getActive() != null && r.getActive() == 0) continue;
-                GlobalRouteOption opt = new GlobalRouteOption(r.getId(), r.getName() + " (" + r.getId() + ")");
+                GlobalRouteOption opt = new GlobalRouteOption(r.getId(), r.getName());
                 cmbGlobalRoute.getItems().add(opt);
                 if (prevSelected != null && prevSelected.equalsIgnoreCase(r.getId())) {
                     targetSelection = opt;
@@ -454,6 +456,7 @@ public final class CarteraApplication extends Application {
         if (customersView != null) customersView.refresh();
         if (loansView != null) loansView.refresh();
         if (settlementManagementView != null) settlementManagementView.refresh();
+        if (cashManagementView != null) cashManagementView.refresh();
         if (reportsView != null) reportsView.refresh();
     }
 

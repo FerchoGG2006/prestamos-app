@@ -220,7 +220,7 @@ public class ImportMobileSyncDialog extends Stage {
     private void exportRouteToFile() {
         try {
             String activeRoute = UserSessionContext.getSelectedRouteId();
-            String routeForFile = "ALL".equalsIgnoreCase(activeRoute) ? "route-norte" : activeRoute;
+            String routeForFile = (activeRoute == null || "ALL".equalsIgnoreCase(activeRoute)) ? "todas_rutas" : activeRoute;
             String jsonPackage = syncProcessorService.exportRoutePackage(activeRoute, LocalDate.now());
 
             txtJson.setText(jsonPackage);

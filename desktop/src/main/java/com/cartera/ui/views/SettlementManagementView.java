@@ -11,6 +11,7 @@ import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.settlement.application.SettlementUseCase;
 import com.cartera.settlement.application.SettlementUseCase.DaySettlementSummary;
 import com.cartera.ui.util.CurrencyInputUtil;
+import com.cartera.ui.util.UiLabels;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -444,6 +445,7 @@ public class SettlementManagementView extends VBox {
 
         expensesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         expensesTable.setPrefHeight(140);
+        expensesTable.setPlaceholder(UiLabels.emptyState("Sin gastos operativos hoy", "Los pinchazos, combustible o datos registrados en ruta aparecerán aquí."));
 
         TableColumn<CashMovementEntity, String> colHour = new TableColumn<>("HORA");
         colHour.setCellValueFactory(d -> new SimpleStringProperty(formatHour(d.getValue().getCreatedAt())));
@@ -499,6 +501,7 @@ public class SettlementManagementView extends VBox {
 
         historyTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         historyTable.setPrefHeight(220);
+        historyTable.setPlaceholder(UiLabels.emptyState("Sin liquidaciones registradas", "El historial de cierres y arqueos diarios de ruta aparecerá aquí."));
         VBox.setVgrow(historyTable, Priority.ALWAYS);
 
         TableColumn<DailySettlementEntity, String> colDate = new TableColumn<>("FECHA CIERRE");
@@ -559,7 +562,7 @@ public class SettlementManagementView extends VBox {
             }
         }
         if (cmbCollector.getItems().isEmpty()) {
-            cmbCollector.getItems().add(new UserOption("usr-col-1", "Carlos Cobrador"));
+            cmbCollector.getItems().add(new UserOption("col-1", "Cobrador Principal"));
         }
 
         // Si hay una ruta activa seleccionada globalmente, sincronizar con su cobrador asignado
@@ -690,10 +693,21 @@ public class SettlementManagementView extends VBox {
 
     private void openNewExpenseDialog() {
         UserOption selectedUser = cmbCollector.getValue();
-        String collectorId = selectedUser != null ? selectedUser.id() : "usr-col-1";
+        String collectorId = selectedUser != null ? selectedUser.id() : null;
         String activeRoute = UserSessionContext.getSelectedRouteId();
-        String routeId = "ALL".equalsIgnoreCase(activeRoute) ? "route-norte" : activeRoute;
-        RouteExpenseDialog.show(ownerStage, collectorId, routeId, settlementUseCase, saved -> {
+        String routeId = activeRoute;
+        if ("ALL".equalsIgnoreCase(activeRoute) || activeRoute == null) {
+            if (routeRepository != null && collectorId != null) {
+                routeId = routeRepository.findAll().stream()
+                        .filter(r -> collectorId.equalsIgnoreCase(r.getCollectorId()))
+                        .map(RouteEntity::getId)
+                        .findFirst()
+                        .orElse("route-norte");
+            } else {
+                routeId = "route-norte";
+            }
+        }
+        RouteExpenseDialog.show(ownerStage, collectorId != null ? collectorId : "col-1", routeId, settlementUseCase, saved -> {
             if (saved) {
                 refresh();
             }
@@ -767,8 +781,8 @@ public class SettlementManagementView extends VBox {
         card.setStyle("-fx-background-color: #f8fafc; -fx-padding: 14; -fx-background-radius: 8; -fx-border-color: #e2e8f0;");
 
         card.getChildren().addAll(
-                new Label("Fecha Cierre: " + settlement.getSettledAt()),
-                new Label("ID Sesión: " + settlement.getSessionId()),
+                new Label("Fecha de Cierre: " + settlement.getSettledAt()),
+                new Label("Comprobante N°: " + (settlement.getId() != null ? settlement.getId().substring(0, Math.min(8, settlement.getId().length())).toUpperCase() : "-")),
                 new Label("Efectivo Neto Esperado: " + CURRENCY.format(settlement.getExpectedCollection())),
                 new Label("Efectivo Físico Recibido: " + CURRENCY.format(settlement.getActualCollection())),
                 new Label("Diferencia: " + CURRENCY.format(settlement.getCashDifference())),

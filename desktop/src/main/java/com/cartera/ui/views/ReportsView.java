@@ -11,6 +11,7 @@ import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.PaymentRepository;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.reports.application.ExcelReportExporter;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -282,10 +283,35 @@ public class ReportsView extends VBox {
         colBal.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().balance()));
         colBal.setPrefWidth(120);
 
-        TableColumn<LoanReportItem, String> colSt = new TableColumn<>("ESTADO");
-        colSt.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().status()));
-        colSt.setPrefWidth(110);
+        TableColumn<LoanReportItem, LoanReportItem> colSt = new TableColumn<>("ESTADO");
+        colSt.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
+        colSt.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(LoanReportItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    Label badge = new Label(item.status().toUpperCase());
+                    String st = item.status().toUpperCase();
+                    if (st.contains("CANCELADO") || st.contains("PAGADO")) {
+                        badge.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    } else if (st.contains("ACTIVO")) {
+                        badge.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #059669; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    } else if (st.contains("MORA")) {
+                        badge.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    } else {
+                        badge.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #64748b; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    }
+                    setGraphic(badge);
+                    setText(null);
+                }
+            }
+        });
+        colSt.setPrefWidth(120);
 
+        table.setPlaceholder(com.cartera.ui.util.UiLabels.emptyState("Sin datos de cartera", "No hay créditos registrados bajo el criterio o ruta seleccionada."));
         table.getColumns().addAll(colCust, colPrin, colTot, colPaid, colBal, colSt);
         table.setItems(reportItems);
 
@@ -298,7 +324,7 @@ public class ReportsView extends VBox {
         boolean filterRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute);
 
         List<LoanEntity> loans = loanRepository.findAll().stream()
-                .filter(l -> !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId() != null ? l.getRouteId() : "route-norte"))
+                .filter(l -> !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId()))
                 .toList();
         List<InstallmentEntity> installments = installmentRepository.findAll();
         List<PaymentEntity> payments = paymentRepository.findAll();

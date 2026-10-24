@@ -5,6 +5,7 @@ import com.cartera.infrastructure.persistence.repository.*;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CancelLoanUseCase;
 import com.cartera.payments.application.ReversePaymentUseCase;
+import com.cartera.ui.util.UiLabels;
 import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
@@ -257,6 +258,7 @@ public class CustomersView extends VBox {
             updateStats(filtered.size());
         });
         table.setItems(filtered);
+        table.setPlaceholder(UiLabels.emptyState("Sin clientes registrados", "No hay clientes en esta ruta o búsqueda. Registra uno nuevo con el botón superior."));
 
         buildTableColumns();
 
@@ -316,7 +318,7 @@ public class CustomersView extends VBox {
                     Label name = new Label(c.getFullName());
                     name.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 12px;");
 
-                    String routeTag = c.getRouteId() != null ? " • " + c.getRouteId() : "";
+                    String routeTag = " • " + resolveRouteName(c.getRouteId());
                     String statusSuffix = "INACTIVO".equalsIgnoreCase(c.getStatus()) ? " • INACTIVO" : "";
                     Label doc = new Label("CC: " + c.getDocumentNumber() + routeTag + statusSuffix);
                     doc.setStyle("-fx-text-fill: " + ("INACTIVO".equalsIgnoreCase(c.getStatus()) ? "#dc2626" : "#64748b") + "; -fx-font-size: 11px;");
@@ -694,21 +696,27 @@ public class CustomersView extends VBox {
         TextField txtBusiness = new TextField(customer.getBusinessName() != null ? customer.getBusinessName() : "");
         TextField txtOccupation = new TextField(customer.getOccupation() != null ? customer.getOccupation() : "");
 
-        ComboBox<String> cmbRoute = new ComboBox<>();
+        ComboBox<RouteOption> cmbRoute = new ComboBox<>();
         cmbRoute.setMaxWidth(Double.MAX_VALUE);
+        RouteOption selectedOpt = null;
         if (routeRepository != null) {
             for (RouteEntity r : routeRepository.findAll()) {
-                cmbRoute.getItems().add(r.getId());
+                if (r.getActive() != null && r.getActive() == 0) continue;
+                RouteOption opt = new RouteOption(r.getId(), r.getName());
+                cmbRoute.getItems().add(opt);
+                if (customer.getRouteId() != null && customer.getRouteId().equalsIgnoreCase(r.getId())) {
+                    selectedOpt = opt;
+                }
             }
         }
         if (cmbRoute.getItems().isEmpty()) {
-            cmbRoute.getItems().add("route-norte");
+            selectedOpt = new RouteOption(customer.getRouteId() != null ? customer.getRouteId() : "ruta-principal", "Ruta Principal");
+            cmbRoute.getItems().add(selectedOpt);
         }
-        String currentRoute = customer.getRouteId() != null ? customer.getRouteId() : "route-norte";
-        if (!cmbRoute.getItems().contains(currentRoute)) {
-            cmbRoute.getItems().add(currentRoute);
+        if (selectedOpt == null && !cmbRoute.getItems().isEmpty()) {
+            selectedOpt = cmbRoute.getItems().get(0);
         }
-        cmbRoute.setValue(currentRoute);
+        cmbRoute.setValue(selectedOpt);
 
         GridPane form = new GridPane();
         form.setHgap(10);
@@ -749,7 +757,7 @@ public class CustomersView extends VBox {
                 return;
             }
             customer.setFullName(txtName.getText().trim());
-            customer.setRouteId(cmbRoute.getValue());
+            customer.setRouteId(cmbRoute.getValue() != null ? cmbRoute.getValue().id() : null);
             customer.setPhone(txtPhone.getText().trim());
             customer.setAddress(txtAddress.getText().trim());
             customer.setNeighborhood(txtNeighborhood.getText().trim());
@@ -794,7 +802,7 @@ public class CustomersView extends VBox {
 
         String author = UserSessionContext.getSession()
                 .map(com.cartera.infrastructure.security.UserSession::userId)
-                .orElse("usr-admin-1");
+                .orElse("admin");
         String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
         if (!loans.isEmpty()) {
@@ -862,7 +870,8 @@ public class CustomersView extends VBox {
         Stage modal = new Stage();
         modal.initModality(Modality.WINDOW_MODAL);
         modal.initOwner(ownerStage);
-        modal.setTitle("Plan de Pagos — Crédito #" + loan.getId());
+        String loanShortId = loan.getId().length() > 8 ? loan.getId().substring(0, 8).toUpperCase() : loan.getId();
+        modal.setTitle("Plan de Pagos — Crédito N° " + loanShortId);
 
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
@@ -873,6 +882,7 @@ public class CustomersView extends VBox {
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
 
         TableView<InstallmentEntity> tableInst = new TableView<>();
+        tableInst.setPlaceholder(UiLabels.emptyState("Sin cuotas registradas", "No se encontraron cuotas para este crédito."));
         tableInst.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(tableInst, Priority.ALWAYS);
 
@@ -1154,5 +1164,20 @@ public class CustomersView extends VBox {
             return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
         }
         return fullName.substring(0, Math.min(2, fullName.length())).toUpperCase();
+    }
+
+    private String resolveRouteName(String routeId) {
+        if (routeId == null || routeId.isBlank()) return "Sin Ruta";
+        if (routeRepository != null) {
+            return routeRepository.findById(routeId).map(RouteEntity::getName).orElse(routeId);
+        }
+        return routeId;
+    }
+
+    private record RouteOption(String id, String name) {
+        @Override
+        public String toString() {
+            return name;
+        }
     }
 }

@@ -514,7 +514,7 @@ public class CreateLoanDialog extends Stage {
             return;
         }
 
-        String currentRoute = customer.getRouteId() != null ? customer.getRouteId() : "route-norte";
+        String currentRoute = customer.getRouteId() != null ? customer.getRouteId() : "";
         String selectedGlobalRoute = UserSessionContext.getSelectedRouteId();
         if (selectedGlobalRoute != null && !"ALL".equalsIgnoreCase(selectedGlobalRoute)) {
             currentRoute = selectedGlobalRoute;
@@ -529,8 +529,8 @@ public class CreateLoanDialog extends Stage {
                 : Map.of();
 
         for (LoanEntity loan : activeLoans) {
-            String lRoute = loan.getRouteId() != null ? loan.getRouteId() : "route-norte";
-            if (!lRoute.equalsIgnoreCase(currentRoute)) {
+            String lRoute = loan.getRouteId() != null ? loan.getRouteId() : "";
+            if (!lRoute.isEmpty() && !currentRoute.isEmpty() && !lRoute.equalsIgnoreCase(currentRoute)) {
                 hasLoanInOtherRoute = true;
                 totalOtherDebt = totalOtherDebt.add(loan.getTotalAgreed());
                 otherRouteName = routeNames.getOrDefault(lRoute, lRoute);
@@ -736,11 +736,27 @@ public class CreateLoanDialog extends Stage {
 
             String authorId = UserSessionContext.getSession()
                     .map(com.cartera.infrastructure.security.UserSession::userId)
-                    .orElse("usr-col-1");
+                    .orElse("sistema");
+
+            String routeId = customer.getRouteId();
+            if (routeId == null || routeId.isBlank()) {
+                String activeRoute = UserSessionContext.getSelectedRouteId();
+                if (activeRoute != null && !"ALL".equalsIgnoreCase(activeRoute)) {
+                    routeId = activeRoute;
+                } else if (routeRepository != null) {
+                    routeId = routeRepository.findAll().stream()
+                            .filter(r -> r.getActive() == null || r.getActive() == 1)
+                            .map(RouteEntity::getId)
+                            .findFirst()
+                            .orElse("ruta-principal");
+                } else {
+                    routeId = "ruta-principal";
+                }
+            }
 
             var cmd = new CreateLoanCommand(
                     customer.getId(),
-                    customer.getRouteId() != null ? customer.getRouteId() : "route-norte",
+                    routeId,
                     authorId,
                     principal,
                     rateDecimal,

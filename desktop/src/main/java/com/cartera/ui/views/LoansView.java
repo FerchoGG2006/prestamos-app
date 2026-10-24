@@ -2,6 +2,7 @@ package com.cartera.ui.views;
 
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
+import com.cartera.infrastructure.persistence.entity.RouteEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
@@ -9,6 +10,7 @@ import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CancelLoanUseCase;
+import com.cartera.ui.util.UiLabels;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -42,6 +44,7 @@ public class LoansView extends VBox {
     private final Runnable onLoanCreatedCallback;
     private final ObservableList<LoanEntity> loansList = FXCollections.observableArrayList();
     private Map<String, String> customerNames = Map.of();
+    private Map<String, String> routeNames = Map.of();
 
     private final Label lblFooterCount = new Label();
     private final Label lblFooterPrincipal = new Label();
@@ -162,6 +165,7 @@ public class LoansView extends VBox {
 
         TableView<LoanEntity> table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        table.setPlaceholder(UiLabels.emptyState("Sin créditos otorgados", "Los contratos de crédito vigentes y cancelados aparecerán en este listado."));
         VBox.setVgrow(table, Priority.ALWAYS);
 
         // 1. Cliente con Avatar
@@ -191,7 +195,9 @@ public class LoansView extends VBox {
                     Label lblName = new Label(name);
                     lblName.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px;");
 
-                    Label lblId = new Label("Contrato ID: " + l.getId() + " • Ruta: " + (l.getRouteId() != null ? l.getRouteId() : "route-norte"));
+                    String rName = routeNames.getOrDefault(l.getRouteId(), "Ruta Principal");
+                    String contractCode = l.getId() != null ? "N° " + (l.getId().length() > 8 ? l.getId().substring(0, 8).toUpperCase() : l.getId().toUpperCase()) : "Contrato";
+                    Label lblId = new Label(contractCode + " • " + rName);
                     lblId.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     textGroup.getChildren().addAll(lblName, lblId);
@@ -437,12 +443,16 @@ public class LoansView extends VBox {
     public void refresh() {
         customerNames = customerRepository.findAll().stream()
                 .collect(Collectors.toMap(CustomerEntity::getId, CustomerEntity::getFullName, (a, b) -> a));
+        if (routeRepository != null) {
+            routeNames = routeRepository.findAll().stream()
+                    .collect(Collectors.toMap(RouteEntity::getId, RouteEntity::getName, (a, b) -> a));
+        }
 
         String selectedRoute = UserSessionContext.getSelectedRouteId();
         boolean filterRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute);
 
         var loans = loanRepository.findAll().stream()
-                .filter(l -> !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId() != null ? l.getRouteId() : "route-norte"))
+                .filter(l -> !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId()))
                 .toList();
         loansList.setAll(loans);
 
