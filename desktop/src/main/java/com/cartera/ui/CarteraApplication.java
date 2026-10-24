@@ -565,4 +565,8 @@ public final class CarteraApplication extends Application {
         }
         Platform.exit();
     }
+
+    public static void main(String[] args) {
+        Application.launch(CarteraApplication.class, args);
+    }
 }

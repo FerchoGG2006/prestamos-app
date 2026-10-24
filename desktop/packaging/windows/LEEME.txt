@@ -1,0 +1,31 @@
+========================================================================
+           SISTEMA DE CARTERA Y COBROS — DISTRIBUCIÓN WINDOWS (x64)
+========================================================================
+
+¡Bienvenido! Este paquete contiene la aplicación nativa de escritorio lista
+para usarse, con su propio entorno de ejecución integrado. No requiere
+instalar Java ni configurar variables de entorno en el equipo.
+
+PASOS PARA USAR:
+1. Descomprime esta carpeta en la ubicación que prefieras (por ejemplo: C:\SistemaCartera).
+2. Haz doble clic en "crear-acceso-directo.bat" para colocar el icono en tu Escritorio.
+3. ¡Listo! Abre "Sistema de Cartera" desde tu Escritorio o haciendo doble clic
+   en "SistemaCartera.exe".
+
+CREDENCIALES PREDETERMINADAS (PRIMER INICIO):
+- Administrador:
+    Usuario: admin
+    Contraseña: 123
+- Supervisor:
+    Usuario: supervisor
+    Contraseña: 123
+- Cobrador:
+    Usuario: cobrador
+    Contraseña: 123
+
+DATOS Y RESPALDOS:
+- La base de datos SQLite se crea automáticamente y de forma segura en:
+  %USERPROFILE%\.sistema-cartera\cartera.db
+- Puedes generar copias de seguridad desde la sección "Configuración" en cualquier momento.
+
+========================================================================

@@ -39,9 +39,58 @@ dependencies {
 }
 
 application {
-    mainClass = 'com.cartera.ui.CarteraApplication'
+    mainClass = 'com.cartera.ui.CarteraMain'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+tasks.register('packageWindows') {
+    dependsOn 'installDist'
+    description = 'Generates standalone Windows application image using jpackage'
+    group = 'distribution'
+
+    doLast {
+        def distDir = file("${rootDir}/dist")
+        def appDir = file("${distDir}/SistemaCartera")
+        if (appDir.exists()) {
+            delete(appDir)
+        }
+        distDir.mkdirs()
+
+        exec {
+            commandLine 'jpackage',
+                    '--type', 'app-image',
+                    '--name', 'SistemaCartera',
+                    '--input', "${layout.buildDirectory.get().asFile}/install/sistema-cartera-desktop/lib",
+                    '--main-jar', 'sistema-cartera-desktop-0.1.0-SNAPSHOT-plain.jar',
+                    '--main-class', 'com.cartera.ui.CarteraMain',
+                    '--icon', "${projectDir}/src/main/resources/ui/app.ico",
+                    '--dest', "${rootDir}/dist",
+                    '--vendor', 'Cartera Software',
+                    '--app-version', '1.0.0',
+                    '--add-modules', 'java.se,jdk.unsupported,jdk.crypto.ec',
+                    '--java-options', '-Dfile.encoding=UTF-8'
+        }
+
+        copy {
+            from "${projectDir}/packaging/windows"
+            into "${rootDir}/dist/SistemaCartera"
+        }
+    }
+}
+
+tasks.register('packageZip', Zip) {
+    dependsOn 'packageWindows'
+    description = 'Zips the standalone Windows package into a downloadable archive'
+    group = 'distribution'
+
+    archiveFileName = 'SistemaCartera-v1.0.0-Windows-x64.zip'
+    destinationDirectory = file("${rootDir}/dist")
+
+    from("${rootDir}/dist/SistemaCartera") {
+        into 'SistemaCartera'
+    }
+}
+
