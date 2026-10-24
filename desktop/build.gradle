@@ -94,3 +94,23 @@ tasks.register('packageZip', Zip) {
     }
 }
 
+tasks.register('packageInstaller') {
+    dependsOn 'packageWindows'
+    description = 'Compiles official Windows setup installer executable using Inno Setup'
+    group = 'distribution'
+
+    doLast {
+        def isccPath = "C:\\Users\\ASUS\\AppData\\Local\\Programs\\Antigravity IDE\\resources\\app\\node_modules\\innosetup\\bin\\ISCC.exe"
+        exec {
+            commandLine isccPath, "${projectDir}/packaging/windows/installer.iss"
+        }
+    }
+}
+
+tasks.register('packageAll') {
+    dependsOn 'packageZip', 'packageInstaller'
+    description = 'Generates both the portable ZIP and the official Setup EXE installer'
+    group = 'distribution'
+}
+
+

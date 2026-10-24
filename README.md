@@ -4,22 +4,29 @@ Aplicación nativa de escritorio para administración de cartera, otorgamiento d
 
 ---
 
-## 🚀 Descarga y Ejecución Inmediata (Sin instalar Java)
+## 🚀 Descarga y Entrega a Oficinas (Sin instalar Java)
 
-El aplicativo ha sido empaquetado en una distribución nativa para Windows (x64) que **incluye su propio entorno de ejecución (JRE 21)**. El usuario final **no necesita tener Java ni Gradle instalados**.
+El aplicativo ha sido empaquetado para distribución en Windows (x64) con **su propio entorno de ejecución (JRE 21) integrado**. Las oficinas y usuarios finales **no necesitan tener Java ni Gradle instalados**.
 
-### Opción 1: Archivo ZIP Descargable
-El archivo comprimido listo para transferir o subir a cualquier servidor de descargas se encuentra en:
+📖 **[Ver Guía Paso a Paso para Instalación en Oficinas](file:///c:/Users/ASUS/prestamos-app-1/docs/GUIA_INSTALACION_OFICINAS.md)**
+
+### Opción 1: Instalador Oficial (.EXE) — RECOMENDADO PARA OFICINAS
+Archivo autoejecutable con asistente de instalación completo en español:
+📁 **`dist/Instalador-SistemaCartera-v1.0.0.exe`** (~78 MB)
+
+**Ventajas:**
+- Doble clic y sigue el asistente (Siguiente -> Instalar).
+- Crea accesos directos en el **Escritorio** y en el **Menú Inicio**.
+- Registra el desinstalador estándar en el Panel de Control / Configuración de Windows.
+- No requiere descomprimir archivos.
+
+### Opción 2: Archivo ZIP Portable
+Para equipos con restricciones o para llevar en una memoria USB:
 📁 **`dist/SistemaCartera-v1.0.0-Windows-x64.zip`** (~86 MB)
 
-**Pasos:**
-1. Descomprime `SistemaCartera-v1.0.0-Windows-x64.zip` en tu equipo (ejemplo: `C:\SistemaCartera`).
-2. Haz doble clic en **`crear-acceso-directo.bat`** para generar el acceso directo en tu Escritorio con el ícono oficial.
-3. Abre la aplicación desde el acceso directo o ejecutando **`SistemaCartera.exe`**.
-
-### Opción 2: Carpeta Portable Ya Lista
-Si ya tienes el repositorio clonado o la carpeta compilada, puedes ejecutar directamente:
-📁 **`dist/SistemaCartera/SistemaCartera.exe`**
+1. Descomprime en `C:\SistemaCartera`.
+2. Haz doble clic en `crear-acceso-directo.bat` para poner el ícono en el Escritorio.
+3. Ejecuta `SistemaCartera.exe`.
 
 ---
 
