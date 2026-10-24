@@ -40,7 +40,7 @@ public class ImportMobileSyncDialog extends Stage {
     private final Runnable onFinished;
 
     private final TextArea txtJson = new TextArea();
-    private final Label lblStatus = new Label("Listo para sincronizar por Wi-Fi Local o mediante archivo JSON.");
+    private final Label lblStatus = new Label("Listo para sincronizar con el celular.");
     private final ProgressBar progressBar = new ProgressBar(0);
 
     public ImportMobileSyncDialog(Stage ownerStage,
@@ -99,7 +99,7 @@ public class ImportMobileSyncDialog extends Stage {
 
         initModality(Modality.WINDOW_MODAL);
         initOwner(ownerStage);
-        setTitle("Sincronización Móvil — Wi-Fi Local (LAN) y Paquetes .JSON");
+        setTitle("Sincronización con el Celular del Cobrador");
         setWidth(680);
         setHeight(610);
 
@@ -113,33 +113,33 @@ public class ImportMobileSyncDialog extends Stage {
 
         // Cabecera
         VBox header = new VBox(4);
-        Label title = new Label("Sincronización Bidireccional con App Móvil (Offline-First)");
+        Label title = new Label("Sincronización con el Celular del Cobrador");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
-        Label sub = new Label("Transfiere la ruta del día al cobrador y recibe recaudos, clientes, renovaciones y gastos por Wi-Fi o JSON");
+        Label sub = new Label("Transfiere la ruta del día al cobrador y recibe cobros, nuevos clientes y gastos registrados en calle.");
         sub.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         header.getChildren().addAll(title, sub);
 
-        // 1. Banner Informativo de Servidor Wi-Fi / LAN (Sin códigos QR)
+        // 1. Banner Informativo de Conexión Wi-Fi
         VBox lanCard = buildLanBannerCard();
 
-        // 2. Barra de Exportación e Importación por Archivo JSON
+        // 2. Barra de Exportación e Importación de Datos
         HBox fileBar = new HBox(10);
         fileBar.setAlignment(Pos.CENTER_LEFT);
 
-        Button btnExportRoute = new Button("📤 Exportar Ruta a Archivo .JSON");
+        Button btnExportRoute = new Button("📤 Enviar Ruta al Celular");
         btnExportRoute.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-background-radius: 8; -fx-font-weight: bold; -fx-padding: 8 14; -fx-cursor: hand;");
         btnExportRoute.setOnAction(e -> exportRouteToFile());
 
-        Button btnPickFile = new Button("📁 Cargar Recaudos .JSON...");
+        Button btnPickFile = new Button("📁 Cargar Archivo de Cobros...");
         btnPickFile.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #1e293b; -fx-border-color: #cbd5e1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-padding: 8 14; -fx-cursor: hand;");
         btnPickFile.setOnAction(e -> pickJsonFile());
 
-        Label lblOr = new Label("o pegue el JSON recibido:");
+        Label lblOr = new Label("o pega los datos recibidos:");
         lblOr.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         fileBar.getChildren().addAll(btnExportRoute, btnPickFile, lblOr);
 
         // TextArea
-        txtJson.setPromptText("{\"packageVersion\": \"1.0.0\", \"payments\": [...], ...}");
+        txtJson.setPromptText("Pega aquí los datos de cobros si los enviaste por WhatsApp...");
         txtJson.setWrapText(true);
         txtJson.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-size: 11px;");
         VBox.setVgrow(txtJson, Priority.ALWAYS);
@@ -157,7 +157,7 @@ public class ImportMobileSyncDialog extends Stage {
         btnCancel.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-padding: 8 16; -fx-background-radius: 8; -fx-cursor: hand;");
         btnCancel.setOnAction(e -> close());
 
-        Button btnProcess = new Button("Procesar e Importar Recaudos");
+        Button btnProcess = new Button("Guardar Cobros en el Sistema");
         btnProcess.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 8; -fx-cursor: hand;");
         btnProcess.setOnAction(e -> processImport());
 
@@ -181,35 +181,34 @@ public class ImportMobileSyncDialog extends Stage {
 
         String ip = lanSyncServerService != null ? lanSyncServerService.getLocalIpAddress() : detectFallbackIp();
         int port = lanSyncServerService != null ? lanSyncServerService.getPort() : LanSyncServerService.DEFAULT_PORT;
-        String baseUrl = "http://" + ip + ":" + port;
+        String connectionCode = ip + ":" + port;
 
         HBox topRow = new HBox(10);
         topRow.setAlignment(Pos.CENTER_LEFT);
 
-        Label badge = new Label("📡 WI-FI / LAN ACTIVO");
+        Label badge = new Label("📡 CONEXIÓN DIRECTA WI-FI");
         badge.setStyle("-fx-background-color: #1d4ed8; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-background-radius: 10;");
 
-        Label urlLabel = new Label("Servidor Local: " + baseUrl);
-        urlLabel.setStyle("-fx-text-fill: #1e3a8a; -fx-font-size: 13px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace;");
+        Label urlLabel = new Label("Código de Enlace: " + connectionCode);
+        urlLabel.setStyle("-fx-text-fill: #1e3a8a; -fx-font-size: 13px; -fx-font-weight: bold;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button btnCopyUrl = new Button("📋 Copiar IP:Puerto");
+        Button btnCopyUrl = new Button("📋 Copiar Código");
         btnCopyUrl.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #1d4ed8; -fx-border-color: #93c5fd; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-cursor: hand;");
         btnCopyUrl.setOnAction(e -> {
             ClipboardContent content = new ClipboardContent();
-            content.putString(baseUrl);
+            content.putString(connectionCode);
             Clipboard.getSystemClipboard().setContent(content);
-            lblStatus.setText("Dirección del servidor copiada al portapapeles: " + baseUrl);
+            lblStatus.setText("Código de enlace copiado: " + connectionCode);
             lblStatus.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold;");
         });
 
         topRow.getChildren().addAll(badge, urlLabel, spacer, btnCopyUrl);
 
         Label instructions = new Label(
-                "Conecte el teléfono del cobrador a la misma red Wi-Fi e ingrese " + ip + ":" + port + " en la App Móvil.\n" +
-                "• Descargar Ruta del Día: GET " + baseUrl + "/api/sync/package   |   • Subir Recaudos: POST " + baseUrl + "/api/sync/package"
+                "En el celular del cobrador, conéctalo a la misma red Wi-Fi y usa este código en la opción 'Sincronizar' para transferir la ruta automáticamente."
         );
         instructions.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px;");
         instructions.setWrapText(true);
@@ -227,29 +226,29 @@ public class ImportMobileSyncDialog extends Stage {
             txtJson.setText(jsonPackage);
 
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Exportar Paquete de Ruta para Móvil (.JSON)");
-            chooser.setInitialFileName("paquete_ruta_" + routeForFile + "_" + LocalDate.now() + ".json");
-            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivos JSON (*.json)", "*.json"));
+            chooser.setTitle("Guardar Archivo de Ruta para Móvil");
+            chooser.setInitialFileName("ruta_" + routeForFile + "_" + LocalDate.now() + ".json");
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivo de Ruta (*.json)", "*.json"));
 
             File dest = chooser.showSaveDialog(this);
             if (dest != null) {
                 Files.writeString(dest.toPath(), jsonPackage, StandardCharsets.UTF_8);
-                lblStatus.setText("Paquete de ruta exportado exitosamente: " + dest.getName());
+                lblStatus.setText("Archivo de ruta guardado exitosamente: " + dest.getName());
                 lblStatus.setStyle("-fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold;");
             } else {
-                lblStatus.setText("Paquete de ruta generado en pantalla (listo para copiar o guardar).");
+                lblStatus.setText("Datos de ruta listos en pantalla (puedes copiarlos o guardarlos).");
                 lblStatus.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 11px; -fx-font-weight: bold;");
             }
         } catch (Exception ex) {
-            lblStatus.setText("Error al exportar paquete de ruta: " + ex.getMessage());
+            lblStatus.setText("Error al guardar archivo de ruta: " + ex.getMessage());
             lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
         }
     }
 
     private void pickJsonFile() {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Seleccionar Paquete de Ruta Móvil");
-        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivos JSON (*.json)", "*.json"));
+        chooser.setTitle("Seleccionar Archivo de Cobros");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivo de Cobros (*.json)", "*.json"));
         File file = chooser.showOpenDialog(this);
         if (file != null) {
             try {
@@ -267,7 +266,7 @@ public class ImportMobileSyncDialog extends Stage {
     private void processImport() {
         String jsonText = txtJson.getText();
         if (jsonText == null || jsonText.isBlank()) {
-            lblStatus.setText("Pegue el contenido JSON o seleccione un archivo antes de continuar.");
+            lblStatus.setText("Por favor selecciona un archivo o pega los cobros recibidos antes de continuar.");
             lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
             return;
         }
@@ -287,7 +286,7 @@ public class ImportMobileSyncDialog extends Stage {
             if (onFinished != null) onFinished.run();
             close();
         } catch (Exception e) {
-            lblStatus.setText("Error al procesar JSON: " + e.getMessage());
+            lblStatus.setText("Error al procesar los datos de cobro: " + e.getMessage());
             lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
         }
     }

@@ -30,10 +30,23 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * Vista de Ruta y Cobros de Hoy.
+ * Implementa el Clean Fintech Design System idéntico a la versión móvil:
+ * - Píldoras de filtro rápido segmentadas: [TODOS] [COBRAR HOY] [EN MORA] [AL DÍA] [PAGADOS] [PROMESAS].
+ * - Mini Bento Strip con KPIs operativos en tiempo real (Meta, Recaudado, Pendientes, En Mora).
+ * - Búsqueda instantánea multi-criterio y ordenamiento prioritario de visita.
+ * - Acciones directas de un clic por fila: Cobro Inmediato, Comprobante y WhatsApp.
+ */
 public class TodayCollectionsView extends VBox {
     private static final NumberFormat CURRENCY = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-CO"));
+
     static {
         CURRENCY.setMaximumFractionDigits(0);
+    }
+
+    public enum FilterPillType {
+        TODOS, COBRAR_HOY, MORA, AL_DIA, PAGADOS, PROMESAS
     }
 
     private final TodayCollectionsService collectionsService;
@@ -53,17 +66,33 @@ public class TodayCollectionsView extends VBox {
     private final Stage primaryStage;
     private final Runnable onDataUpdated;
 
-    private VBox routeContainer;
-
     private final ObservableList<CollectionItem> masterData = FXCollections.observableArrayList();
     private FilteredList<CollectionItem> filteredData;
     private final TableView<CollectionItem> table = new TableView<>();
-    private final Label lblCounter = new Label();
 
+    // Contadores y KPIs del Mini Bento Strip
+    private final Label lblCounter = new Label();
+    private final Label lblKpiTarget = new Label("$ 0");
+    private final Label lblKpiCollected = new Label("$ 0");
+    private final Label lblKpiPending = new Label("0 clientes");
+    private final Label lblKpiOverdue = new Label("$ 0 (0)");
+
+    // Píldoras de filtro
+    private FilterPillType currentFilter = FilterPillType.TODOS;
+    private final Button btnPillTodos = new Button("Todos (0)");
+    private final Button btnPillCobrarHoy = new Button("Cobrar Hoy (0)");
+    private final Button btnPillMora = new Button("En Mora (0)");
+    private final Button btnPillAlDia = new Button("Al Día (0)");
+    private final Button btnPillPagados = new Button("Pagados (0)");
+    private final Button btnPillPromesas = new Button("Promesas (0)");
+
+    // Footer
     private final Label lblFooterClients = new Label();
     private final Label lblFooterPending = new Label();
     private final Label lblFooterTotalCuotas = new Label();
     private final Label lblFooterTotalBalance = new Label();
+
+    private Runnable applyFiltersTrigger;
 
     public TodayCollectionsView(TodayCollectionsService collectionsService,
                                 RecordPaymentUseCase paymentUseCase,
@@ -135,11 +164,13 @@ public class TodayCollectionsView extends VBox {
         this.primaryStage = primaryStage;
         this.onDataUpdated = onDataUpdated;
 
-        setSpacing(16);
-        setPadding(new Insets(24));
+        setSpacing(14);
+        setPadding(new Insets(20, 24, 24, 24));
         setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
+        buildKpiStrip();
+        buildFilterPills();
         buildContentArea();
         refreshData();
     }
@@ -148,43 +179,117 @@ public class TodayCollectionsView extends VBox {
         HBox top = new HBox(16);
         top.setAlignment(Pos.CENTER_LEFT);
 
-        VBox titleBox = new VBox(4);
+        VBox titleBox = new VBox(2);
         Label title = new Label("Ruta y Cobros de Hoy");
         title.getStyleClass().add("section-title");
         lblCounter.getStyleClass().add("muted");
+        lblCounter.setStyle("-fx-font-size: 12px;");
         titleBox.getChildren().addAll(title, lblCounter);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
-        Button btnReportExpense = new Button("+ Reportar Gasto de Ruta");
-        btnReportExpense.setStyle("-fx-background-color: #ea580c; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        // Botón Registrar Gasto
+        Button btnReportExpense = new Button("💸 Gasto de Ruta");
+        btnReportExpense.getStyleClass().add("btn-secondary");
+        btnReportExpense.setStyle("-fx-font-size: 12px; -fx-padding: 7 12;");
         btnReportExpense.setOnAction(e -> openReportExpenseDialog());
 
-        Button btnRefresh = new Button("Actualizar");
+        // Botón Sincronizar Móvil
+        Button btnSyncMobile = new Button("📡 Sincronizar Móvil");
+        btnSyncMobile.getStyleClass().add("btn-primary");
+        btnSyncMobile.setStyle("-fx-font-size: 12px; -fx-padding: 7 14;");
+        btnSyncMobile.setOnAction(e -> openSyncMobileDialog());
+
+        // Botón Actualizar
+        Button btnRefresh = new Button("🔄 Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
+        btnRefresh.setStyle("-fx-font-size: 12px; -fx-padding: 7 12;");
         btnRefresh.setOnAction(e -> refreshData());
 
-        top.getChildren().addAll(titleBox, btnReportExpense, btnRefresh);
+        top.getChildren().addAll(titleBox, btnReportExpense, btnSyncMobile, btnRefresh);
         getChildren().add(top);
     }
 
-    private void openReportExpenseDialog() {
-        String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
-                .map(com.cartera.infrastructure.security.UserSession::userId)
-                .orElse("usr-col-1");
-        String routeId = com.cartera.infrastructure.security.UserSessionContext.getSelectedRouteId();
-        if ("ALL".equalsIgnoreCase(routeId)) {
-            routeId = "route-norte";
+    private void buildKpiStrip() {
+        HBox kpiStrip = new HBox(12);
+
+        lblKpiCollected.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #059669;");
+        lblKpiTarget.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #0f172a;");
+        lblKpiPending.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #2563eb;");
+        lblKpiOverdue.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #dc2626;");
+
+        kpiStrip.getChildren().addAll(
+                createMiniKpiCard("RECAUDADO HOY", lblKpiCollected),
+                createMiniKpiCard("META DEL DÍA", lblKpiTarget),
+                createMiniKpiCard("PENDIENTES HOY", lblKpiPending),
+                createMiniKpiCard("EN MORA / VENCIDAS", lblKpiOverdue)
+        );
+
+        getChildren().add(kpiStrip);
+    }
+
+    private VBox createMiniKpiCard(String label, Label valueLabel) {
+        VBox card = new VBox(4);
+        card.getStyleClass().add("metric-card");
+        card.setStyle("-fx-padding: 10 16; -fx-background-radius: 10; -fx-border-radius: 10;");
+        HBox.setHgrow(card, Priority.ALWAYS);
+
+        Label lbl = new Label(label);
+        lbl.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #64748b; -fx-letter-spacing: 0.4px;");
+
+        card.getChildren().addAll(lbl, valueLabel);
+        return card;
+    }
+
+    private void buildFilterPills() {
+        HBox pillsBox = new HBox(8);
+        pillsBox.setAlignment(Pos.CENTER_LEFT);
+        pillsBox.setPadding(new Insets(2, 0, 2, 0));
+
+        configurePill(btnPillTodos, FilterPillType.TODOS, "filter-pill-active");
+        configurePill(btnPillCobrarHoy, FilterPillType.COBRAR_HOY, "filter-pill-active");
+        configurePill(btnPillMora, FilterPillType.MORA, "filter-pill-active-mora");
+        configurePill(btnPillAlDia, FilterPillType.AL_DIA, "filter-pill-active-paid");
+        configurePill(btnPillPagados, FilterPillType.PAGADOS, "filter-pill-active-paid");
+        configurePill(btnPillPromesas, FilterPillType.PROMESAS, "filter-pill-active-promise");
+
+        pillsBox.getChildren().addAll(btnPillTodos, btnPillCobrarHoy, btnPillMora, btnPillAlDia, btnPillPagados, btnPillPromesas);
+        getChildren().add(pillsBox);
+    }
+
+    private void configurePill(Button btn, FilterPillType type, String activeClass) {
+        btn.getStyleClass().add("filter-pill");
+        if (type == FilterPillType.TODOS) {
+            btn.getStyleClass().add("filter-pill-active");
         }
-        RouteExpenseDialog.show(primaryStage, collectorId, routeId, settlementUseCase, saved -> {
-            if (saved) {
-                refreshData();
-                if (onDataUpdated != null) onDataUpdated.run();
-            }
+        btn.setOnAction(e -> {
+            currentFilter = type;
+            updatePillStyles();
+            if (applyFiltersTrigger != null) applyFiltersTrigger.run();
         });
     }
 
+    private void updatePillStyles() {
+        Button[] buttons = {btnPillTodos, btnPillCobrarHoy, btnPillMora, btnPillAlDia, btnPillPagados, btnPillPromesas};
+        FilterPillType[] types = {FilterPillType.TODOS, FilterPillType.COBRAR_HOY, FilterPillType.MORA, FilterPillType.AL_DIA, FilterPillType.PAGADOS, FilterPillType.PROMESAS};
+
+        for (int i = 0; i < buttons.length; i++) {
+            Button btn = buttons[i];
+            FilterPillType type = types[i];
+            btn.getStyleClass().removeAll("filter-pill-active", "filter-pill-active-mora", "filter-pill-active-paid", "filter-pill-active-promise");
+
+            if (type == currentFilter) {
+                switch (type) {
+                    case MORA -> btn.getStyleClass().add("filter-pill-active-mora");
+                    case PAGADOS, AL_DIA -> btn.getStyleClass().add("filter-pill-active-paid");
+                    case PROMESAS -> btn.getStyleClass().add("filter-pill-active-promise");
+                    default -> btn.getStyleClass().add("filter-pill-active");
+                }
+            }
+        }
+    }
+
     private void buildContentArea() {
-        routeContainer = new VBox(12);
+        VBox routeContainer = new VBox(10);
         VBox.setVgrow(routeContainer, Priority.ALWAYS);
 
         HBox searchRow = new HBox(10);
@@ -193,29 +298,59 @@ public class TodayCollectionsView extends VBox {
         TextField searchField = new TextField();
         searchField.setPromptText("Buscar cliente por nombre, cédula, dirección o barrio...");
         searchField.getStyleClass().add("search-field");
-        searchField.setPrefWidth(320);
+        searchField.setPrefWidth(340);
 
         Label lblFreq = new Label("Modalidad:");
-        lblFreq.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px; -fx-font-weight: bold;");
+        lblFreq.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
 
         ComboBox<String> cmbFreqFilter = new ComboBox<>();
         cmbFreqFilter.getItems().addAll("TODAS", "DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
         cmbFreqFilter.setValue("TODAS");
         cmbFreqFilter.getStyleClass().add("search-field");
-        cmbFreqFilter.setPrefWidth(130);
+        cmbFreqFilter.setPrefWidth(120);
 
         filteredData = new FilteredList<>(masterData, p -> true);
         SortedList<CollectionItem> sortedData = new SortedList<>(filteredData);
         sortedData.comparatorProperty().bind(table.comparatorProperty());
         table.setItems(sortedData);
 
-        Runnable applyFilter = () -> {
+        applyFiltersTrigger = () -> {
             String q = searchField.getText() != null ? searchField.getText().toLowerCase().trim() : "";
             String selectedFreq = cmbFreqFilter.getValue();
+
             filteredData.setPredicate(item -> {
+                // 1. Filtro de modalidad
                 boolean matchesFreq = selectedFreq == null || "TODAS".equalsIgnoreCase(selectedFreq)
                         || selectedFreq.equalsIgnoreCase(item.frequency());
                 if (!matchesFreq) return false;
+
+                // 2. Filtro de píldora de estado (idéntico a móvil)
+                String st = item.statusText() != null ? item.statusText().toUpperCase() : "";
+                boolean hasOverdue = (item.overdueTotal() != null && item.overdueTotal().compareTo(BigDecimal.ZERO) > 0)
+                        || st.contains("MORA") || st.contains("VENCID");
+
+                switch (currentFilter) {
+                    case COBRAR_HOY:
+                        if (item.isPaidToday() || st.contains("PRÓXIMA CUOTA")) return false;
+                        break;
+                    case MORA:
+                        if (!hasOverdue) return false;
+                        break;
+                    case AL_DIA:
+                        if (hasOverdue) return false;
+                        break;
+                    case PAGADOS:
+                        if (!item.isPaidToday()) return false;
+                        break;
+                    case PROMESAS:
+                        if (!st.contains("PROMESA")) return false;
+                        break;
+                    case TODOS:
+                    default:
+                        break;
+                }
+
+                // 3. Filtro de texto
                 if (q.isBlank()) return true;
                 return item.fullName().toLowerCase().contains(q)
                         || item.documentNumber().toLowerCase().contains(q)
@@ -223,56 +358,37 @@ public class TodayCollectionsView extends VBox {
                         || item.neighborhood().toLowerCase().contains(q)
                         || item.businessName().toLowerCase().contains(q);
             });
+
             updateStats(filteredData);
         };
 
-        searchField.textProperty().addListener((obs, oldVal, newVal) -> applyFilter.run());
-        cmbFreqFilter.valueProperty().addListener((obs, oldVal, newVal) -> applyFilter.run());
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> applyFiltersTrigger.run());
+        cmbFreqFilter.valueProperty().addListener((obs, oldVal, newVal) -> applyFiltersTrigger.run());
 
-        // Controles de Ordenamiento Inteligente de Ruta
-        Button btnMoveUp = new Button("⬆ Subir");
+        // Botón Auto-Ordenar
+        Button btnAutoSort = new Button("⚡ Auto-Ordenar Ruta");
+        btnAutoSort.getStyleClass().add("btn-secondary");
+        btnAutoSort.setStyle("-fx-font-size: 11px; -fx-padding: 6 12; -fx-font-weight: bold;");
+        btnAutoSort.setTooltip(new Tooltip("Organizar clientes automáticamente: Mora → Cobro Hoy → Promesas → Pagados"));
+        btnAutoSort.setOnAction(e -> autoSortByPriority());
+
+        // Controles de mover manual
+        Button btnMoveUp = new Button("⬆");
         btnMoveUp.getStyleClass().add("btn-secondary");
         btnMoveUp.setStyle("-fx-font-size: 11px; -fx-padding: 6 10;");
-        btnMoveUp.setTooltip(new Tooltip("Subir cliente seleccionado en el orden de visita"));
+        btnMoveUp.setTooltip(new Tooltip("Subir cliente en el orden de visita"));
         btnMoveUp.setOnAction(e -> moveSelectedRow(-1));
 
-        Button btnMoveDown = new Button("⬇ Bajar");
+        Button btnMoveDown = new Button("⬇");
         btnMoveDown.getStyleClass().add("btn-secondary");
         btnMoveDown.setStyle("-fx-font-size: 11px; -fx-padding: 6 10;");
-        btnMoveDown.setTooltip(new Tooltip("Bajar cliente seleccionado en el orden de visita"));
+        btnMoveDown.setTooltip(new Tooltip("Bajar cliente en el orden de visita"));
         btnMoveDown.setOnAction(e -> moveSelectedRow(1));
-
-        Button btnAutoSort = new Button("⚡ Auto-Ordenar Prioridad: Mora → Cobro Hoy → Promesas");
-        btnAutoSort.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 6 12; -fx-cursor: hand;");
-        btnAutoSort.setOnAction(e -> autoSortByPriority());
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button btnSyncMobile = new Button("📡 Sincronizar Móvil (Wi-Fi / JSON)");
-        btnSyncMobile.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 7 14; -fx-background-radius: 8; -fx-cursor: hand;");
-        btnSyncMobile.setOnAction(e -> {
-            new ImportMobileSyncDialog(
-                    primaryStage,
-                    paymentUseCase,
-                    cashMovementRepository,
-                    customerRepository,
-                    loanRepository,
-                    installmentRepository,
-                    createLoanUseCase,
-                    renewalRepository,
-                    paymentPromiseRepository,
-                    auditLogRepository,
-                    syncProcessorService,
-                    lanSyncServerService,
-                    () -> {
-                        refreshData();
-                        if (onDataUpdated != null) onDataUpdated.run();
-                    }
-            ).show();
-        });
-
-        searchRow.getChildren().addAll(searchField, lblFreq, cmbFreqFilter, btnMoveUp, btnMoveDown, btnAutoSort, spacer, btnSyncMobile);
+        searchRow.getChildren().addAll(searchField, lblFreq, cmbFreqFilter, btnAutoSort, btnMoveUp, btnMoveDown, spacer);
 
         routeContainer.getChildren().addAll(searchRow, buildTableCard());
         getChildren().add(routeContainer);
@@ -305,7 +421,7 @@ public class TodayCollectionsView extends VBox {
 
     private int priorityRank(CollectionItem item) {
         String st = item.statusText() != null ? item.statusText().toUpperCase() : "";
-        if (st.contains("EN MORA") || st.contains("VENCIDA")) return 1;
+        if (st.contains("EN MORA") || st.contains("VENCIDA") || (item.overdueTotal() != null && item.overdueTotal().compareTo(BigDecimal.ZERO) > 0)) return 1;
         if (!item.isPaidToday() && (st.contains("PENDIENTE") || st.contains("COBRO HOY"))) return 2;
         if (st.contains("PROMESA")) return 3;
         if (st.contains("PRÓXIMA CUOTA")) return 4;
@@ -338,10 +454,10 @@ public class TodayCollectionsView extends VBox {
                     Label lblInitials = new Label(getInitials(item.fullName()));
                     lblInitials.setStyle("-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px;");
                     StackPane avatar = new StackPane(lblInitials);
-                    avatar.setPrefSize(34, 34);
-                    avatar.setMinSize(34, 34);
-                    avatar.setMaxSize(34, 34);
-                    avatar.setStyle("-fx-background-color: linear-gradient(to bottom right, #3b82f6, #1d4ed8); -fx-background-radius: 17;");
+                    avatar.setPrefSize(32, 32);
+                    avatar.setMinSize(32, 32);
+                    avatar.setMaxSize(32, 32);
+                    avatar.setStyle("-fx-background-color: #2563eb; -fx-background-radius: 16;");
 
                     VBox textGroup = new VBox(2);
                     Label name = new Label(item.fullName());
@@ -361,7 +477,7 @@ public class TodayCollectionsView extends VBox {
         colCustomer.setPrefWidth(220);
 
         // 2. Columna Dirección con Pin y Botón Google Maps
-        TableColumn<CollectionItem, CollectionItem> colAddress = new TableColumn<>("DIRECCIÓN / BARRIO");
+        TableColumn<CollectionItem, CollectionItem> colAddress = new TableColumn<>("DIRECCIÓN / UBICACIÓN");
         colAddress.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue()));
         colAddress.setCellFactory(col -> new TableCell<>() {
             @Override
@@ -379,13 +495,13 @@ public class TodayCollectionsView extends VBox {
                     Label address = new Label(item.address());
                     address.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 13px; -fx-font-weight: 500;");
 
-                    Button btnMap = new Button("📍 Ver en Mapa");
+                    Button btnMap = new Button("📍 Mapa");
                     btnMap.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #0f172a; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-padding: 1 6; -fx-font-size: 10px; -fx-font-weight: bold;");
                     btnMap.setTooltip(new Tooltip("Abrir dirección en Google Maps"));
                     btnMap.setOnAction(e -> openMap(item.address(), item.neighborhood()));
                     addrRow.getChildren().addAll(address, btnMap);
 
-                    Label neighborhood = new Label("Barrio " + item.neighborhood() + " • " + item.routeId());
+                    Label neighborhood = new Label(item.neighborhood() + " • Ruta " + item.routeId());
                     neighborhood.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     box.getChildren().addAll(addrRow, neighborhood);
@@ -394,7 +510,7 @@ public class TodayCollectionsView extends VBox {
                 }
             }
         });
-        colAddress.setPrefWidth(220);
+        colAddress.setPrefWidth(210);
 
         // 3. Columna Cuota del Día
         TableColumn<CollectionItem, CollectionItem> colCuota = new TableColumn<>("CUOTA DEL DÍA");
@@ -433,7 +549,7 @@ public class TodayCollectionsView extends VBox {
                 }
             }
         });
-        colCuota.setPrefWidth(150);
+        colCuota.setPrefWidth(140);
 
         // 4. Columna Saldo Total
         TableColumn<CollectionItem, CollectionItem> colBalance = new TableColumn<>("SALDO TOTAL");
@@ -462,7 +578,7 @@ public class TodayCollectionsView extends VBox {
         });
         colBalance.setPrefWidth(130);
 
-        // 5. Columna Estado (Pill Badge)
+        // 5. Columna Estado (Pill Badge alineada con mobile)
         TableColumn<CollectionItem, CollectionItem> colStatus = new TableColumn<>("ESTADO");
         colStatus.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue()));
         colStatus.setCellFactory(col -> new TableCell<>() {
@@ -475,24 +591,23 @@ public class TodayCollectionsView extends VBox {
                 } else {
                     Label badge = new Label();
                     badge.setAlignment(Pos.CENTER);
-                    String baseStyle = "-fx-padding: 4 12; -fx-background-radius: 20; -fx-font-weight: bold; -fx-font-size: 11px;";
                     String st = item.statusText() != null ? item.statusText().toUpperCase() : "";
 
                     if (item.isPaidToday() && !st.contains("EN MORA")) {
                         badge.setText("PAGADO HOY");
-                        badge.setStyle(baseStyle + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 20;");
-                    } else if (st.contains("EN MORA") || st.contains("VENCIDA")) {
+                        badge.getStyleClass().setAll("badge-al-dia");
+                    } else if (st.contains("EN MORA") || st.contains("VENCIDA") || (item.overdueTotal() != null && item.overdueTotal().compareTo(BigDecimal.ZERO) > 0)) {
                         badge.setText("EN MORA");
-                        badge.setStyle(baseStyle + "-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 20;");
+                        badge.getStyleClass().setAll("badge-mora");
                     } else if (st.contains("PROMESA")) {
                         badge.setText("PROMESA");
-                        badge.setStyle(baseStyle + "-fx-background-color: #fffbeb; -fx-text-fill: #d97706; -fx-border-color: #fde68a; -fx-border-radius: 20;");
+                        badge.getStyleClass().setAll("badge-promesa");
                     } else if (st.contains("PRÓXIMA CUOTA")) {
                         badge.setText("PRÓXIMA CUOTA");
-                        badge.setStyle(baseStyle + "-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-border-color: #cbd5e1; -fx-border-radius: 20;");
+                        badge.getStyleClass().setAll("badge-proxima");
                     } else {
                         badge.setText("COBRO HOY");
-                        badge.setStyle(baseStyle + "-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 20;");
+                        badge.getStyleClass().setAll("badge-hoy");
                     }
                     setGraphic(badge);
                     setText(null);
@@ -576,9 +691,74 @@ public class TodayCollectionsView extends VBox {
         return tableCard;
     }
 
+    private void openReportExpenseDialog() {
+        String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
+                .map(com.cartera.infrastructure.security.UserSession::userId)
+                .orElse("usr-col-1");
+        String routeId = com.cartera.infrastructure.security.UserSessionContext.getSelectedRouteId();
+        if ("ALL".equalsIgnoreCase(routeId)) {
+            routeId = "route-norte";
+        }
+        RouteExpenseDialog.show(primaryStage, collectorId, routeId, settlementUseCase, saved -> {
+            if (saved) {
+                refreshData();
+                if (onDataUpdated != null) onDataUpdated.run();
+            }
+        });
+    }
+
+    private void openSyncMobileDialog() {
+        new ImportMobileSyncDialog(
+                primaryStage,
+                paymentUseCase,
+                cashMovementRepository,
+                customerRepository,
+                loanRepository,
+                installmentRepository,
+                createLoanUseCase,
+                renewalRepository,
+                paymentPromiseRepository,
+                auditLogRepository,
+                syncProcessorService,
+                lanSyncServerService,
+                () -> {
+                    refreshData();
+                    if (onDataUpdated != null) onDataUpdated.run();
+                }
+        ).show();
+    }
+
     public void refreshData() {
         var items = collectionsService.getTodayCollectionItems(LocalDate.now());
         masterData.setAll(items);
+
+        // Actualizar contadores de píldoras
+        long totalCount = items.size();
+        long cobrarHoyCount = items.stream().filter(i -> !i.isPaidToday() && (i.statusText() == null || !i.statusText().toUpperCase().contains("PRÓXIMA CUOTA"))).count();
+        long moraCount = items.stream().filter(i -> (i.overdueTotal() != null && i.overdueTotal().compareTo(BigDecimal.ZERO) > 0) || (i.statusText() != null && (i.statusText().toUpperCase().contains("MORA") || i.statusText().toUpperCase().contains("VENCID")))).count();
+        long alDiaCount = items.stream().filter(i -> (i.overdueTotal() == null || i.overdueTotal().compareTo(BigDecimal.ZERO) <= 0) && (i.statusText() == null || !i.statusText().toUpperCase().contains("MORA"))).count();
+        long pagadosCount = items.stream().filter(CollectionItem::isPaidToday).count();
+        long promesasCount = items.stream().filter(i -> i.statusText() != null && i.statusText().toUpperCase().contains("PROMESA")).count();
+
+        btnPillTodos.setText("Todos (" + totalCount + ")");
+        btnPillCobrarHoy.setText("Cobrar Hoy (" + cobrarHoyCount + ")");
+        btnPillMora.setText("En Mora (" + moraCount + ")");
+        btnPillAlDia.setText("Al Día (" + alDiaCount + ")");
+        btnPillPagados.setText("Pagados (" + pagadosCount + ")");
+        btnPillPromesas.setText("Promesas (" + promesasCount + ")");
+
+        // Actualizar KPIs mini strip
+        var m = collectionsService.getDailyMetrics(LocalDate.now());
+        BigDecimal target = items.stream()
+                .filter(i -> i.statusText() == null || !i.statusText().toUpperCase().contains("PRÓXIMA CUOTA"))
+                .map(CollectionItem::installmentAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        lblKpiCollected.setText(CURRENCY.format(m.collectedToday() != null ? m.collectedToday() : BigDecimal.ZERO));
+        lblKpiTarget.setText(CURRENCY.format(target.max(m.collectedToday() != null ? m.collectedToday() : BigDecimal.ZERO)));
+        lblKpiPending.setText(cobrarHoyCount + " clientes");
+        lblKpiOverdue.setText(CURRENCY.format(m.overdueAmount()) + " (" + moraCount + ")");
+
         updateStats(filteredData != null ? filteredData : masterData);
     }
 
@@ -595,10 +775,10 @@ public class TodayCollectionsView extends VBox {
                 .map(CollectionItem::loanBalance)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        lblCounter.setText(total + " clientes en ruta • " + pending + " pendientes de cobro hoy");
-        lblFooterClients.setText("Total en ruta: " + total);
-        lblFooterPending.setText("Pendientes hoy: " + pending);
-        lblFooterTotalCuotas.setText("Cuotas hoy: " + CURRENCY.format(totalCuotas));
+        lblCounter.setText(total + " clientes en vista • " + pending + " pendientes de cobro");
+        lblFooterClients.setText("Total mostrados: " + total);
+        lblFooterPending.setText("Pendientes: " + pending);
+        lblFooterTotalCuotas.setText("Cuotas pendientes: " + CURRENCY.format(totalCuotas));
         lblFooterTotalBalance.setText("Cartera total: " + CURRENCY.format(totalBalance));
     }
 

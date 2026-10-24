@@ -296,4 +296,24 @@ public class TodayCollectionsService {
 
         return result;
     }
+
+    public List<CollectionItem> getTodayCollectionItemsForRoute(LocalDate date, String routeId) {
+        String saved = UserSessionContext.getSelectedRouteId();
+        try {
+            UserSessionContext.setSelectedRouteId(routeId);
+            return getTodayCollectionItems(date);
+        } finally {
+            UserSessionContext.setSelectedRouteId(saved);
+        }
+    }
+
+    public DailyMetrics getDailyMetricsForRoute(LocalDate date, String routeId) {
+        String saved = UserSessionContext.getSelectedRouteId();
+        try {
+            UserSessionContext.setSelectedRouteId(routeId);
+            return getDailyMetrics(date);
+        } finally {
+            UserSessionContext.setSelectedRouteId(saved);
+        }
+    }
 }

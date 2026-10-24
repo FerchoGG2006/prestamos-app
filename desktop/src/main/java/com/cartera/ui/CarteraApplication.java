@@ -131,7 +131,7 @@ public final class CarteraApplication extends Application {
         var excelReportExporter = context.getBean(ExcelReportExporter.class);
         var databaseBackupService = context.getBean(DatabaseBackupService.class);
 
-        dashboardView = new DashboardView(collectionsService, () -> navigateTo("Cobros y Rutas"));
+        dashboardView = new DashboardView(collectionsService, routeRepository, userRepository, this::navigateTo, this::selectGlobalRoute);
 
         todayCollectionsView = new TodayCollectionsView(
                 collectionsService,
@@ -164,6 +164,7 @@ public final class CarteraApplication extends Application {
                 renewLoanUseCase,
                 cancelLoanUseCase,
                 settingRepository,
+                routeRepository,
                 stage,
                 () -> {
                     dashboardView.refresh();
@@ -321,7 +322,7 @@ public final class CarteraApplication extends Application {
         btnLogout.setOnAction(e -> onLogout());
         box.getChildren().add(btnLogout);
 
-        var versionLabel = new Label("v1.4.0 Desktop • SQLite Multi-Ruta");
+        var versionLabel = new Label("Sistema Cartera v1.4 • Operación Segura");
         versionLabel.getStyleClass().add("sidebar-version");
         box.getChildren().add(versionLabel);
 
@@ -345,22 +346,21 @@ public final class CarteraApplication extends Application {
             navContainer.getChildren().add(createNavButton("Mis Clientes", "Clientes"));
             navContainer.getChildren().add(createNavButton("Historial Crediticio", "Historial"));
         } else {
-            // Menú Completo para Administrador / Supervisor / Dueño
-            navContainer.getChildren().add(createSectionHeader("GENERAL"));
-            navContainer.getChildren().add(createNavButton("Panel Principal", "Inicio"));
-
-            navContainer.getChildren().add(createSectionHeader("SUPERVISIÓN Y CONTROL"));
-            navContainer.getChildren().add(createNavButton("Liquidación de Rutas", "Liquidación Diaria"));
-            navContainer.getChildren().add(createNavButton("Administrativo de Ruta", "Administrativo"));
-
-            navContainer.getChildren().add(createSectionHeader("OPERACIÓN"));
+            // Menú 100% Gerencial de Administración de Rutas
+            navContainer.getChildren().add(createSectionHeader("CENTRO DE CONTROL"));
+            navContainer.getChildren().add(createNavButton("Panel Multi-Ruta", "Inicio"));
             navContainer.getChildren().add(createNavButton("Supervisión de Cobros", "Cobros y Rutas"));
-            navContainer.getChildren().add(createNavButton("Clientes y Créditos", "Clientes"));
-            navContainer.getChildren().add(createNavButton("Historial Crediticio", "Historial"));
+            navContainer.getChildren().add(createNavButton("Liquidación y Arqueo", "Liquidación Diaria"));
+
+            navContainer.getChildren().add(createSectionHeader("PATRIMONIO Y CARTERA"));
+            navContainer.getChildren().add(createNavButton("Patrimonio & Caja", "Administrativo"));
+            navContainer.getChildren().add(createNavButton("Clientes de la Red", "Clientes"));
+            navContainer.getChildren().add(createNavButton("Créditos Otorgados", "Créditos"));
+            navContainer.getChildren().add(createNavButton("Consulta Crediticia Global", "Historial"));
 
             navContainer.getChildren().add(createSectionHeader("ADMINISTRACIÓN"));
-            navContainer.getChildren().add(createNavButton("Informes y Auditoría", "Reportes"));
-            navContainer.getChildren().add(createNavButton("Configuración", "Configuración"));
+            navContainer.getChildren().add(createNavButton("Informes & Auditoría", "Reportes"));
+            navContainer.getChildren().add(createNavButton("Configuración del Sistema", "Configuración"));
         }
     }
 
@@ -408,7 +408,7 @@ public final class CarteraApplication extends Application {
         });
         routeSelectorBox.getChildren().addAll(lblRoute, cmbGlobalRoute);
 
-        var status = new Label("OFFLINE \u2014 SQLite Activo");
+        var status = new Label("● Conectado • Listo para Operar");
         status.getStyleClass().add("status-ok");
 
         bar.getChildren().addAll(topTitle, spacer, routeSelectorBox, status);
@@ -434,6 +434,18 @@ public final class CarteraApplication extends Application {
             }
         }
         cmbGlobalRoute.setValue(targetSelection);
+    }
+
+    public void selectGlobalRoute(String routeId) {
+        if (routeId == null) return;
+        for (GlobalRouteOption opt : cmbGlobalRoute.getItems()) {
+            if (routeId.equalsIgnoreCase(opt.id())) {
+                cmbGlobalRoute.setValue(opt);
+                UserSessionContext.setSelectedRouteId(opt.id());
+                refreshActiveViews();
+                break;
+            }
+        }
     }
 
     private void refreshActiveViews() {
@@ -462,22 +474,22 @@ public final class CarteraApplication extends Application {
             case "Cobros de hoy":
             case "Rutas":
                 activeKey = "Cobros y Rutas";
-                effectiveTitle = "Ruta y Cobros de Hoy";
+                effectiveTitle = "Supervisión de Cobros y Rutas";
                 todayCollectionsView.refreshData();
                 viewNode = todayCollectionsView;
                 break;
             case "Clientes":
             case "Gestión de Cartera":
                 activeKey = "Clientes";
-                effectiveTitle = "Clientes y Créditos";
+                effectiveTitle = "Clientes de la Red";
                 customersView.refresh();
                 customersView.showSection("customers");
                 viewNode = customersView;
                 break;
             case "Créditos":
             case "Préstamos":
-                activeKey = "Clientes";
-                effectiveTitle = "Clientes y Créditos";
+                activeKey = "Créditos";
+                effectiveTitle = "Créditos Otorgados de la Red";
                 customersView.refresh();
                 customersView.showSection("loans");
                 viewNode = customersView;

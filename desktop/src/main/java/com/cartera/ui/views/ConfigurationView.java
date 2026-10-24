@@ -263,10 +263,10 @@ public class ConfigurationView extends VBox {
         card.getStyleClass().add("table-card");
         card.setPadding(new Insets(18));
 
-        Label title = new Label("Copia de Seguridad Automática (SQLite)");
+        Label title = new Label("Copia de Seguridad Automática");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
 
-        Label desc = new Label("El sistema genera respaldos automáticos al cerrar cada liquidación diaria en ~/.sistema-cartera/backups.");
+        Label desc = new Label("El sistema genera copias de respaldo automáticas al cerrar cada liquidación diaria.");
         desc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
         desc.setWrapText(true);
 
@@ -711,7 +711,7 @@ public class ConfigurationView extends VBox {
             fileChooser.setTitle("Guardar Copia de Seguridad");
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
             fileChooser.setInitialFileName("cartera_backup_" + timestamp + ".db");
-            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Base de Datos SQLite (*.db)", "*.db"));
+            fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivo de Respaldo (*.db)", "*.db"));
 
             File dest = fileChooser.showSaveDialog(ownerStage);
             if (dest != null) {

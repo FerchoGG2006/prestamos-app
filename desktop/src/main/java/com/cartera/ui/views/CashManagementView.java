@@ -85,7 +85,7 @@ public class CashManagementView extends VBox {
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
         Button btnRecaudo = new Button("💰 Retirar Recaudo a Oficina");
-        btnRecaudo.setStyle("-fx-background-color: #0284c7; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnRecaudo.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-padding: 8 14; -fx-cursor: hand;");
         btnRecaudo.setOnAction(e -> openRecaudoDialog());
 
         Button btnNewMovement = new Button("+ Movimiento de Caja");

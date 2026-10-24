@@ -3,7 +3,10 @@ package com.cartera.ui.views;
 import com.cartera.domain.money.Money;
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
+import com.cartera.infrastructure.persistence.entity.RouteEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
+import com.cartera.infrastructure.persistence.repository.LoanRepository;
+import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CreateLoanUseCase;
@@ -32,10 +35,12 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Diálogo modal para simular y otorgar nuevos créditos o migrar créditos preexistentes
  * desde cartulinas físicas de papel con marcado interactivo de cuotas y respaldo fotográfico.
+ * Incluye alerta de créditos cruzados multi-ruta para la administración central.
  */
 public class CreateLoanDialog extends Stage {
 
@@ -47,7 +52,13 @@ public class CreateLoanDialog extends Stage {
     private final CreateLoanUseCase createLoanUseCase;
     private final CustomerRepository customerRepository;
     private final SystemSettingRepository settingRepository;
+    private final LoanRepository loanRepository;
+    private final RouteRepository routeRepository;
     private final Consumer<LoanEntity> onSuccess;
+
+    // Alerta de Créditos Cruzados Multi-Ruta
+    private final VBox crossRouteAlertBox = new VBox(4);
+    private final Label lblCrossRouteAlert = new Label();
 
     // Componentes del Formulario
     private final ComboBox<CustomerEntity> cmbCustomer = new ComboBox<>();
@@ -57,8 +68,8 @@ public class CreateLoanDialog extends Stage {
     private final ComboBox<String> cmbFrequency = new ComboBox<>();
     private final DatePicker dpStartDate = new DatePicker(LocalDate.now());
 
-    // Switch de Migración de Cartulina Física
-    private final CheckBox chkMigration = new CheckBox("📋 Crédito Preexistente (Migración de Cartulina Física)");
+    // Switch de Crédito Anterior
+    private final CheckBox chkMigration = new CheckBox("📋 Crédito Anterior (Cartulina ya iniciada)");
     private final Set<Integer> paidInstallmentNumbers = new HashSet<>();
     private String cardPhotoPath = null;
 
@@ -97,7 +108,7 @@ public class CreateLoanDialog extends Stage {
             Stage ownerStage,
             Consumer<LoanEntity> onSuccess
     ) {
-        this(createLoanUseCase, customerRepository, null, ownerStage, onSuccess);
+        this(createLoanUseCase, customerRepository, null, null, null, ownerStage, onSuccess);
     }
 
     public CreateLoanDialog(
@@ -107,9 +118,23 @@ public class CreateLoanDialog extends Stage {
             Stage ownerStage,
             Consumer<LoanEntity> onSuccess
     ) {
+        this(createLoanUseCase, customerRepository, settingRepository, null, null, ownerStage, onSuccess);
+    }
+
+    public CreateLoanDialog(
+            CreateLoanUseCase createLoanUseCase,
+            CustomerRepository customerRepository,
+            SystemSettingRepository settingRepository,
+            LoanRepository loanRepository,
+            RouteRepository routeRepository,
+            Stage ownerStage,
+            Consumer<LoanEntity> onSuccess
+    ) {
         this.createLoanUseCase = createLoanUseCase;
         this.customerRepository = customerRepository;
         this.settingRepository = settingRepository;
+        this.loanRepository = loanRepository;
+        this.routeRepository = routeRepository;
         this.onSuccess = onSuccess;
 
         if (settingRepository != null) {
@@ -121,7 +146,7 @@ public class CreateLoanDialog extends Stage {
 
         initModality(Modality.WINDOW_MODAL);
         initOwner(ownerStage);
-        setTitle("Créditos y Migración de Cartera Viva");
+        setTitle("Otorgar Crédito / Ingresar Cartulina Anterior");
         setResizable(true);
 
         buildUI();
@@ -161,6 +186,12 @@ public class CreateLoanDialog extends Stage {
         lblCust.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         cmbCustomer.setMaxWidth(Double.MAX_VALUE);
         cmbCustomer.getStyleClass().add("search-field");
+
+        crossRouteAlertBox.getChildren().setAll(lblCrossRouteAlert);
+        crossRouteAlertBox.setVisible(false);
+        crossRouteAlertBox.setManaged(false);
+
+        cmbCustomer.valueProperty().addListener((obs, old, customer) -> checkCrossRouteAlert(customer));
         loadCustomers();
 
         // Capital
@@ -186,7 +217,7 @@ public class CreateLoanDialog extends Stage {
             setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         }}, dpStartDate);
 
-        leftForm.getChildren().addAll(chkMigration, lblCust, cmbCustomer, boxPrincipal, boxInterest, boxFreq, boxCount, boxDate);
+        leftForm.getChildren().addAll(chkMigration, lblCust, cmbCustomer, crossRouteAlertBox, boxPrincipal, boxInterest, boxFreq, boxCount, boxDate);
 
         // Eventos de recálculo dinámico en tiempo real
         txtPrincipal.textProperty().addListener((obs, old, val) -> recalculateAndSimulate());
@@ -348,11 +379,11 @@ public class CreateLoanDialog extends Stage {
 
     private void applyMigrationMode(boolean isMig) {
         if (isMig) {
-            lblHeaderIcon.setText("MIGRACIÓN CARTERA");
+            lblHeaderIcon.setText("CRÉDITO ANTERIOR");
             lblHeaderIcon.setStyle("-fx-background-color: #fef3c7; -fx-text-fill: #b45309; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 6 12; -fx-background-radius: 8; -fx-border-color: #fde68a; -fx-border-radius: 8;");
-            lblHeaderTitle.setText("Migración de Crédito Preexistente");
+            lblHeaderTitle.setText("Ingreso de Crédito Anterior");
             lblHeaderSubtitle.setText("Marca las cuotas ya canceladas en la cartulina física sin alterar la caja de hoy");
-            btnDisburse.setText("Registrar Crédito Migrado (Saldo Inicial)");
+            btnDisburse.setText("Guardar Crédito Anterior");
             btnDisburse.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 13px; -fx-padding: 9 16; -fx-background-radius: 8;");
 
             lblSummaryCartulinaTitle.setText("Impacto Caja Hoy");
@@ -438,6 +469,7 @@ public class CreateLoanDialog extends Stage {
         cmbCustomer.setItems(FXCollections.observableArrayList(list));
         if (!list.isEmpty()) {
             cmbCustomer.setValue(list.get(0));
+            checkCrossRouteAlert(list.get(0));
         }
 
         cmbCustomer.setConverter(new StringConverter<>() {
@@ -459,8 +491,64 @@ public class CreateLoanDialog extends Stage {
         for (var c : cmbCustomer.getItems()) {
             if (customerId.equals(c.getId())) {
                 cmbCustomer.setValue(c);
+                checkCrossRouteAlert(c);
                 break;
             }
+        }
+    }
+
+    private void checkCrossRouteAlert(CustomerEntity customer) {
+        if (customer == null || loanRepository == null) {
+            crossRouteAlertBox.setVisible(false);
+            crossRouteAlertBox.setManaged(false);
+            return;
+        }
+
+        List<LoanEntity> activeLoans = loanRepository.findByCustomerId(customer.getId()).stream()
+                .filter(l -> "ACTIVO".equalsIgnoreCase(l.getStatus()))
+                .toList();
+
+        if (activeLoans.isEmpty()) {
+            crossRouteAlertBox.setVisible(false);
+            crossRouteAlertBox.setManaged(false);
+            return;
+        }
+
+        String currentRoute = customer.getRouteId() != null ? customer.getRouteId() : "route-norte";
+        String selectedGlobalRoute = UserSessionContext.getSelectedRouteId();
+        if (selectedGlobalRoute != null && !"ALL".equalsIgnoreCase(selectedGlobalRoute)) {
+            currentRoute = selectedGlobalRoute;
+        }
+
+        boolean hasLoanInOtherRoute = false;
+        BigDecimal totalOtherDebt = BigDecimal.ZERO;
+        String otherRouteName = "";
+
+        Map<String, String> routeNames = (routeRepository != null)
+                ? routeRepository.findAll().stream().collect(Collectors.toMap(RouteEntity::getId, RouteEntity::getName, (a, b) -> a))
+                : Map.of();
+
+        for (LoanEntity loan : activeLoans) {
+            String lRoute = loan.getRouteId() != null ? loan.getRouteId() : "route-norte";
+            if (!lRoute.equalsIgnoreCase(currentRoute)) {
+                hasLoanInOtherRoute = true;
+                totalOtherDebt = totalOtherDebt.add(loan.getTotalAgreed());
+                otherRouteName = routeNames.getOrDefault(lRoute, lRoute);
+            }
+        }
+
+        if (hasLoanInOtherRoute) {
+            lblCrossRouteAlert.setText("⚠️ ALERTA CREDITICIA MULTI-RUTA:\nEste cliente ya registra crédito ACTIVO en [" + otherRouteName + "] por saldo de " + CURRENCY.format(totalOtherDebt) + ". Verifique antes de autorizar el desembolso.");
+            crossRouteAlertBox.setStyle("-fx-background-color: #fef2f2; -fx-padding: 8 10; -fx-background-radius: 6; -fx-border-color: #fecaca; -fx-border-radius: 6;");
+            lblCrossRouteAlert.setStyle("-fx-text-fill: #991b1b; -fx-font-size: 11px; -fx-font-weight: bold; -fx-wrap-text: true;");
+            crossRouteAlertBox.setVisible(true);
+            crossRouteAlertBox.setManaged(true);
+        } else {
+            lblCrossRouteAlert.setText("ℹ️ El cliente tiene " + activeLoans.size() + " crédito(s) vigente(s) en esta ruta. Verifique cupo.");
+            crossRouteAlertBox.setStyle("-fx-background-color: #eff6ff; -fx-padding: 8 10; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6;");
+            lblCrossRouteAlert.setStyle("-fx-text-fill: #1e40af; -fx-font-size: 11px; -fx-font-weight: bold; -fx-wrap-text: true;");
+            crossRouteAlertBox.setVisible(true);
+            crossRouteAlertBox.setManaged(true);
         }
     }
 
@@ -641,7 +729,7 @@ public class CreateLoanDialog extends Stage {
             BigDecimal cartulina = isMigration ? BigDecimal.ZERO : computeConfiguredPaperwork(principal);
 
             btnDisburse.setDisable(true);
-            lblFeedback.setText(isMigration ? "Registrando crédito migrado con saldos históricos en SQLite..." : "Procesando crédito y desembolso transaccional en SQLite...");
+            lblFeedback.setText(isMigration ? "Guardando crédito anterior..." : "Registrando crédito y desembolso...");
             lblFeedback.setStyle("-fx-text-fill: #1d4ed8; -fx-background-color: #eff6ff; -fx-padding: 8 12; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6;");
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);

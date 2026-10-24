@@ -431,3 +431,207 @@
     -fx-text-fill: #0f172a !important;
     -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.05), 4, 0, 0, 1);
 }
+
+/* ==========================================================================
+   CLEAN FINTECH DESIGN TOKENS (MOBILE-ALIGNED)
+   ========================================================================== */
+
+/* Hero Bento Card (Sobria, Slate 900) */
+.hero-card {
+    -fx-background-color: linear-gradient(to bottom right, #0f172a, #1e293b);
+    -fx-background-radius: 14;
+    -fx-padding: 22 24;
+    -fx-border-color: rgba(255, 255, 255, 0.08);
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.15), 16, 0, 0, 4);
+}
+
+.hero-title {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-letter-spacing: 0.5px;
+}
+
+.hero-value {
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 30px;
+    -fx-font-weight: bold;
+}
+
+.hero-subtext {
+    -fx-text-fill: #cbd5e1;
+    -fx-font-size: 12px;
+}
+
+.hero-pill {
+    -fx-background-color: rgba(255, 255, 255, 0.10);
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 4 10;
+    -fx-background-radius: 12;
+    -fx-border-color: rgba(255, 255, 255, 0.15);
+    -fx-border-radius: 12;
+}
+
+/* Tarjeta Bento Interactiva de Acciones Rápidas */
+.quick-action-card {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 12;
+    -fx-padding: 16 18;
+    -fx-border-color: #e2e8f0;
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+    -fx-cursor: hand;
+    cursor: pointer;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.03), 8, 0, 0, 2);
+}
+
+.quick-action-card:hover {
+    -fx-background-color: #f8fafc;
+    -fx-border-color: #bfdbfe;
+    -fx-effect: dropshadow(gaussian, rgba(37, 99, 235, 0.10), 12, 0, 0, 3);
+}
+
+.quick-action-title {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.quick-action-subtitle {
+    -fx-text-fill: #64748b;
+    -fx-font-size: 11px;
+}
+
+/* Píldoras de Filtro (Segmented Pills para Ruta y Cobros) */
+.filter-pill {
+    -fx-background-color: #f1f5f9;
+    -fx-text-fill: #475569;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 6 14;
+    -fx-background-radius: 20;
+    -fx-border-color: #e2e8f0;
+    -fx-border-radius: 20;
+    -fx-cursor: hand;
+    cursor: pointer;
+}
+
+.filter-pill:hover {
+    -fx-background-color: #e2e8f0;
+    -fx-text-fill: #0f172a;
+}
+
+.filter-pill-active {
+    -fx-background-color: #2563eb !important;
+    -fx-text-fill: #ffffff !important;
+    -fx-border-color: #2563eb !important;
+    -fx-effect: dropshadow(gaussian, rgba(37, 99, 235, 0.20), 6, 0, 0, 2);
+}
+
+.filter-pill-active-mora {
+    -fx-background-color: #dc2626 !important;
+    -fx-text-fill: #ffffff !important;
+    -fx-border-color: #dc2626 !important;
+    -fx-effect: dropshadow(gaussian, rgba(220, 38, 38, 0.20), 6, 0, 0, 2);
+}
+
+.filter-pill-active-paid {
+    -fx-background-color: #059669 !important;
+    -fx-text-fill: #ffffff !important;
+    -fx-border-color: #059669 !important;
+    -fx-effect: dropshadow(gaussian, rgba(5, 150, 105, 0.20), 6, 0, 0, 2);
+}
+
+.filter-pill-active-promise {
+    -fx-background-color: #d97706 !important;
+    -fx-text-fill: #ffffff !important;
+    -fx-border-color: #d97706 !important;
+    -fx-effect: dropshadow(gaussian, rgba(217, 119, 6, 0.20), 6, 0, 0, 2);
+}
+
+/* Badges Específicos */
+.badge-mora {
+    -fx-background-color: #fef2f2;
+    -fx-text-fill: #dc2626;
+    -fx-border-color: #fecaca;
+    -fx-border-radius: 20;
+    -fx-background-radius: 20;
+    -fx-padding: 3 10;
+    -fx-font-weight: bold;
+    -fx-font-size: 11px;
+}
+
+.badge-al-dia {
+    -fx-background-color: #ecfdf5;
+    -fx-text-fill: #047857;
+    -fx-border-color: #a7f3d0;
+    -fx-border-radius: 20;
+    -fx-background-radius: 20;
+    -fx-padding: 3 10;
+    -fx-font-weight: bold;
+    -fx-font-size: 11px;
+}
+
+.badge-promesa {
+    -fx-background-color: #fffbeb;
+    -fx-text-fill: #d97706;
+    -fx-border-color: #fde68a;
+    -fx-border-radius: 20;
+    -fx-background-radius: 20;
+    -fx-padding: 3 10;
+    -fx-font-weight: bold;
+    -fx-font-size: 11px;
+}
+
+.badge-hoy {
+    -fx-background-color: #eff6ff;
+    -fx-text-fill: #2563eb;
+    -fx-border-color: #bfdbfe;
+    -fx-border-radius: 20;
+    -fx-background-radius: 20;
+    -fx-padding: 3 10;
+    -fx-font-weight: bold;
+    -fx-font-size: 11px;
+}
+
+.badge-proxima {
+    -fx-background-color: #f1f5f9;
+    -fx-text-fill: #475569;
+    -fx-border-color: #cbd5e1;
+    -fx-border-radius: 20;
+    -fx-background-radius: 20;
+    -fx-padding: 3 10;
+    -fx-font-weight: bold;
+    -fx-font-size: 11px;
+}
+
+/* Barra de Progreso Fintech */
+.progress-bar {
+    -fx-pref-height: 8px;
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.progress-bar > .track {
+    -fx-background-color: #e2e8f0;
+    -fx-background-radius: 4;
+}
+
+.progress-bar > .bar {
+    -fx-background-color: #059669;
+    -fx-background-radius: 4;
+    -fx-background-insets: 0;
+}
+
+.hero-card .progress-bar > .track {
+    -fx-background-color: rgba(255, 255, 255, 0.15);
+}
+
+.hero-card .progress-bar > .bar {
+    -fx-background-color: #10b981;
+}

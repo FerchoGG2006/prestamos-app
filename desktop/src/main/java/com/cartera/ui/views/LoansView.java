@@ -5,6 +5,7 @@ import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
+import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CancelLoanUseCase;
@@ -36,6 +37,7 @@ public class LoansView extends VBox {
     private final CancelLoanUseCase cancelLoanUseCase;
     private final InstallmentRepository installmentRepository;
     private final SystemSettingRepository settingRepository;
+    private final RouteRepository routeRepository;
     private final javafx.stage.Stage ownerStage;
     private final Runnable onLoanCreatedCallback;
     private final ObservableList<LoanEntity> loansList = FXCollections.observableArrayList();
@@ -52,7 +54,7 @@ public class LoansView extends VBox {
                      com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase,
                      javafx.stage.Stage ownerStage,
                      Runnable onLoanCreatedCallback) {
-        this(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, null, null, ownerStage, onLoanCreatedCallback);
+        this(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, null, null, null, ownerStage, onLoanCreatedCallback);
     }
 
     public LoansView(LoanRepository loanRepository,
@@ -63,7 +65,7 @@ public class LoansView extends VBox {
                      SystemSettingRepository settingRepository,
                      javafx.stage.Stage ownerStage,
                      Runnable onLoanCreatedCallback) {
-        this(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, null, settingRepository, ownerStage, onLoanCreatedCallback);
+        this(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, null, settingRepository, null, ownerStage, onLoanCreatedCallback);
     }
 
     public LoansView(LoanRepository loanRepository,
@@ -75,6 +77,19 @@ public class LoansView extends VBox {
                      SystemSettingRepository settingRepository,
                      javafx.stage.Stage ownerStage,
                      Runnable onLoanCreatedCallback) {
+        this(loanRepository, customerRepository, installmentRepository, createLoanUseCase, renewLoanUseCase, cancelLoanUseCase, settingRepository, null, ownerStage, onLoanCreatedCallback);
+    }
+
+    public LoansView(LoanRepository loanRepository,
+                     CustomerRepository customerRepository,
+                     InstallmentRepository installmentRepository,
+                     com.cartera.loans.application.CreateLoanUseCase createLoanUseCase,
+                     com.cartera.renewals.application.RenewLoanUseCase renewLoanUseCase,
+                     CancelLoanUseCase cancelLoanUseCase,
+                     SystemSettingRepository settingRepository,
+                     RouteRepository routeRepository,
+                     javafx.stage.Stage ownerStage,
+                     Runnable onLoanCreatedCallback) {
         this.loanRepository = loanRepository;
         this.customerRepository = customerRepository;
         this.installmentRepository = installmentRepository;
@@ -82,6 +97,7 @@ public class LoansView extends VBox {
         this.renewLoanUseCase = renewLoanUseCase;
         this.cancelLoanUseCase = cancelLoanUseCase;
         this.settingRepository = settingRepository;
+        this.routeRepository = routeRepository;
         this.ownerStage = ownerStage;
         this.onLoanCreatedCallback = onLoanCreatedCallback;
 
@@ -110,18 +126,18 @@ public class LoansView extends VBox {
         btnNewLoan.getStyleClass().add("btn-primary");
         btnNewLoan.setOnAction(e -> {
             if (createLoanUseCase != null) {
-                new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, ownerStage, l -> {
+                new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, l -> {
                     refresh();
                     if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
                 }).showAndWait();
             }
         });
 
-        Button btnMigrate = new Button("📋 Migrar Cartulina Física");
+        Button btnMigrate = new Button("📋 Cargar Cartulina Anterior");
         btnMigrate.setStyle("-fx-background-color: #fef3c7; -fx-text-fill: #92400e; -fx-font-weight: 800; -fx-font-size: 12px; -fx-border-color: #fde68a; -fx-border-radius: 8; -fx-background-radius: 8; -fx-cursor: hand; -fx-padding: 7 14;");
         btnMigrate.setOnAction(e -> {
             if (createLoanUseCase != null) {
-                var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, ownerStage, l -> {
+                var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, l -> {
                     refresh();
                     if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
                 });

@@ -74,6 +74,19 @@ public class SettlementManagementView extends VBox {
     private final Label lblStatusBadge = new Label("JORNADA ABIERTA");
     private final Label lblFeedback = new Label();
 
+    // Calculadora y Desglose Rápido de Billetes y Monedas
+    private final TextField txtDenom100k = new TextField();
+    private final TextField txtDenom50k = new TextField();
+    private final TextField txtDenom20k = new TextField();
+    private final TextField txtDenom10k = new TextField();
+    private final TextField txtDenom5k = new TextField();
+    private final TextField txtDenom2k = new TextField();
+    private final TextField txtDenomCoins = new TextField();
+    private final Label lblDenomBillsTotal = new Label("Billetes: $ 0");
+    private final Label lblDenomCoinsTotal = new Label("Monedas: $ 0");
+    private final Label lblDenomGrandTotal = new Label("Total Contado: $ 0");
+    private final VBox denominationPanel = new VBox(10);
+
     private DaySettlementSummary currentSummary;
     private final ObservableList<CashMovementEntity> routeExpensesObservable = FXCollections.observableArrayList();
     private final TableView<CashMovementEntity> expensesTable = new TableView<>();
@@ -151,7 +164,7 @@ public class SettlementManagementView extends VBox {
         cmbCollector.valueProperty().addListener((obs, old, val) -> refreshInternal());
 
         Button btnAddExpense = new Button("+ Registrar Gasto");
-        btnAddExpense.setStyle("-fx-background-color: #f97316; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 7 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnAddExpense.setStyle("-fx-background-color: #fffbeb; -fx-text-fill: #b45309; -fx-border-color: #fde68a; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-padding: 7 14; -fx-cursor: hand;");
         btnAddExpense.setOnAction(e -> openNewExpenseDialog());
 
         Button btnRefresh = new Button("Recalcular");
@@ -166,7 +179,7 @@ public class SettlementManagementView extends VBox {
         HBox metrics = new HBox(16);
 
         lblCollected.getStyleClass().add("metric-value-green");
-        lblRouteExpenses.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #ea580c;");
+        lblRouteExpenses.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #d97706;");
         lblNetExpected.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2563eb;");
 
         VBox card1 = createMetricCard("1. Total Cobrado en Sistema", lblCollected, "Suma bruta de abonos recaudados");
@@ -225,6 +238,7 @@ public class SettlementManagementView extends VBox {
         grid.add(createFieldBox("Diferencia / Cuadre", lblDifference), 1, 0);
         grid.add(createFieldBox("Observaciones de Auditoría", txtJustification), 0, 1, 2, 1);
 
+        buildDenominationPanel();
         buildPayrollPanel();
 
         lblFeedback.setWrapText(true);
@@ -245,8 +259,123 @@ public class SettlementManagementView extends VBox {
 
         actionBox.getChildren().addAll(btnCopyWhatsAppReport, btnCloseSettlement);
 
-        card.getChildren().addAll(cardHeader, grid, payrollBox, lblFeedback, actionBox);
+        card.getChildren().addAll(cardHeader, grid, denominationPanel, payrollBox, lblFeedback, actionBox);
         scrollableContent.getChildren().add(card);
+    }
+
+    private void buildDenominationPanel() {
+        denominationPanel.setStyle("-fx-background-color: #f8fafc; -fx-padding: 14; -fx-background-radius: 8; -fx-border-color: #e2e8f0; -fx-border-radius: 8;");
+
+        HBox header = new HBox(8);
+        header.setAlignment(Pos.CENTER_LEFT);
+        Label title = new Label("💵 Calculadora y Desglose Rápido de Efectivo Físico");
+        title.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1e293b;");
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        Button btnClear = new Button("Limpiar Conteo");
+        btnClear.getStyleClass().add("btn-secondary");
+        btnClear.setStyle("-fx-font-size: 11px; -fx-padding: 4 10; -fx-cursor: hand;");
+        btnClear.setOnAction(e -> clearDenominations());
+        header.getChildren().addAll(title, spacer, btnClear);
+
+        FlowPane flow = new FlowPane(12, 10);
+        flow.setAlignment(Pos.CENTER_LEFT);
+
+        flow.getChildren().addAll(
+                createDenomInput("Billetes $100.000", txtDenom100k),
+                createDenomInput("Billetes $50.000", txtDenom50k),
+                createDenomInput("Billetes $20.000", txtDenom20k),
+                createDenomInput("Billetes $10.000", txtDenom10k),
+                createDenomInput("Billetes $5.000", txtDenom5k),
+                createDenomInput("Billetes $2.000", txtDenom2k),
+                createDenomInput("Monedas ($)", txtDenomCoins)
+        );
+
+        HBox summary = new HBox(12);
+        summary.setAlignment(Pos.CENTER_LEFT);
+        lblDenomBillsTotal.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #2563eb;");
+        lblDenomCoinsTotal.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #d97706;");
+        lblDenomGrandTotal.setStyle("-fx-font-size: 12px; -fx-font-weight: 800; -fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-padding: 4 8; -fx-background-radius: 6;");
+
+        Label sep1 = new Label("•");
+        sep1.setStyle("-fx-text-fill: #cbd5e1;");
+        Label sep2 = new Label("•");
+        sep2.setStyle("-fx-text-fill: #cbd5e1;");
+
+        summary.getChildren().addAll(lblDenomBillsTotal, sep1, lblDenomCoinsTotal, sep2, lblDenomGrandTotal);
+
+        denominationPanel.getChildren().addAll(header, flow, summary);
+
+        txtDenom100k.textProperty().addListener((o, oldV, newV) -> calculateDenominations());
+        txtDenom50k.textProperty().addListener((o, oldV, newV) -> calculateDenominations());
+        txtDenom20k.textProperty().addListener((o, oldV, newV) -> calculateDenominations());
+        txtDenom10k.textProperty().addListener((o, oldV, newV) -> calculateDenominations());
+        txtDenom5k.textProperty().addListener((o, oldV, newV) -> calculateDenominations());
+        txtDenom2k.textProperty().addListener((o, oldV, newV) -> calculateDenominations());
+        txtDenomCoins.textProperty().addListener((o, oldV, newV) -> calculateDenominations());
+    }
+
+    private VBox createDenomInput(String label, TextField field) {
+        VBox box = new VBox(3);
+        box.setPrefWidth(110);
+        Label lbl = new Label(label);
+        lbl.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-text-fill: #64748b;");
+        field.setPromptText("0");
+        field.getStyleClass().add("search-field");
+        field.setStyle("-fx-font-size: 12px; -fx-padding: 6 8; -fx-font-weight: bold;");
+        box.getChildren().addAll(lbl, field);
+        return box;
+    }
+
+    private void clearDenominations() {
+        txtDenom100k.clear();
+        txtDenom50k.clear();
+        txtDenom20k.clear();
+        txtDenom10k.clear();
+        txtDenom5k.clear();
+        txtDenom2k.clear();
+        txtDenomCoins.clear();
+        calculateDenominations();
+    }
+
+    private void calculateDenominations() {
+        long q100 = parseCount(txtDenom100k.getText());
+        long q50 = parseCount(txtDenom50k.getText());
+        long q20 = parseCount(txtDenom20k.getText());
+        long q10 = parseCount(txtDenom10k.getText());
+        long q5 = parseCount(txtDenom5k.getText());
+        long q2 = parseCount(txtDenom2k.getText());
+        BigDecimal coins = CurrencyInputUtil.parseAmount(txtDenomCoins.getText());
+
+        BigDecimal billsTotal = BigDecimal.valueOf(q100 * 100_000L + q50 * 50_000L + q20 * 20_000L + q10 * 10_000L + q5 * 5_000L + q2 * 2_000L);
+        BigDecimal grandTotal = billsTotal.add(coins.max(BigDecimal.ZERO));
+
+        lblDenomBillsTotal.setText("Billetes: " + CURRENCY.format(billsTotal));
+        lblDenomCoinsTotal.setText("Monedas: " + CURRENCY.format(coins));
+        lblDenomGrandTotal.setText("Total Contado: " + CURRENCY.format(grandTotal));
+
+        if (grandTotal.compareTo(BigDecimal.ZERO) > 0 || anyDenomTouched()) {
+            txtDelivered.setText(grandTotal.toPlainString());
+        }
+    }
+
+    private boolean anyDenomTouched() {
+        return !txtDenom100k.getText().trim().isEmpty() ||
+                !txtDenom50k.getText().trim().isEmpty() ||
+                !txtDenom20k.getText().trim().isEmpty() ||
+                !txtDenom10k.getText().trim().isEmpty() ||
+                !txtDenom5k.getText().trim().isEmpty() ||
+                !txtDenom2k.getText().trim().isEmpty() ||
+                !txtDenomCoins.getText().trim().isEmpty();
+    }
+
+    private long parseCount(String text) {
+        if (text == null || text.trim().isEmpty()) return 0;
+        try {
+            return Math.max(0, Long.parseLong(text.replaceAll("[^0-9]", "")));
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     private void buildPayrollPanel() {
@@ -492,6 +621,7 @@ public class SettlementManagementView extends VBox {
             txtDelivered.setDisable(true);
             txtJustification.setDisable(true);
             btnCloseSettlement.setDisable(true);
+            denominationPanel.setDisable(true);
             payrollBox.setVisible(false);
             payrollBox.setManaged(false);
 
@@ -505,6 +635,7 @@ public class SettlementManagementView extends VBox {
             txtDelivered.setDisable(false);
             txtJustification.setDisable(false);
             btnCloseSettlement.setDisable(false);
+            denominationPanel.setDisable(false);
 
             if ("0".equals(txtDelivered.getText().trim())) {
                 txtDelivered.setText(currentSummary.netExpectedCash().toString());
@@ -606,7 +737,7 @@ public class SettlementManagementView extends VBox {
 
             refresh();
 
-            lblFeedback.setText("Liquidación diaria cerrada inmutablemente y copia de seguridad automática creada.");
+            lblFeedback.setText("Liquidación diaria cerrada con éxito. El arqueo ha quedado registrado.");
             lblFeedback.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);
@@ -696,6 +827,28 @@ public class SettlementManagementView extends VBox {
         sb.append("• *Total Cobrado:* ").append(CURRENCY.format(currentSummary.totalCollected())).append("\n\n");
         sb.append("⛽ *2. GASTOS DE RUTA:* ").append(CURRENCY.format(currentSummary.routeExpenses())).append("\n");
         sb.append("💵 *3. NETO ESPERADO EN EFECTIVO:* ").append(CURRENCY.format(currentSummary.netExpectedCash())).append("\n\n");
+
+        if (anyDenomTouched()) {
+            sb.append("💵 *DESGLOSE DE EFECTIVO FÍSICO CONTADO:*\n");
+            long q100 = parseCount(txtDenom100k.getText());
+            long q50 = parseCount(txtDenom50k.getText());
+            long q20 = parseCount(txtDenom20k.getText());
+            long q10 = parseCount(txtDenom10k.getText());
+            long q5 = parseCount(txtDenom5k.getText());
+            long q2 = parseCount(txtDenom2k.getText());
+            BigDecimal coins = CurrencyInputUtil.parseAmount(txtDenomCoins.getText());
+            if (q100 > 0) sb.append("• Billetes $100.000: ").append(q100).append(" (").append(CURRENCY.format(q100 * 100_000L)).append(")\n");
+            if (q50 > 0) sb.append("• Billetes $50.000: ").append(q50).append(" (").append(CURRENCY.format(q50 * 50_000L)).append(")\n");
+            if (q20 > 0) sb.append("• Billetes $20.000: ").append(q20).append(" (").append(CURRENCY.format(q20 * 20_000L)).append(")\n");
+            if (q10 > 0) sb.append("• Billetes $10.000: ").append(q10).append(" (").append(CURRENCY.format(q10 * 10_000L)).append(")\n");
+            if (q5 > 0) sb.append("• Billetes $5.000: ").append(q5).append(" (").append(CURRENCY.format(q5 * 5_000L)).append(")\n");
+            if (q2 > 0) sb.append("• Billetes $2.000: ").append(q2).append(" (").append(CURRENCY.format(q2 * 2_000L)).append(")\n");
+            if (coins.compareTo(BigDecimal.ZERO) > 0) sb.append("• Monedas / Fracción: ").append(CURRENCY.format(coins)).append("\n");
+            BigDecimal billsTotal = BigDecimal.valueOf(q100 * 100_000L + q50 * 50_000L + q20 * 20_000L + q10 * 10_000L + q5 * 5_000L + q2 * 2_000L);
+            BigDecimal grandTotal = billsTotal.add(coins.max(BigDecimal.ZERO));
+            sb.append("• *Total Físico Contado:* ").append(CURRENCY.format(grandTotal)).append("\n\n");
+        }
+
         if (currentSummary.isClosed() && currentSummary.settlement() != null) {
             sb.append("✅ *ESTADO:* JORNADA CERRADA\n");
             sb.append("• *Efectivo Entregado:* ").append(CURRENCY.format(currentSummary.settlement().getActualCollection())).append("\n");

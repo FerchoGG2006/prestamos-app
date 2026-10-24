@@ -171,7 +171,7 @@ public class CustomersView extends VBox {
         VBox titleBox = new VBox(4);
         Label title = new Label("Clientes y Créditos");
         title.getStyleClass().add("section-title");
-        Label subtitle = new Label("Ficha de clientes, cartera deudora, estados de cuenta WhatsApp y renovaciones inmediatas");
+        Label subtitle = new Label("Directorio de clientes, cartera activa y seguimiento de créditos");
         subtitle.getStyleClass().add("muted");
         titleBox.getChildren().addAll(title, subtitle);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
@@ -310,7 +310,7 @@ public class CustomersView extends VBox {
                     avatar.setPrefSize(32, 32);
                     avatar.setMinSize(32, 32);
                     avatar.setMaxSize(32, 32);
-                    avatar.setStyle("-fx-background-color: linear-gradient(to bottom right, #6366f1, #4338ca); -fx-background-radius: 16;");
+                    avatar.setStyle("-fx-background-color: #2563eb; -fx-background-radius: 16;");
 
                     VBox textGroup = new VBox(2);
                     Label name = new Label(c.getFullName());
@@ -395,7 +395,7 @@ public class CustomersView extends VBox {
         StackPane avatar = new StackPane(lblInitials);
         avatar.setPrefSize(48, 48);
         avatar.setMinSize(48, 48);
-        avatar.setStyle("-fx-background-color: linear-gradient(to bottom right, #3b82f6, #1d4ed8); -fx-background-radius: 24;");
+        avatar.setStyle("-fx-background-color: #2563eb; -fx-background-radius: 24;");
 
         VBox namesBox = new VBox(2);
         Label lblName = new Label(c.getFullName());
@@ -463,9 +463,7 @@ public class CustomersView extends VBox {
             Region sp = new Region();
             HBox.setHgrow(sp, Priority.ALWAYS);
             Label badge = new Label(hasOverdue ? "EN MORA" : "AL DÍA");
-            badge.setStyle(hasOverdue
-                    ? "-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8; -fx-background-radius: 10; -fx-border-color: #fecaca; -fx-border-radius: 10;"
-                    : "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 8; -fx-background-radius: 10; -fx-border-color: #a7f3d0; -fx-border-radius: 10;");
+            badge.getStyleClass().setAll(hasOverdue ? "badge-mora" : "badge-al-dia");
             credHeader.getChildren().addAll(credTitle, sp, badge);
 
             BigDecimal currentBalance = (installmentRepository != null)
@@ -474,17 +472,28 @@ public class CustomersView extends VBox {
                             .reduce(BigDecimal.ZERO, BigDecimal::add)
                     : activeLoan.getTotalAgreed();
 
-            VBox figures = new VBox(4);
+            VBox figures = new VBox(5);
             Label lblBalTitle = new Label("Saldo Pendiente:");
             lblBalTitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
             Label lblBalVal = new Label(CURRENCY.format(currentBalance));
             lblBalVal.setStyle("-fx-text-fill: #059669; -fx-font-size: 20px; -fx-font-weight: bold;");
 
+            BigDecimal totalPaid = activeLoan.getTotalAgreed().subtract(currentBalance).max(BigDecimal.ZERO);
+            double loanProgress = activeLoan.getTotalAgreed().compareTo(BigDecimal.ZERO) > 0
+                    ? totalPaid.divide(activeLoan.getTotalAgreed(), 4, java.math.RoundingMode.HALF_UP).doubleValue()
+                    : 0.0;
+            ProgressBar pbLoan = new ProgressBar(Math.min(1.0, Math.max(0.0, loanProgress)));
+            pbLoan.setMaxWidth(Double.MAX_VALUE);
+            pbLoan.setPrefHeight(6);
+
+            Label lblAmort = new Label((int) Math.round(loanProgress * 100) + "% amortizado • Pagado: " + CURRENCY.format(totalPaid));
+            lblAmort.setStyle("-fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold;");
+
             Label lblDetails = new Label("Prestado: " + CURRENCY.format(activeLoan.getPrincipal())
                     + " • Total: " + CURRENCY.format(activeLoan.getTotalAgreed())
                     + " (" + activeLoan.getInstallmentCount() + " cuotas)");
             lblDetails.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
-            figures.getChildren().addAll(lblBalTitle, lblBalVal, lblDetails);
+            figures.getChildren().addAll(lblBalTitle, lblBalVal, pbLoan, lblAmort, lblDetails);
 
             // Acciones Rápidas para el Crédito
             HBox actionButtons = new HBox(8);
@@ -525,7 +534,7 @@ public class CustomersView extends VBox {
             btnNewLoan.setMaxWidth(Double.MAX_VALUE);
             btnNewLoan.setOnAction(e -> {
                 if (createLoanUseCase != null && customerRepository != null) {
-                    var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, ownerStage, created -> {
+                    var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
                         refresh();
                         if (loansView != null) loansView.refresh();
                     });

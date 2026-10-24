@@ -133,7 +133,7 @@ public class PaymentDialog {
                 }
 
                 btnConfirm.setDisable(true);
-                lblFeedback.setText("Registrando pago transaccional en SQLite...");
+                lblFeedback.setText("Guardando abono de cuota...");
                 lblFeedback.setStyle("-fx-text-fill: #2563eb;");
 
                 String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()

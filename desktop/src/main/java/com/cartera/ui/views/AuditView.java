@@ -44,7 +44,7 @@ public class AuditView extends VBox {
         VBox titleBox = new VBox(4);
         Label title = new Label("Auditoría y Trazabilidad");
         title.getStyleClass().add("section-title");
-        Label subtitle = new Label("Bitácora inmutable de eventos, autenticación y transacciones financieras");
+        Label subtitle = new Label("Registro de actividades y movimientos del sistema");
         subtitle.getStyleClass().add("muted");
         titleBox.getChildren().addAll(title, subtitle);
         HBox.setHgrow(titleBox, Priority.ALWAYS);
