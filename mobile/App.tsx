@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  SafeAreaView,
   View,
   Text,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import {
   TextInput,
   Linking,
 } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { localStore } from './src/infrastructure/storage/local-store';
 import {
   Customer,
@@ -76,6 +76,21 @@ import {
 } from 'lucide-react-native';
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <MainApp />
+    </SafeAreaProvider>
+  );
+}
+
+function MainApp() {
+  const insets = useSafeAreaInsets();
+  const safeTop = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0
+  );
+  const safeBottom = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 8);
+
   const { width, height } = useWindowDimensions();
   const isWideViewport = width >= 500;
 
@@ -382,8 +397,8 @@ export default function App() {
   };
 
   const mobileContent = (
-    <SafeAreaView style={[styles.safeArea, { paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0 }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" translucent={false} />
+    <View style={[styles.safeArea, { paddingTop: safeTop }]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" translucent={Platform.OS === 'android'} />
 
       {/* Top Bar Móvil Limpio (Fintech Punto de Venta UI) */}
       <View style={styles.topBar}>
@@ -773,7 +788,7 @@ export default function App() {
               {/* Lista de Clientes con Varias Opciones */}
               <ScrollView
                 style={{ flex: 1, paddingHorizontal: 16 }}
-                contentContainerStyle={{ paddingBottom: 112 }}
+                contentContainerStyle={{ paddingBottom: 150 }}
                 showsVerticalScrollIndicator={false}
               >
                 {filteredCustomers.length === 0 ? (
@@ -959,7 +974,13 @@ export default function App() {
       {/* PATRÓN #3 DE GEMINI SHARE: FLOATING BOTTOM DOCK CON FAB CENTRAL SOBRESALIENTE
           Píldora flotante en índigo/púrpura oscuro (#1E1B4B) despegada de los bordes con botón central (+) */}
       {!detailCustomer && (
-        <View style={styles.floatingDockWrapper} pointerEvents="box-none">
+        <View
+          style={[
+            styles.floatingDockWrapper,
+            { bottom: safeBottom + (Platform.OS === 'android' ? 12 : 8) },
+          ]}
+          pointerEvents="box-none"
+        >
           <View style={styles.floatingDockPill}>
             {/* Tab 1: Hoja de Ruta de Cobro en Calle */}
             <TouchableOpacity
@@ -1310,21 +1331,30 @@ export default function App() {
         }}
         onQuickWhatsApp={handleQuickWhatsAppAlert}
       />
-    </SafeAreaView>
+    </View>
   );
 
   // Si no hay sesión iniciada, muestra la pantalla de autenticación y selección de rol
   if (!currentUser) {
     const loginContent = (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: '#0F172A', paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0 }]}>
-        <StatusBar barStyle="light-content" backgroundColor="#0F172A" translucent={false} />
+      <View
+        style={[
+          styles.safeArea,
+          {
+            backgroundColor: '#0F172A',
+            paddingTop: safeTop,
+            paddingBottom: safeBottom,
+          },
+        ]}
+      >
+        <StatusBar barStyle="light-content" backgroundColor="#0F172A" translucent={Platform.OS === 'android'} />
         <LoginView
           users={localStore.getUsers()}
           routes={routes}
           onLoginSuccess={handleLoginSuccess}
           onDataReset={syncFromStore}
         />
-      </SafeAreaView>
+      </View>
     );
 
     if (isWideViewport && phoneFrameEnabled) {
@@ -1415,7 +1445,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bgPrimary,
     position: 'relative',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0,
   },
   topBar: {
     flexDirection: 'row',
@@ -1760,7 +1789,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: Platform.OS === 'android' ? 24 : 12,
     alignItems: 'center',
   },
   floatingDockPill: {

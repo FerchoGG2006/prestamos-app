@@ -524,7 +524,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     return (
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 110 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* 1. HERO FINTECH LIMPIO: COBRO PLENO */}
@@ -1027,7 +1027,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.scrollContent, { paddingBottom: 110 }]}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* ENCABEZADO DE RUTA */}
