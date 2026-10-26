@@ -19,6 +19,7 @@ import {
   DailyRouteMetrics,
   DailySettlement,
 } from '../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
@@ -60,6 +61,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   onSuccess,
   onOpenRecaudo,
 }) => {
+  const insets = useSafeAreaInsets();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [settledRecord, setSettledRecord] = useState<DailySettlement | null>(null);
   const [copied, setCopied] = useState(false);
@@ -243,12 +245,17 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
       >
-        <View style={styles.container}>
+        <View
+          style={[
+            styles.container,
+            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+          ]}
+        >
           <View style={styles.sheetHandle} />
 
           {/* Header del Cobrador */}
@@ -268,7 +275,11 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {settledRecord ? (
               /* FASE 2: POST-CIERRE (Comprobante Sellado y Envío Oficial a Oficina) */
               <View style={styles.postCloseContainer}>

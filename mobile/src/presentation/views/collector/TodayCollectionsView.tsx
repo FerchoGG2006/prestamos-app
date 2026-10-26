@@ -19,6 +19,7 @@ import {
   NonPaymentVisit,
   Payment,
 } from '../../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP, getFrequencyLabel, getInitials } from '../../../core/config/business-rules';
 import { calculateDelinquencyMetrics } from '../../../core/domain/calculator';
 import { COLORS, TYPOGRAPHY, FONT_FAMILY } from '../../theme/colors';
@@ -133,6 +134,8 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   onOpenRouteSelector,
   initialFilter = 'TODOS',
 }) => {
+  const insets = useSafeAreaInsets();
+  const dockScrollClearance = insets.bottom + 96;
   const [activeFilter, setActiveFilter] = useState<FilterType>(initialFilter);
   const [searchQuery, setSearchQuery] = useState('');
   const [privacyMode, setPrivacyMode] = useState(false);
@@ -524,7 +527,8 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     return (
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: dockScrollClearance }]}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* 1. HERO FINTECH LIMPIO: COBRO PLENO */}
@@ -1027,7 +1031,8 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: dockScrollClearance }]}
+      keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
       {/* ENCABEZADO COMPACTO DE HOJA DE RUTA */}

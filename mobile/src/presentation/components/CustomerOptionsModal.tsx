@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Customer, Loan } from '../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   X,
   Phone,
@@ -58,6 +59,7 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
   onRenewLoan,
   onDeleteCustomer,
 }) => {
+  const insets = useSafeAreaInsets();
   if (!customer) return null;
 
   const handleCall = () => {
@@ -142,8 +144,13 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
+      <View style={[styles.modalOverlay, { paddingTop: Math.max(insets.top, 12) }]}>
+        <View
+          style={[
+            styles.modalContainer,
+            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+          ]}
+        >
           {/* Header con tarjeta del cliente */}
           <View style={styles.modalHeader}>
             <View style={styles.headerInfoRow}>

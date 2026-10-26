@@ -9,7 +9,9 @@ import {
   Alert,
   ScrollView,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Customer } from '../../core/domain/types';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { UserCheck, X, Save, Phone, MapPin, Briefcase, Users } from 'lucide-react-native';
@@ -27,6 +29,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [fullName, setFullName] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
   const [phone, setPhone] = useState('');
@@ -138,7 +141,16 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[
+          styles.overlay,
+          {
+            paddingTop: Math.max(insets.top, 16),
+            paddingBottom: Math.max(insets.bottom, 16),
+          },
+        ]}
+      >
         <View style={styles.modalCard}>
           {/* Header */}
           <View style={styles.headerRow}>
@@ -156,7 +168,12 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.formScroll}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* Nombre Completo */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Nombre Completo *</Text>
@@ -400,7 +417,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -416,6 +433,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 20,
     maxHeight: '88%',
+    flexShrink: 1,
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },

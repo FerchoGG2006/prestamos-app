@@ -7,6 +7,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { DailySettlement, Route, User } from '../../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../../core/config/business-rules';
 import { COLORS } from '../../theme/colors';
 import { Landmark, Calendar, AlertTriangle, CheckCircle, Filter } from 'lucide-react-native';
@@ -24,6 +25,7 @@ export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
   users,
   onOpenNewSettlement,
 }) => {
+  const insets = useSafeAreaInsets();
   const [selectedRouteId, setSelectedRouteId] = useState<string>('ALL');
 
   const filteredSettlements = settlements.filter((s) => {
@@ -45,7 +47,7 @@ export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom + 96 }} showsVerticalScrollIndicator={false}>
       {/* Header */}
       <View style={styles.header}>
         <View>

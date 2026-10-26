@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { localStore } from '../../infrastructure/storage/local-store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
 import { COLORS } from '../theme/colors';
 import { Landmark, X, Check, ArrowDownCircle, AlertCircle } from 'lucide-react-native';
@@ -35,6 +36,7 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [amountStr, setAmountStr] = useState('');
   const [destination, setDestination] = useState('RETIRO_OFICINA');
   const [notes, setNotes] = useState('');
@@ -106,9 +108,15 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.modalOverlay}
+        style={[
+          styles.modalOverlay,
+          {
+            paddingTop: Math.max(insets.top, 16),
+            paddingBottom: Math.max(insets.bottom, 16),
+          },
+        ]}
       >
-        <View style={styles.modalCard}>
+        <View style={[styles.modalCard, { flexShrink: 1 }]}>
           {/* Header */}
           <View style={styles.headerRow}>
             <View style={styles.headerTitleGroup}>
@@ -125,7 +133,11 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* Tarjeta de Estado de la Base (Explicado en Audio 3) */}
             <View style={styles.baseCard}>
               <View style={styles.baseCardHeader}>

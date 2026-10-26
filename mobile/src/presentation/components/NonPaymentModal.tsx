@@ -7,7 +7,11 @@ import {
   TextInput,
   StyleSheet,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Customer, Loan, NonPaymentReason } from '../../core/domain/types';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { COLORS } from '../theme/colors';
@@ -30,6 +34,7 @@ export const NonPaymentModal: React.FC<NonPaymentModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [selectedReason, setSelectedReason] = useState<NonPaymentReason>('NO_ESTABA');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,8 +78,17 @@ export const NonPaymentModal: React.FC<NonPaymentModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.card}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[
+          styles.overlay,
+          {
+            paddingTop: Math.max(insets.top, 16),
+            paddingBottom: Math.max(insets.bottom, 16),
+          },
+        ]}
+      >
+        <View style={[styles.card, { maxHeight: '90%', flexShrink: 1 }]}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>Novedad de No Pago</Text>
@@ -87,6 +101,11 @@ export const NonPaymentModal: React.FC<NonPaymentModalProps> = ({
             </TouchableOpacity>
           </View>
 
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 4 }}
+          >
           <Text style={styles.label}>MOTIVO DE LA VISITA NO EFECTIVA</Text>
           <View style={styles.reasonsList}>
             {reasons.map((r) => {
@@ -122,6 +141,7 @@ export const NonPaymentModal: React.FC<NonPaymentModalProps> = ({
             multiline
             numberOfLines={2}
           />
+          </ScrollView>
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
@@ -138,7 +158,7 @@ export const NonPaymentModal: React.FC<NonPaymentModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

@@ -7,7 +7,10 @@ import {
   StyleSheet,
   TextInput,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Route, Customer, Loan } from '../../core/domain/types';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { COLORS } from '../theme/colors';
@@ -41,6 +44,7 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
   onSelectRoute,
   onClose,
 }) => {
+  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState('');
   const allUsers = localStore.getUsers();
 
@@ -92,8 +96,16 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.sheetContainer}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
+      >
+        <View
+          style={[
+            styles.sheetContainer,
+            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+          ]}
+        >
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
@@ -133,6 +145,7 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
           <ScrollView
             style={styles.listScroll}
             contentContainerStyle={styles.listContent}
+            keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
             {/* Opción 1: Todas las rutas (Consolidado) */}
@@ -273,7 +286,7 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

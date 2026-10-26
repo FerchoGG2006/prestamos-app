@@ -7,7 +7,11 @@ import {
   TextInput,
   StyleSheet,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { formatCOP } from '../../core/config/business-rules';
 import { COLORS } from '../theme/colors';
@@ -30,6 +34,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [amountStr, setAmountStr] = useState('');
   const [category, setCategory] = useState('PINCHAZO');
   const [description, setDescription] = useState('');
@@ -86,8 +91,17 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.card}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[
+          styles.overlay,
+          {
+            paddingTop: Math.max(insets.top, 16),
+            paddingBottom: Math.max(insets.bottom, 16),
+          },
+        ]}
+      >
+        <View style={[styles.card, { maxHeight: '90%', flexShrink: 1 }]}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>Registrar Gasto de Ruta</Text>
@@ -100,6 +114,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             </TouchableOpacity>
           </View>
 
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 4 }}
+          >
           {/* Valor */}
           <Text style={styles.label}>VALOR DEL GASTO ($ COP)</Text>
           <View style={styles.amountInputRow}>
@@ -146,6 +165,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             value={description}
             onChangeText={setDescription}
           />
+          </ScrollView>
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
@@ -162,7 +182,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

@@ -8,7 +8,10 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { LoanFrequency } from '../../core/domain/types';
@@ -33,6 +36,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   // Datos del Cliente
   const [fullName, setFullName] = useState('');
   const [documentNumber, setDocumentNumber] = useState('');
@@ -237,9 +241,17 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
+      >
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
           <View style={styles.sheetHandle} />
 
           <View style={styles.header}>
@@ -254,7 +266,12 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* SECCIÓN 1: DATOS PERSONALES */}
             <Text style={styles.sectionHeader}>1. DATOS PERSONALES Y CONTACTO</Text>
 
@@ -828,7 +845,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -847,6 +864,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
     maxHeight: '92%',
+    flexShrink: 1,
     borderTopWidth: 1,
     borderColor: COLORS.microBorder,
   },

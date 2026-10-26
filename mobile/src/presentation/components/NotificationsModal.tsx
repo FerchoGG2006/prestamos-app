@@ -16,6 +16,7 @@ import {
   PaymentPromise,
   NonPaymentVisit,
 } from '../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
 import { calculateDelinquencyMetrics } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
@@ -78,6 +79,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
   onViewCustomerDetail,
   onQuickWhatsApp,
 }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<NotificationCategory>('TODAS');
 
   // Generador dinámico de alertas inteligentes de cartera
@@ -190,8 +192,13 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
+      <View style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}>
+        <View
+          style={[
+            styles.container,
+            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+          ]}
+        >
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>

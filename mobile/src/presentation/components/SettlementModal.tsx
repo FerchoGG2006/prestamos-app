@@ -19,6 +19,7 @@ import {
   DailyRouteMetrics,
   DailySettlement,
 } from '../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
 import { COLORS } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
@@ -64,6 +65,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [cashHandedOverStr, setCashHandedOverStr] = useState('0');
   const [justification, setJustification] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -485,12 +487,17 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
       >
-        <View style={styles.container}>
+        <View
+          style={[
+            styles.container,
+            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+          ]}
+        >
           <View style={styles.sheetHandle} />
 
           {/* Header */}
@@ -510,7 +517,11 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {settledRecord ? (
               <View style={styles.postCloseContainer}>
                 {/* 1. Header con sello de éxito e inmutabilidad */}

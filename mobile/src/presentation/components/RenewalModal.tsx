@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { Customer, Loan, Installment } from '../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP, DEFAULT_BUSINESS_CONFIG } from '../../core/config/business-rules';
 import {
   calculateRenewalDisbursement,
@@ -42,6 +43,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [newPrincipalStr, setNewPrincipalStr] = useState('200000');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -147,12 +149,17 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
       >
-        <View style={styles.sheet}>
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
           {/* Drag Handle Superior */}
           <View style={styles.sheetHandle} />
 
@@ -169,7 +176,12 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* Bloque Lavanda Suave con Saldo a Descontar */}
             <View style={styles.lavenderSummaryCard}>
               <Text style={styles.lavenderCardTitle}>
@@ -318,6 +330,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
     maxHeight: '92%',
+    flexShrink: 1,
     borderTopWidth: 1,
     borderColor: COLORS.microBorder,
   },

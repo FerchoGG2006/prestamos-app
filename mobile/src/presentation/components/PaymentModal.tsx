@@ -19,6 +19,7 @@ import {
   PaymentMethod,
   Payment,
 } from '../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
 import { calculateDelinquencyMetrics, getLocalTodayStr } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
@@ -55,6 +56,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [amountStr, setAmountStr] = useState('');
   const [method, setMethod] = useState<PaymentMethod>('CASH');
   const [notes, setNotes] = useState('');
@@ -200,12 +202,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   ];
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
       >
-        <View style={styles.sheetContainer}>
+        <View
+          style={[
+            styles.sheetContainer,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
           {/* Handle superior estilo Bottom Sheet (Patrón #4 de Gemini Share) */}
           <View style={styles.sheetHandle} />
 
@@ -290,7 +297,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           ) : (
             /* FORMULARIO DE ABONO RÁPIDO CON FILLED INPUTS + FLOATING LABELS INTERNOS (Patrón #5 + Mejora IA #3) */
             <>
-              <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.body}
+                contentContainerStyle={{ paddingBottom: 8 }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
                 {/* Resumen compacto del crédito */}
                 <View style={styles.infoCard}>
                   <View style={styles.infoRow}>
@@ -500,6 +512,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     maxHeight: '92%',
+    flexShrink: 1,
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 24,

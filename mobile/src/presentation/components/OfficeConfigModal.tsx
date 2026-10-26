@@ -14,6 +14,7 @@ import {
   Share,
 } from 'react-native';
 import { OfficeCompanyConfig, Route, User } from '../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getLocalTodayStr } from '../../core/domain/calculator';
 import { COLORS } from '../theme/colors';
 import {
@@ -45,6 +46,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'EMPRESA' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP'>('EMPRESA');
   const [restoreJsonInput, setRestoreJsonInput] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
@@ -421,12 +423,17 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
       >
-        <View style={styles.sheet}>
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+          ]}
+        >
           <View style={styles.sheetHandle} />
 
           {/* Header */}
@@ -495,7 +502,11 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* PESTAÑA 1: DATOS DE EMPRESA */}
             {activeTab === 'EMPRESA' && (
               <View style={styles.sectionContainer}>

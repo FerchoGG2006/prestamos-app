@@ -10,7 +10,9 @@ import {
   Platform,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Customer,
   Loan,
@@ -92,6 +94,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
   onDeleteCustomer,
   onEditCustomer,
 }) => {
+  const insets = useSafeAreaInsets();
   const isAdminOrSupervisor =
     userRole === 'ADMIN' || userRole === 'SUPERVISOR' || userRole === 'SUPER_ADMIN';
   const customerLoans = loans.filter((l) => l.customerId === customer.id);
@@ -952,12 +955,15 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
             setAuditModalState({ visible: false, mode: 'REVERSE_PAYMENT' })
           }
         >
-          <View
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{
               flex: 1,
               backgroundColor: 'rgba(15, 23, 42, 0.65)',
               justifyContent: 'center',
-              padding: 20,
+              paddingHorizontal: 20,
+              paddingTop: Math.max(insets.top, 20),
+              paddingBottom: Math.max(insets.bottom, 20),
             }}
           >
             <View
@@ -1055,7 +1061,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       )}
     </View>

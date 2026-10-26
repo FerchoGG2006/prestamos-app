@@ -12,7 +12,12 @@ import {
   TextInput,
   Linking,
 } from 'react-native';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  SafeAreaInsetsContext,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { localStore } from './src/infrastructure/storage/local-store';
 import {
   Customer,
@@ -75,27 +80,147 @@ import {
   MapPin,
 } from 'lucide-react-native';
 
+type AndroidNavMode = 'GESTURES_API35' | 'THREE_BUTTONS_API31';
+
 export default function App() {
+  const { width, height } = useWindowDimensions();
+  const isWideViewport = width >= 500;
+  const [phoneFrameEnabled, setPhoneFrameEnabled] = useState(true);
+  const [androidNavMode, setAndroidNavMode] = useState<AndroidNavMode>('THREE_BUTTONS_API31');
+
+  const simulatedInsets =
+    androidNavMode === 'THREE_BUTTONS_API31'
+      ? { top: 26, bottom: 48, left: 0, right: 0 }
+      : { top: 28, bottom: 20, left: 0, right: 0 };
+
+  const clockLabel = new Date().toLocaleTimeString('es-CO', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  if (isWideViewport && phoneFrameEnabled) {
+    return (
+      <SafeAreaProvider>
+        <View style={styles.simulatorBackdrop}>
+          {/* Barra superior de prueba de perfiles Android (Gestos vs 3 Botones y versiones de SO) */}
+          <View style={styles.androidProfileBar}>
+            <TouchableOpacity
+              style={[
+                styles.androidProfileChip,
+                androidNavMode === 'THREE_BUTTONS_API31' && styles.androidProfileChipActive,
+              ]}
+              onPress={() => setAndroidNavMode('THREE_BUTTONS_API31')}
+            >
+              <Text
+                style={[
+                  styles.androidProfileChipText,
+                  androidNavMode === 'THREE_BUTTONS_API31' && styles.androidProfileChipTextActive,
+                ]}
+              >
+                Android 12 (API 31) • 3 Botones (48dp)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.androidProfileChip,
+                androidNavMode === 'GESTURES_API35' && styles.androidProfileChipActive,
+              ]}
+              onPress={() => setAndroidNavMode('GESTURES_API35')}
+            >
+              <Text
+                style={[
+                  styles.androidProfileChipText,
+                  androidNavMode === 'GESTURES_API35' && styles.androidProfileChipTextActive,
+                ]}
+              >
+                Android 15 (API 35) • Gestos (20dp)
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View
+            style={[
+              styles.phoneBezel,
+              { height: Math.min(860, Math.max(660, height - 52)) },
+            ]}
+          >
+            <View style={styles.phoneScreen}>
+              <SafeAreaInsetsContext.Provider value={simulatedInsets}>
+                <MainApp
+                  isWideViewport={isWideViewport}
+                  phoneFrameEnabled={phoneFrameEnabled}
+                  onTogglePhoneFrame={() => setPhoneFrameEnabled(!phoneFrameEnabled)}
+                />
+              </SafeAreaInsetsContext.Provider>
+
+              {/* Barra de Estado Android Visible (Hora, Notificaciones, Señal y Batería) */}
+              <View
+                style={[
+                  styles.androidSystemStatusBar,
+                  { height: simulatedInsets.top },
+                ]}
+                pointerEvents="none"
+              >
+                <View style={styles.androidStatusLeft}>
+                  <Text style={styles.androidStatusClock}>{clockLabel}</Text>
+                  <Text style={styles.androidStatusIcons}>🔔 💬</Text>
+                </View>
+                <View style={styles.androidStatusRight}>
+                  <Text style={styles.androidStatusMeta}>5G  📶  🔋 94%</Text>
+                </View>
+              </View>
+
+              {/* Controles de Navegación del Sistema Android Visibles (3 Botones o Gestos) */}
+              <View
+                style={[
+                  styles.androidSystemNavBar,
+                  { height: simulatedInsets.bottom },
+                ]}
+                pointerEvents="none"
+              >
+                {androidNavMode === 'THREE_BUTTONS_API31' ? (
+                  <View style={styles.androidThreeButtonsRow}>
+                    <Text style={styles.androidNavButtonGlyph}>◀</Text>
+                    <Text style={styles.androidNavButtonGlyph}>●</Text>
+                    <Text style={styles.androidNavButtonGlyph}>■</Text>
+                  </View>
+                ) : (
+                  <View style={styles.androidGesturePill} />
+                )}
+              </View>
+            </View>
+          </View>
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <SafeAreaProvider>
-      <MainApp />
+      <MainApp
+        isWideViewport={isWideViewport}
+        phoneFrameEnabled={phoneFrameEnabled}
+        onTogglePhoneFrame={() => setPhoneFrameEnabled(!phoneFrameEnabled)}
+      />
     </SafeAreaProvider>
   );
 }
 
-function MainApp() {
+interface MainAppProps {
+  isWideViewport: boolean;
+  phoneFrameEnabled: boolean;
+  onTogglePhoneFrame: () => void;
+}
+
+function MainApp({
+  isWideViewport,
+  phoneFrameEnabled,
+  onTogglePhoneFrame,
+}: MainAppProps) {
   const insets = useSafeAreaInsets();
-  const safeTop = Math.max(
-    insets.top,
-    Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0
-  );
-  const safeBottom = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 8);
-
-  const { width, height } = useWindowDimensions();
-  const isWideViewport = width >= 500;
-
-  // Permite alternar marco de teléfono simulado (390x844) cuando se visualiza en pantallas anchas / IDE
-  const [phoneFrameEnabled, setPhoneFrameEnabled] = useState(true);
+  const dockClearance = insets.bottom + 88;
 
   // Usuario autenticado activo en el dispositivo (Seguridad Operativa)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -437,8 +562,13 @@ function MainApp() {
   };
 
   const mobileContent = (
-    <View style={[styles.safeArea, { paddingTop: safeTop }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" translucent={Platform.OS === 'android'} />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <StatusBar
+        hidden={false}
+        barStyle="dark-content"
+        backgroundColor="#F8FAFC"
+        translucent={false}
+      />
 
       {/* Top Bar Móvil Limpio (Kredia Light Fintech UI) */}
       <View style={styles.topBar}>
@@ -526,7 +656,7 @@ function MainApp() {
           {isWideViewport && (
             <TouchableOpacity
               style={styles.frameToggleBtn}
-              onPress={() => setPhoneFrameEnabled(!phoneFrameEnabled)}
+              onPress={onTogglePhoneFrame}
             >
               <Text style={styles.frameToggleText}>
                 {phoneFrameEnabled ? '📱' : '🖥️'}
@@ -548,7 +678,12 @@ function MainApp() {
 
 
       {/* Contenido Principal Móvil */}
-      <View style={styles.mainContainer}>
+      <View
+        style={[
+          styles.mainContainer,
+          detailCustomer ? { paddingBottom: insets.bottom } : null,
+        ]}
+      >
         {detailCustomer ? (
           <CustomerDetailView
             customer={detailCustomer}
@@ -800,7 +935,8 @@ function MainApp() {
               {/* Lista de Clientes con Varias Opciones */}
               <ScrollView
                 style={{ flex: 1, paddingHorizontal: 16 }}
-                contentContainerStyle={{ paddingBottom: 150 }}
+                contentContainerStyle={{ paddingBottom: dockClearance }}
+                keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
                 {filteredCustomers.length === 0 ? (
@@ -999,7 +1135,7 @@ function MainApp() {
         <View
           style={[
             styles.floatingDockWrapper,
-            { bottom: safeBottom + (Platform.OS === 'android' ? 12 : 8) },
+            { bottom: insets.bottom + 8 },
           ]}
           pointerEvents="box-none"
         >
@@ -1369,68 +1505,37 @@ function MainApp() {
         }}
         onQuickWhatsApp={handleQuickWhatsAppAlert}
       />
-    </View>
+    </SafeAreaView>
   );
 
   // Si no hay sesión iniciada, muestra la pantalla de autenticación y selección de rol
   if (!currentUser) {
     const loginContent = (
-      <View
+      <SafeAreaView
         style={[
           styles.safeArea,
           {
             backgroundColor: '#F3F7FA',
-            paddingTop: safeTop,
-            paddingBottom: safeBottom,
           },
         ]}
+        edges={['top', 'bottom', 'left', 'right']}
       >
-        <StatusBar barStyle="dark-content" backgroundColor="#F3F7FA" translucent={Platform.OS === 'android'} />
+        <StatusBar
+          hidden={false}
+          barStyle="dark-content"
+          backgroundColor="#F3F7FA"
+          translucent={false}
+        />
         <LoginView
           users={localStore.getUsers()}
           routes={routes}
           onLoginSuccess={handleLoginSuccess}
           onDataReset={syncFromStore}
         />
-      </View>
+      </SafeAreaView>
     );
 
-    if (isWideViewport && phoneFrameEnabled) {
-      return (
-        <View style={styles.simulatorBackdrop}>
-          <View
-            style={[
-              styles.phoneBezel,
-              { height: Math.min(860, Math.max(660, height - 24)) },
-            ]}
-          >
-            <View style={styles.phoneDynamicIsland} />
-            <View style={styles.phoneScreen}>{loginContent}</View>
-            <View style={styles.phoneHomeIndicator} />
-          </View>
-        </View>
-      );
-    }
     return loginContent;
-  }
-
-  // Si estamos en el navegador / IDE con pantalla ancha y phoneFrameEnabled está activo,
-  // renderiza un chasis de teléfono móvil realista (406x860) para previsualización exacta
-  if (isWideViewport && phoneFrameEnabled) {
-    return (
-      <View style={styles.simulatorBackdrop}>
-        <View
-          style={[
-            styles.phoneBezel,
-            { height: Math.min(860, Math.max(660, height - 24)) },
-          ]}
-        >
-          <View style={styles.phoneDynamicIsland} />
-          <View style={styles.phoneScreen}>{mobileContent}</View>
-          <View style={styles.phoneHomeIndicator} />
-        </View>
-      </View>
-    );
   }
 
   return mobileContent;
@@ -1470,6 +1575,100 @@ const styles = StyleSheet.create({
     borderRadius: 34,
     overflow: 'hidden',
     backgroundColor: COLORS.bgPrimary,
+    position: 'relative',
+  },
+  androidProfileBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  androidProfileChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 9999,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  androidProfileChipActive: {
+    backgroundColor: '#0D9488',
+    borderColor: '#2DD4BF',
+  },
+  androidProfileChipText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  androidProfileChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  androidSystemStatusBar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    zIndex: 999,
+  },
+  androidStatusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  androidStatusClock: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  androidStatusIcons: {
+    fontSize: 10,
+    color: '#475569',
+  },
+  androidStatusRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  androidStatusMeta: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  androidSystemNavBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 999,
+  },
+  androidThreeButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    width: '72%',
+  },
+  androidNavButtonGlyph: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  androidGesturePill: {
+    width: 108,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#475569',
   },
   phoneHomeIndicator: {
     width: 120,

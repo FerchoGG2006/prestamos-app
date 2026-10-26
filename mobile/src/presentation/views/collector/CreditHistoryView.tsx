@@ -11,6 +11,7 @@ import {
   Modal,
 } from 'react-native';
 import { Customer, Loan, Installment, Payment } from '../../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   calculateCustomerCreditHistory,
   CreditHistoryReport,
@@ -56,6 +57,7 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
   onOpenNewLoan,
   onOpenPayment,
 }) => {
+  const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState(initialDocumentNumber);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(() => {
     if (initialDocumentNumber) {
@@ -125,7 +127,10 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.contentContainer}
+      contentContainerStyle={[
+        styles.contentContainer,
+        { paddingBottom: insets.bottom + 96 },
+      ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
@@ -509,8 +514,13 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
         transparent={true}
         onRequestClose={() => setModalLoanItem(null)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <View style={[styles.modalOverlay, { paddingTop: Math.max(insets.top, 12) }]}>
+          <View
+            style={[
+              styles.modalCard,
+              { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>

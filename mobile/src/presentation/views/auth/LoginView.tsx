@@ -12,6 +12,7 @@ import {
   Modal,
 } from 'react-native';
 import { User, Route } from '../../../core/domain/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ShieldCheck,
   Lock,
@@ -47,6 +48,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   onLoginSuccess,
   onDataReset,
 }) => {
+  const insets = useSafeAreaInsets();
   const officeConfig = localStore.getOfficeConfig();
   const isOfficeRegistered = Boolean(
     officeConfig.isSetupCompleted && officeConfig.companyName?.trim()
@@ -248,8 +250,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.centerContent}>
         {/* Identidad Propia de la Aplicación: Kredia */}
         <View style={styles.header}>
@@ -363,12 +370,19 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </Text>
         </TouchableOpacity>
       </View>
+      </ScrollView>
 
       {/* Modal Fintech Claro: Creación / Configuración de Oficina y Credenciales */}
       <Modal visible={setupVisible} animationType="fade" transparent>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
+          style={[
+            styles.modalOverlay,
+            {
+              paddingTop: Math.max(insets.top, 12),
+              paddingBottom: Math.max(insets.bottom, 12),
+            },
+          ]}
         >
           <View style={styles.modalSheet}>
             {/* Encabezado Claro */}
@@ -601,7 +615,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F3F7FA',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
+    paddingVertical: 16,
   },
   centerContent: {
     paddingHorizontal: 22,

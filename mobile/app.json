@@ -29,12 +29,14 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize"
     },
     "androidStatusBar": {
       "barStyle": "dark-content",
       "backgroundColor": "#F8FAFC",
-      "translucent": true
+      "hidden": false,
+      "translucent": false
     },
     "androidNavigationBar": {
       "barStyle": "dark-content",

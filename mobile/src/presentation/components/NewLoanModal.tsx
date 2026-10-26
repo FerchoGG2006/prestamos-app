@@ -8,7 +8,10 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Customer, Loan, LoanFrequency } from '../../core/domain/types';
 import { formatCOP, addDays as addDaysToDate } from '../../core/config/business-rules';
 import {
@@ -40,6 +43,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(preselectedCustomerId || '');
   const [isCardMigration, setIsCardMigration] = useState<boolean>(false);
   const [paidInstallmentNums, setPaidInstallmentNums] = useState<number[]>([]);
@@ -198,9 +202,17 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
+      >
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
           <View style={styles.sheetHandle} />
           <View style={styles.header}>
             <View>
@@ -214,7 +226,12 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* Selector de Modo: Nuevo Desembolso vs Pasar Cartulina Física a Digital */}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
               <TouchableOpacity
@@ -678,7 +695,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -697,6 +714,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
     maxHeight: '92%',
+    flexShrink: 1,
     borderTopWidth: 1,
     borderColor: COLORS.microBorder,
   },

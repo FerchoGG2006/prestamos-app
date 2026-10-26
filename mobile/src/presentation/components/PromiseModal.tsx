@@ -8,7 +8,10 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Customer, Loan } from '../../core/domain/types';
 import { formatCOP, addDays, getNextMonday, getNextWeekend } from '../../core/config/business-rules';
 import { COLORS } from '../theme/colors';
@@ -32,6 +35,7 @@ export const PromiseModal: React.FC<PromiseModalProps> = ({
   onClose,
   onSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [amountStr, setAmountStr] = useState('');
   const [promisedDate, setPromisedDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -93,9 +97,17 @@ export const PromiseModal: React.FC<PromiseModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
+      >
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: Math.max(insets.bottom, 16) },
+          ]}
+        >
           {/* Drag Handle Superior (Patrón #4 de Gemini Share) */}
           <View style={styles.sheetHandle} />
 
@@ -112,7 +124,12 @@ export const PromiseModal: React.FC<PromiseModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.body}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {/* Filled Input con Floating Label interno para Monto Prometido */}
             <View style={styles.filledAmountBlock}>
               <Text style={styles.floatingInternalLabel}>
@@ -208,7 +225,7 @@ export const PromiseModal: React.FC<PromiseModalProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -227,6 +244,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 24,
     maxHeight: '90%',
+    flexShrink: 1,
     borderTopWidth: 1,
     borderColor: COLORS.microBorder,
   },
