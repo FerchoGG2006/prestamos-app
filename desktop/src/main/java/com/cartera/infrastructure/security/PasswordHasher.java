@@ -32,24 +32,17 @@ public final class PasswordHasher {
         return HexFormat.of().formatHex(salt) + "$" + HexFormat.of().formatHex(hash);
     }
 
-    /** Verifica si la contraseña en texto plano coincide con el hash almacenado. */
+    /**
+     * Verifica si la contraseña en texto plano coincide con el hash almacenado en formato PBKDF2 (saltHex$hashHex).
+     * Rechaza cualquier cadena en texto plano o sin estructura criptográfica válida.
+     */
     public static boolean verify(String password, String storedHash) {
-        if (password == null || storedHash == null) {
+        if (password == null || storedHash == null || !storedHash.contains("$")) {
             return false;
         }
 
-        // Compatibilidad con hashes de semilla antiguos o contraseñas simples de demo
-        if (storedHash.startsWith("hash_") || !storedHash.contains("$")) {
-            if (storedHash.equals(password) || storedHash.equals("hash_" + password)) {
-                return true;
-            }
-            String normStored = storedHash.replace("_", "").toLowerCase();
-            String normInput = ("hash" + password).replace("_", "").toLowerCase();
-            return normStored.equals(normInput);
-        }
-
         String[] parts = storedHash.split("\\$");
-        if (parts.length != 2) {
+        if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
             return false;
         }
 

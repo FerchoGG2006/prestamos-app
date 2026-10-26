@@ -308,6 +308,10 @@ public class AuthService {
                 .orElse(false);
     }
 
+    public boolean isOfficeConfigured() {
+        return isOfficeSetupCompleted();
+    }
+
     private String determineRole(AppUserEntity user) {
         String id = user.getId() != null ? user.getId().toLowerCase() : "";
         String username = user.getUsername() != null ? user.getUsername().toLowerCase() : "";

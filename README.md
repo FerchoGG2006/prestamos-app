@@ -30,15 +30,14 @@ Para equipos con restricciones o para llevar en una memoria USB:
 
 ---
 
-## 🔑 Credenciales Predeterminadas (Primer Inicio)
+## 🔐 Configuración Inicial de Acceso y Seguridad
 
-Al abrir la aplicación por primera vez, se auto-inicializan los usuarios predeterminados con datos iniciales de prueba:
+Al instalar la aplicación en una oficina nueva:
+1. Defina inmediatamente las credenciales del **Administrador de la Oficina** y de cada **Ruta de Cobro** desde el *Panel Operativo -> 4. Credenciales*.
+2. Las contraseñas se almacenan de forma segura mediante derivación criptográfica **PBKDF2-HMAC-SHA256** con sal aleatoria de 128 bits (`PasswordHasher.java`). No se admiten contraseñas en texto plano.
+3. La sincronización en red local (LAN) valida límites de tamaño de trama, control de frecuencia por IP y clave opcional de oficina (`X-Office-Sync-Pin`).
 
-| Rol | Usuario | Contraseña | Permisos |
-|---|---|---|---|
-| **Administrador** | `admin` | `123` | Acceso total: Configuración, Usuarios, Rutas, Auditoría, Tesorería, Reportes |
-| **Supervisor** | `supervisor` | `123` | Supervisión: Control de cobros, liquidaciones, clientes y cartera general |
-| **Cobrador** | `cobrador` | `123` | Operativo: Vista optimizada de ruta de cobro diaria y registro de pagos |
+📖 **[Ver Marco de Titularidad, Registro DNDA, Licenciamiento y Cumplimiento en Colombia](file:///c:/Users/ASUS/prestamos-app-1/docs/TITULARIDAD_LEGAL_Y_LICENCIAMIENTO_COLOMBIA.md)**
 
 ---
 

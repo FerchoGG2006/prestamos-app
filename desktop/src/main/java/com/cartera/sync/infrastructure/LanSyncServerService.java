@@ -33,15 +33,23 @@ import java.util.concurrent.Executors;
 public class LanSyncServerService {
 
     public static final int DEFAULT_PORT = 8765;
+    private static final int MAX_SYNC_PAYLOAD_BYTES = 5 * 1024 * 1024; // Límite defensivo de 5 MB por paquete
+    private static final long MIN_REQUEST_INTERVAL_MS = 150L; // Rate limit básico por IP en LAN
 
     private final MobileSyncProcessorService syncProcessorService;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final java.util.concurrent.ConcurrentHashMap<String, Long> lastRequestByIp = new java.util.concurrent.ConcurrentHashMap<>();
     private HttpServer server;
     private int activePort = DEFAULT_PORT;
     private volatile Runnable onSyncReceivedCallback;
+    private volatile String requiredSyncPin = null;
 
     public LanSyncServerService(MobileSyncProcessorService syncProcessorService) {
         this.syncProcessorService = syncProcessorService;
+    }
+
+    public void setRequiredSyncPin(String syncPin) {
+        this.requiredSyncPin = (syncPin != null && !syncPin.isBlank()) ? syncPin.trim() : null;
     }
 
     public void setOnSyncReceivedCallback(Runnable callback) {
@@ -120,8 +128,28 @@ public class LanSyncServerService {
     private void addCorsHeaders(HttpExchange exchange) {
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Office-Sync-Pin");
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
+    }
+
+    private boolean isRateLimited(HttpExchange exchange) {
+        if (exchange.getRemoteAddress() == null || exchange.getRemoteAddress().getAddress() == null) {
+            return false;
+        }
+        String ip = exchange.getRemoteAddress().getAddress().getHostAddress();
+        long now = System.currentTimeMillis();
+        Long prev = lastRequestByIp.put(ip, now);
+        return prev != null && (now - prev) < MIN_REQUEST_INTERVAL_MS;
+    }
+
+    private boolean isAuthorizedSyncRequest(HttpExchange exchange) {
+        String expectedPin = this.requiredSyncPin;
+        if (expectedPin == null || expectedPin.isBlank()) {
+            return true;
+        }
+        String headerPin = exchange.getRequestHeaders().getFirst("X-Office-Sync-Pin");
+        String queryPin = extractQueryParam(exchange.getRequestURI(), "pin");
+        return expectedPin.equals(headerPin) || expectedPin.equals(queryPin);
     }
 
     private void handleStatus(HttpExchange exchange) throws IOException {
@@ -153,12 +181,30 @@ public class LanSyncServerService {
         }
 
         try {
+            if (isRateLimited(exchange)) {
+                sendErrorResponse(exchange, 429, "Demasiadas solicitudes seguidas desde este dispositivo. Intente en unos segundos.");
+                return;
+            }
+            if (!isAuthorizedSyncRequest(exchange)) {
+                sendErrorResponse(exchange, 401, "PIN de sincronización de oficina inválido o no autorizado.");
+                return;
+            }
+
             if ("GET".equalsIgnoreCase(method)) {
                 String routeId = extractQueryParam(exchange.getRequestURI(), "routeId");
                 String jsonPackage = syncProcessorService.exportRoutePackage(routeId, LocalDate.now());
                 sendJsonResponse(exchange, 200, jsonPackage);
             } else if ("POST".equalsIgnoreCase(method)) {
-                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                byte[] rawBytes = exchange.getRequestBody().readNBytes(MAX_SYNC_PAYLOAD_BYTES + 1);
+                if (rawBytes.length > MAX_SYNC_PAYLOAD_BYTES) {
+                    sendErrorResponse(exchange, 413, "El paquete de sincronización supera el tamaño máximo permitido (5 MB).");
+                    return;
+                }
+                String body = new String(rawBytes, StandardCharsets.UTF_8);
+                if (body.isBlank()) {
+                    sendErrorResponse(exchange, 400, "El cuerpo del paquete de sincronización está vacío.");
+                    return;
+                }
                 SyncImportResult res = syncProcessorService.importPackage(body);
 
                 if (onSyncReceivedCallback != null) {

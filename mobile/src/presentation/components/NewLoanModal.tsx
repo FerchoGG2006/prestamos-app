@@ -48,11 +48,20 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
   const [installmentCountStr, setInstallmentCountStr] = useState('30');
   const [fixedDueDateStr, setFixedDueDateStr] = useState<string>(() => addDaysToDate(todayStr, 7));
+  const officeConfig = localStore.getOfficeConfig();
+  const defaultInterestRate = officeConfig.defaultInterestRate || 0.2;
+  const [interestPercentStr, setInterestPercentStr] = useState<string>(() =>
+    String(Math.round((localStore.getOfficeConfig().defaultInterestRate || 0.2) * 100))
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (visible && preselectedCustomerId) {
-      setSelectedCustomerId(preselectedCustomerId);
+    if (visible) {
+      if (preselectedCustomerId) {
+        setSelectedCustomerId(preselectedCustomerId);
+      }
+      const cfgRate = localStore.getOfficeConfig().defaultInterestRate || 0.2;
+      setInterestPercentStr(String(Math.round(cfgRate * 100)));
     }
   }, [visible, preselectedCustomerId]);
 
@@ -87,11 +96,10 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   };
   const firstDueDateStr = getFirstDueDate();
 
-  const officeConfig = localStore.getOfficeConfig();
-  const defaultInterestRate = officeConfig.defaultInterestRate || 0.2;
+  const effectiveInterestRate = Math.max(0, (parseFloat(interestPercentStr.replace(',', '.')) || 0) / 100);
   const summary =
     principal > 0 && installmentCount > 0
-      ? calculateLoanSummary(principal, defaultInterestRate, installmentCount)
+      ? calculateLoanSummary(principal, effectiveInterestRate, installmentCount)
       : null;
   const isPaperworkEnabled = officeConfig.paperworkFeeEnabled ?? true;
   const paperwork =
@@ -150,7 +158,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       const res = await localStore.createLoan({
         customerId: selectedCustomerId,
         principal,
-        interestRate: defaultInterestRate,
+        interestRate: effectiveInterestRate,
         installmentCount,
         frequency,
         fixedDueDate: isFixedDate ? fixedDueDateStr : undefined,
@@ -198,7 +206,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             <View>
               <Text style={styles.title}>Originación de Crédito</Text>
               <Text style={styles.subtitle}>
-                Interés 20% sobre capital inicial • Papelería $5.000 / $100k
+                Tasa pactada ({interestPercentStr || '0'}%) sobre capital • {isPaperworkEnabled ? `Papelería $${(officeConfig.paperworkRate || 5000).toLocaleString('es-CO')} / $100k` : 'Sin descuento de papelería'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -454,6 +462,33 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               </View>
             )}
 
+            {/* 5. Tasa de Interés Pactada por Contrato */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={styles.label}>5. Tasa de Interés Pactada (% sobre operación)</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TextInput
+                  style={{
+                    width: 90,
+                    height: 40,
+                    backgroundColor: '#F8FAFC',
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    paddingHorizontal: 12,
+                    fontSize: 15,
+                    fontWeight: '800',
+                    color: COLORS.textPrimary,
+                  }}
+                  keyboardType="numeric"
+                  value={interestPercentStr}
+                  onChangeText={setInterestPercentStr}
+                />
+                <Text style={{ flex: 1, fontSize: 11, color: COLORS.textSecondary, lineHeight: 15 }}>
+                  La tasa pactada queda congelada en este contrato y no modifica préstamos anteriores. Verifique siempre que la tasa cumpla los topes vigentes certificados por la Superintendencia Financiera según la modalidad legal.
+                </Text>
+              </View>
+            </View>
+
             {/* Cartulina Física Interactiva cuando está en modo Migración */}
             {isCardMigration && !isFixedDate && summary && (
               <View
@@ -585,7 +620,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   <Text style={styles.calcVal}>{formatCOP(summary.principal)}</Text>
                 </View>
                 <View style={styles.calcRow}>
-                  <Text style={styles.calcLabel}>Interés (20%):</Text>
+                  <Text style={styles.calcLabel}>Interés pactado ({interestPercentStr || '0'}%):</Text>
                   <Text style={styles.calcVal}>+ {formatCOP(summary.interestAmount)}</Text>
                 </View>
                 <View style={styles.calcRow}>

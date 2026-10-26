@@ -69,7 +69,11 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const [principalStr, setPrincipalStr] = useState('300000');
   const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
   const [installmentCountStr, setInstallmentCountStr] = useState('30');
-  const [interestPercentStr, setInterestPercentStr] = useState('20');
+  const [interestPercentStr, setInterestPercentStr] = useState(() =>
+    String(Math.round((localStore.getOfficeConfig().defaultInterestRate || 0.2) * 100))
+  );
+  // Ley 1581 de 2012 (SIC): Casillas premarcadas no constituyen autorización válida; debe iniciar en false
+  const [dataConsentAccepted, setDataConsentAccepted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const principal = parseInt(principalStr.replace(/\D/g, ''), 10) || 0;
@@ -131,6 +135,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setIsCardMigration(false);
     setPaidInstallmentNums([]);
     setQuickPaidCountStr('');
+    setDataConsentAccepted(false);
   };
 
   const handleSaveCustomerAndLoan = async () => {
@@ -146,6 +151,14 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
     if (!whatsappPhone.trim()) {
       Alert.alert('WhatsApp requerido', 'Ingrese el número de WhatsApp (puede ser el mismo de llamadas).');
+      return;
+    }
+
+    if (!dataConsentAccepted) {
+      Alert.alert(
+        'Autorización de Datos Requerida (Ley 1581)',
+        'Debe marcar expresamente que el titular autorizó el tratamiento de sus datos personales para originar y gestionar su obligación crediticia.'
+      );
       return;
     }
 
@@ -751,6 +764,50 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                 )}
               </View>
             )}
+
+            {/* Autorización Expresa de Tratamiento de Datos Personales (Ley 1581 de 2012 - SIC) */}
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setDataConsentAccepted(!dataConsentAccepted)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+                backgroundColor: dataConsentAccepted ? '#ECFDF5' : '#F8FAFC',
+                borderWidth: 1.5,
+                borderColor: dataConsentAccepted ? '#10B981' : '#CBD5E1',
+                borderRadius: 12,
+                padding: 12,
+                marginTop: 6,
+                marginBottom: 14,
+              }}
+            >
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 6,
+                  borderWidth: 2,
+                  borderColor: dataConsentAccepted ? '#059669' : '#64748B',
+                  backgroundColor: dataConsentAccepted ? '#059669' : '#FFFFFF',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 1,
+                }}
+              >
+                {dataConsentAccepted && (
+                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>✓</Text>
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#0F172A' }}>
+                  Autorización de Tratamiento de Datos Personales (Ley 1581 de 2012) *
+                </Text>
+                <Text style={{ fontSize: 10.5, color: '#475569', marginTop: 2, lineHeight: 14 }}>
+                  Certifico que el titular otorgó autorización previa, expresa e informada a la oficina acreedora ({localStore.getOfficeConfig().companyName || 'Oficina'}) para recolectar y tratar sus datos de identificación, ubicación y contacto con la finalidad exclusiva de originar, administrar y cobrar sus obligaciones crediticias.
+                </Text>
+              </View>
+            </TouchableOpacity>
           </ScrollView>
 
           {/* Botón Principal */}

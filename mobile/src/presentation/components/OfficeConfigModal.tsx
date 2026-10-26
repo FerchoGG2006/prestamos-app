@@ -587,6 +587,40 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                     Dirección IP del PC de Oficina en la red Wi-Fi local (puerto 8765 por defecto).
                   </Text>
                 </View>
+
+                {/* Licencia, Activación y Garantía de Propiedad de Datos */}
+                <View
+                  style={{
+                    backgroundColor: '#F0FDFA',
+                    borderWidth: 1,
+                    borderColor: '#99F6E4',
+                    borderRadius: 14,
+                    padding: 12,
+                    marginTop: 4,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F766E' }}>
+                      🛡️ Licencia Comercial Kredia — Oficina + Rutas
+                    </Text>
+                    <View
+                      style={{
+                        backgroundColor: '#DCFCE7',
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#166534' }}>ACTIVA</Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 11, color: '#334155', marginTop: 4, lineHeight: 15 }}>
+                    • ID de Instalación: <Text style={{ fontWeight: '800' }}>KRD-COL-2026-OFC01</Text> • Tolerancia Offline: <Text style={{ fontWeight: '800' }}>14 días</Text>
+                  </Text>
+                  <Text style={{ fontSize: 10.5, color: '#475569', marginTop: 4, lineHeight: 14 }}>
+                    Garantía de Propiedad de Datos: La cartera y los registros pertenecen a la oficina operadora. Incluso ante vencimiento de suscripción, la consulta en modo lectura y la exportación JSON/CSV en la pestaña "5. Respaldo" nunca se bloquean.
+                  </Text>
+                </View>
               </View>
             )}
 
@@ -633,7 +667,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
                 <View style={styles.inputRow}>
                   <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                    <Text style={styles.inputLabel}>Tasa de Interés (%)</Text>
+                    <Text style={styles.inputLabel}>Tasa Sugerida por Operación (%)</Text>
                     <TextInput
                       style={styles.textInput}
                       value={defaultInterestRateStr}
@@ -642,7 +676,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       placeholder="20"
                       placeholderTextColor={COLORS.textMuted}
                     />
-                    <Text style={styles.inputHelp}>Estándar: 20% inicial</Text>
+                    <Text style={styles.inputHelp}>Editable en cada préstamo; no altera créditos antiguos</Text>
                   </View>
 
                   <View style={[styles.inputGroup, { flex: 1 }]}>
@@ -657,6 +691,24 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                     />
                     <Text style={styles.inputHelp}>Estándar: 24 - 30 cuotas</Text>
                   </View>
+                </View>
+
+                <View
+                  style={{
+                    backgroundColor: '#FFFBEB',
+                    borderWidth: 1,
+                    borderColor: '#FDE68A',
+                    borderRadius: 12,
+                    padding: 10,
+                    marginBottom: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E' }}>
+                    ⚖️ Aviso de Parametrización Legal (Colombia)
+                  </Text>
+                  <Text style={{ fontSize: 10.5, color: '#78350F', marginTop: 2, lineHeight: 14 }}>
+                    La oficina operadora es responsable de parametrizar tasas remuneratorias, moratorias y cargos conforme a la modalidad legal aplicable y la certificación vigente de la Superintendencia Financiera de Colombia. Los cambios en esta plantilla aplican únicamente a operaciones nuevas y nunca recalculan contratos ya originados.
+                  </Text>
                 </View>
 
                 <View style={styles.inputGroup}>
