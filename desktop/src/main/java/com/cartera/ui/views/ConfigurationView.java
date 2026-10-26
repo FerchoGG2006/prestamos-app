@@ -531,14 +531,139 @@ public class ConfigurationView extends VBox {
         });
         colStatus.setPrefWidth(90);
 
-        userTable.getColumns().addAll(colName, colUser, colStatus);
+        TableColumn<AppUserEntity, String> colAction = new TableColumn<>("CREDENCIALES");
+        colAction.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getId()));
+        colAction.setCellFactory(col -> new TableCell<>() {
+            private final Button btnEdit = new Button("Editar Clave / Usuario");
+            {
+                btnEdit.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #0284c7; -fx-border-color: #bae6fd; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-cursor: hand;");
+                btnEdit.setOnAction(e -> {
+                    AppUserEntity u = getTableView().getItems().get(getIndex());
+                    if (u != null) {
+                        openEditUserCredentialsDialog(u);
+                    }
+                });
+            }
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setGraphic(empty ? null : btnEdit);
+            }
+        });
+        colAction.setPrefWidth(135);
+
+        userTable.getColumns().addAll(colName, colUser, colStatus, colAction);
         userTable.setItems(userList);
 
-        Label notice = new Label("Nota: El cobrador debe iniciar sesión en su teléfono móvil únicamente con su Usuario y Contraseña asignados.");
+        Label notice = new Label("Nota: Aquí puedes cambiar las credenciales del Administrador o de cualquier cobrador de ruta en cualquier momento.");
         notice.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-style: italic;");
 
         card.getChildren().addAll(header, userTable, notice);
         return card;
+    }
+
+    private void openEditUserCredentialsDialog(AppUserEntity userEntity) {
+        Stage dialog = new Stage();
+        dialog.initModality(Modality.WINDOW_MODAL);
+        dialog.initOwner(ownerStage);
+        dialog.setTitle("Editar Credenciales de Acceso");
+        dialog.setResizable(false);
+
+        VBox root = new VBox(14);
+        root.setPadding(new Insets(24));
+        root.setStyle("-fx-background-color: #ffffff;");
+        root.setPrefWidth(400);
+
+        Label title = new Label("Modificar Credenciales: " + userEntity.getFullName());
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
+
+        TextField txtFullName = new TextField(userEntity.getFullName());
+        txtFullName.getStyleClass().add("search-field");
+
+        TextField txtUsername = new TextField(userEntity.getUsername());
+        txtUsername.getStyleClass().add("search-field");
+
+        TextField txtNewPass = new TextField();
+        txtNewPass.setPromptText("Nueva contraseña (dejar vacío para conservar)");
+        txtNewPass.getStyleClass().add("search-field");
+
+        Label lblErr = new Label();
+        lblErr.setVisible(false);
+        lblErr.setManaged(false);
+
+        HBox actions = new HBox(12);
+        actions.setAlignment(Pos.CENTER_RIGHT);
+
+        Button btnCancel = new Button("Cancelar");
+        btnCancel.getStyleClass().add("btn-secondary");
+        btnCancel.setOnAction(e -> dialog.close());
+
+        Button btnSave = new Button("Guardar Credenciales");
+        btnSave.getStyleClass().add("btn-primary");
+        btnSave.setOnAction(e -> {
+            String newName = txtFullName.getText().trim();
+            String newUser = txtUsername.getText().trim().toLowerCase();
+            String newPass = txtNewPass.getText().trim();
+
+            if (newName.isEmpty() || newUser.isEmpty()) {
+                lblErr.setText("El nombre y el usuario son obligatorios.");
+                lblErr.setStyle("-fx-text-fill: #ef4444;");
+                lblErr.setVisible(true);
+                lblErr.setManaged(true);
+                return;
+            }
+
+            var existing = userRepository.findByUsername(newUser);
+            if (existing.isPresent() && !existing.get().getId().equals(userEntity.getId())) {
+                lblErr.setText("Ese nombre de usuario ya está en uso por otra persona.");
+                lblErr.setStyle("-fx-text-fill: #ef4444;");
+                lblErr.setVisible(true);
+                lblErr.setManaged(true);
+                return;
+            }
+
+            userEntity.setFullName(newName);
+            userEntity.setUsername(newUser);
+            if (!newPass.isEmpty()) {
+                userEntity.setPasswordHash(PasswordHasher.hash(newPass));
+            }
+            userRepository.save(userEntity);
+
+            String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            String author = UserSessionContext.getSession()
+                    .map(com.cartera.infrastructure.security.UserSession::userId)
+                    .orElse("admin");
+            auditLogRepository.save(new AuditLogEntity(
+                    UUID.randomUUID().toString(),
+                    author,
+                    "APP_USER",
+                    userEntity.getId(),
+                    "ACTUALIZAR_CREDENCIALES",
+                    null,
+                    "Credenciales actualizadas para: " + newName + " (" + newUser + ")",
+                    "Actualización de credenciales en Configuración",
+                    now
+            ));
+
+            refreshUsers();
+            dialog.close();
+        });
+
+        actions.getChildren().addAll(btnCancel, btnSave);
+
+        root.getChildren().addAll(
+                title,
+                createFieldBox("Nombre Completo *", txtFullName),
+                createFieldBox("Usuario de Acceso *", txtUsername),
+                createFieldBox("Nueva Contraseña *", txtNewPass),
+                lblErr,
+                actions
+        );
+
+        var scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
+        dialog.setScene(scene);
+        dialog.showAndWait();
     }
 
     private VBox createFieldBox(String label, TextField field) {

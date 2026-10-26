@@ -84,6 +84,19 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
 
+  // Credenciales de Administrador editables
+  const [adminNameEdit, setAdminNameEdit] = useState('Administración General');
+  const [adminUserEdit, setAdminUserEdit] = useState('admin');
+  const [adminPassEdit, setAdminPassEdit] = useState('123');
+  const [showAdminPassEdit, setShowAdminPassEdit] = useState(false);
+
+  // Edición de una ruta existente
+  const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
+  const [editRouteName, setEditRouteName] = useState('');
+  const [editCollectorName, setEditCollectorName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -111,10 +124,94 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setMaxNewLoanLimitStr((cfg.maxNewLoanLimit || 500000).toString());
       setRouteInitialCashBaseStr((cfg.routeInitialCashBase || 200000).toString());
 
-      setRoutesList([...localStore.getRoutes()]);
-      setUsersList([...localStore.getUsers()]);
+      const loadedRoutes = [...localStore.getRoutes()];
+      const loadedUsers = [...localStore.getUsers()];
+      setRoutesList(loadedRoutes);
+      setUsersList(loadedUsers);
+
+      const adm = loadedUsers.find((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+      if (adm) {
+        setAdminNameEdit(adm.name || 'Administración General');
+        setAdminUserEdit(adm.username || 'admin');
+        setAdminPassEdit(adm.password || '123');
+      }
+      setEditingRouteId(null);
     }
   }, [visible]);
+
+  const handleSaveAdminCredentials = async () => {
+    try {
+      await localStore.updateAdminCredentials({
+        name: adminNameEdit,
+        username: adminUserEdit,
+        password: adminPassEdit,
+      });
+      setUsersList([...localStore.getUsers()]);
+      Alert.alert(
+        'Credenciales de Administrador Actualizadas',
+        `Usuario Admin: ${adminUserEdit.trim().toLowerCase()}\nContraseña: ${adminPassEdit.trim()}`
+      );
+      onSuccess();
+    } catch (err: any) {
+      Alert.alert('Aviso', err.message || 'No se pudieron actualizar las credenciales.');
+    }
+  };
+
+  const handleStartEditRoute = (route: Route, collector?: User) => {
+    setEditingRouteId(route.id);
+    setEditRouteName(route.name);
+    setEditCollectorName(collector?.name || route.collectorName || '');
+    setEditUsername(collector?.username || '');
+    setEditPassword(collector?.password || '123');
+  };
+
+  const handleSaveEditedRoute = async () => {
+    if (!editingRouteId) return;
+    try {
+      await localStore.updateRouteWithCredentials({
+        routeId: editingRouteId,
+        routeName: editRouteName,
+        collectorName: editCollectorName,
+        username: editUsername,
+        password: editPassword,
+      });
+      setRoutesList([...localStore.getRoutes()]);
+      setUsersList([...localStore.getUsers()]);
+      setEditingRouteId(null);
+      Alert.alert('Ruta Actualizada', 'Se guardaron los cambios de la ruta y sus credenciales.');
+      onSuccess();
+    } catch (err: any) {
+      Alert.alert('Aviso', err.message || 'No se pudo actualizar la ruta.');
+    }
+  };
+
+  const handleDeleteRouteItem = (route: Route) => {
+    if (routesList.length <= 1) {
+      Alert.alert('Aviso', 'La oficina debe conservar al menos 1 ruta activa.');
+      return;
+    }
+    Alert.alert(
+      '¿Eliminar Ruta?',
+      `¿Desea eliminar "${route.name}" y su credencial de cobrador?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await localStore.deleteRoute(route.id);
+              setRoutesList([...localStore.getRoutes()]);
+              setUsersList([...localStore.getUsers()]);
+              onSuccess();
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'No se pudo eliminar la ruta.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const togglePasswordVisibility = (userId: string) => {
     setRevealedPasswords((prev) => ({
@@ -699,11 +796,82 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
             {/* PESTAÑA 4: GESTIÓN DE RUTAS Y CREDENCIALES (AUDIO 1) */}
             {activeTab === 'RUTAS' && (
               <View style={styles.sectionContainer}>
+                {/* 4.A: Credenciales del Administrador de la Oficina */}
+                <View style={styles.newRouteCard}>
+                  <Text style={styles.newRouteCardTitle}>
+                    👑 Credenciales del Administrador de la Oficina
+                  </Text>
+                  <Text style={styles.sectionHeaderSub}>
+                    Define tu propio usuario y contraseña gerencial para administrar la oficina y todas sus rutas.
+                  </Text>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Nombre del Administrador</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      value={adminNameEdit}
+                      onChangeText={setAdminNameEdit}
+                      placeholder="Ej. Administración General"
+                      placeholderTextColor={COLORS.textMuted}
+                    />
+                  </View>
+
+                  <View style={styles.inputRow}>
+                    <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                      <Text style={styles.inputLabel}>Usuario Admin *</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        value={adminUserEdit}
+                        onChangeText={setAdminUserEdit}
+                        placeholder="Ej. admin"
+                        placeholderTextColor={COLORS.textMuted}
+                        autoCapitalize="none"
+                      />
+                    </View>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.inputLabel}>Contraseña Admin *</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <TextInput
+                          style={[styles.textInput, { flex: 1 }]}
+                          value={adminPassEdit}
+                          onChangeText={setAdminPassEdit}
+                          placeholder="Contraseña"
+                          placeholderTextColor={COLORS.textMuted}
+                          secureTextEntry={!showAdminPassEdit}
+                          autoCapitalize="none"
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowAdminPassEdit(!showAdminPassEdit)}
+                          style={{ paddingHorizontal: 8 }}
+                        >
+                          {showAdminPassEdit ? (
+                            <EyeOff size={15} color={COLORS.textSecondary} />
+                          ) : (
+                            <Eye size={15} color={COLORS.textSecondary} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.createRouteSubmitBtn}
+                    onPress={handleSaveAdminCredentials}
+                  >
+                    <CheckCircle size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.createRouteSubmitText}>
+                      Actualizar Credencial de Administrador
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
                 <View style={styles.routesHeaderRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.sectionHeaderTitle}>Rutas y Credenciales Asignadas</Text>
+                    <Text style={styles.sectionHeaderTitle}>
+                      Rutas de la Oficina ({routesList.length}) y Credenciales
+                    </Text>
                     <Text style={styles.sectionHeaderSub}>
-                      Solo visible para administración. Entrega estas credenciales al cobrador correspondiente.
+                      Configura cuántas rutas tiene tu oficina y personaliza el usuario y clave de cada cobrador.
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -712,7 +880,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   >
                     <Plus size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
                     <Text style={styles.newRouteBtnText}>
-                      {showNewRouteForm ? 'Cerrar' : '+ Nueva Ruta'}
+                      {showNewRouteForm ? 'Cerrar' : '+ Añadir Ruta'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -762,7 +930,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                           style={styles.textInput}
                           value={newPassword}
                           onChangeText={setNewPassword}
-                          placeholder="Ej. ruta3-excelencia"
+                          placeholder="Ej. ruta3-2026"
                           placeholderTextColor={COLORS.textMuted}
                           autoCapitalize="none"
                         />
@@ -785,6 +953,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   const username = assignedCollector?.username || `ruta${idx + 1}`;
                   const password = assignedCollector?.password || `${username}-excelencia`;
                   const isPasswordRevealed = !!revealedPasswords[route.id];
+                  const isEditingThis = editingRouteId === route.id;
 
                   return (
                     <View key={route.id} style={styles.routeItemCard}>
@@ -793,41 +962,126 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                           <Text style={styles.routeBadgeText}>RUTA {idx + 1}</Text>
                         </View>
                         <Text style={styles.routeItemTitle}>{route.name}</Text>
-                        <View style={styles.activeDot} />
-                        <Text style={styles.activeStatusText}>Activa</Text>
+                        <TouchableOpacity
+                          onPress={() =>
+                            isEditingThis
+                              ? setEditingRouteId(null)
+                              : handleStartEditRoute(route, assignedCollector)
+                          }
+                          style={{
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 6,
+                            backgroundColor: COLORS.primaryLight,
+                          }}
+                        >
+                          <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.primary }}>
+                            {isEditingThis ? 'Cancelar' : 'Editar'}
+                          </Text>
+                        </TouchableOpacity>
+                        {routesList.length > 1 && (
+                          <TouchableOpacity
+                            onPress={() => handleDeleteRouteItem(route)}
+                            style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 3,
+                              borderRadius: 6,
+                              backgroundColor: '#FEE2E2',
+                            }}
+                          >
+                            <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#DC2626' }}>
+                              Eliminar
+                            </Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
 
-                      <Text style={styles.routeCollectorName}>
-                        👤 Cobrador: <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{assignedCollector ? assignedCollector.name : 'Sin asignar'}</Text>
-                      </Text>
-
-                      <View style={styles.credentialsBox}>
-                        <View style={styles.credentialRow}>
-                          <Text style={styles.credLabel}>USUARIO:</Text>
-                          <Text style={styles.credValue}>{username}</Text>
-                        </View>
-
-                        <View style={styles.credentialRow}>
-                          <Text style={styles.credLabel}>CONTRASEÑA:</Text>
-                          <Text style={styles.credValue}>
-                            {isPasswordRevealed ? password : '••••••••••••'}
-                          </Text>
+                      {isEditingThis ? (
+                        <View style={{ gap: 8, marginTop: 4 }}>
+                          <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Nombre de la Ruta</Text>
+                            <TextInput
+                              style={styles.textInput}
+                              value={editRouteName}
+                              onChangeText={setEditRouteName}
+                            />
+                          </View>
+                          <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Nombre del Cobrador</Text>
+                            <TextInput
+                              style={styles.textInput}
+                              value={editCollectorName}
+                              onChangeText={setEditCollectorName}
+                            />
+                          </View>
+                          <View style={styles.inputRow}>
+                            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                              <Text style={styles.inputLabel}>Usuario de Ruta</Text>
+                              <TextInput
+                                style={styles.textInput}
+                                value={editUsername}
+                                onChangeText={setEditUsername}
+                                autoCapitalize="none"
+                              />
+                            </View>
+                            <View style={[styles.inputGroup, { flex: 1 }]}>
+                              <Text style={styles.inputLabel}>Contraseña de Ruta</Text>
+                              <TextInput
+                                style={styles.textInput}
+                                value={editPassword}
+                                onChangeText={setEditPassword}
+                                autoCapitalize="none"
+                              />
+                            </View>
+                          </View>
                           <TouchableOpacity
-                            onPress={() => togglePasswordVisibility(route.id)}
-                            style={styles.eyeBtnSmall}
+                            style={styles.createRouteSubmitBtn}
+                            onPress={handleSaveEditedRoute}
                           >
-                            {isPasswordRevealed ? (
-                              <EyeOff size={14} color={COLORS.textSecondary} />
-                            ) : (
-                              <Eye size={14} color={COLORS.textSecondary} />
-                            )}
+                            <CheckCircle size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
+                            <Text style={styles.createRouteSubmitText}>
+                              Guardar Cambios de Ruta
+                            </Text>
                           </TouchableOpacity>
                         </View>
-                      </View>
+                      ) : (
+                        <>
+                          <Text style={styles.routeCollectorName}>
+                            👤 Cobrador:{' '}
+                            <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>
+                              {assignedCollector ? assignedCollector.name : 'Sin asignar'}
+                            </Text>
+                          </Text>
 
-                      <Text style={styles.routeItemFooterHint}>
-                        El cobrador debe ingresar este usuario y clave en su teléfono móvil.
-                      </Text>
+                          <View style={styles.credentialsBox}>
+                            <View style={styles.credentialRow}>
+                              <Text style={styles.credLabel}>USUARIO:</Text>
+                              <Text style={styles.credValue}>{username}</Text>
+                            </View>
+
+                            <View style={styles.credentialRow}>
+                              <Text style={styles.credLabel}>CONTRASEÑA:</Text>
+                              <Text style={styles.credValue}>
+                                {isPasswordRevealed ? password : '••••••••••••'}
+                              </Text>
+                              <TouchableOpacity
+                                onPress={() => togglePasswordVisibility(route.id)}
+                                style={styles.eyeBtnSmall}
+                              >
+                                {isPasswordRevealed ? (
+                                  <EyeOff size={14} color={COLORS.textSecondary} />
+                                ) : (
+                                  <Eye size={14} color={COLORS.textSecondary} />
+                                )}
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+
+                          <Text style={styles.routeItemFooterHint}>
+                            El cobrador debe ingresar este usuario y clave en su teléfono móvil.
+                          </Text>
+                        </>
+                      )}
                     </View>
                   );
                 })}

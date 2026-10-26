@@ -77,8 +77,12 @@ export interface Route {
   name: string;
   code: string;
   collectorId: string;
+  collectorName?: string;
   isActive: boolean;
   description?: string;
+  initialCashBase?: number;
+  interestRate?: number;
+  maxLoanLimit?: number;
   createdAt: string;
 }
 
@@ -379,5 +383,6 @@ export interface OfficeCompanyConfig {
   maxNewLoanLimit: number;          // Límite de crédito inicial para nuevos clientes
   routeInitialCashBase: number;     // Base de efectivo entregada al cobrador en la mañana
   officeServerUrl?: string;         // URL del servidor Desktop en Red Local Wi-Fi (ej. http://192.168.1.10:8765)
+  isSetupCompleted?: boolean;       // Indica si la oficina ya creó sus credenciales personalizadas y rutas
 }
 

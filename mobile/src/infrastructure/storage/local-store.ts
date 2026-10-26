@@ -423,6 +423,349 @@ class LocalStore {
     this.notify();
   }
 
+  /**
+   * Configuración integral de la Oficina:
+   * Crea las credenciales del Administrador y configura las N rutas elegidas con sus credenciales y parámetros a gusto de la oficina.
+   */
+  public async setupOfficeAndRoutes(params: {
+    companyName: string;
+    city?: string;
+    supportPhone?: string;
+    adminName: string;
+    adminUsername: string;
+    adminPassword: string;
+    defaultInterestRatePercent?: number;
+    paperworkFeeEnabled?: boolean;
+    paperworkRate?: number;
+    excludeSundays?: boolean;
+    allowRouteNewLoans?: boolean;
+    allowCollectorExpenses?: boolean;
+    allowPartialPayments?: boolean;
+    cleanCustomersData?: boolean;
+    routesConfig: Array<{
+      id?: string;
+      name: string;
+      collectorName: string;
+      username: string;
+      password: string;
+      description?: string;
+      initialCashBase?: number;
+    }>;
+  }): Promise<{ adminUser: User; createdRoutes: Route[]; createdUsers: User[] }> {
+    const cleanAdminUsername = params.adminUsername.trim().toLowerCase();
+    const cleanAdminPassword = params.adminPassword.trim();
+    if (!cleanAdminUsername || !cleanAdminPassword) {
+      throw new Error('Debe definir un usuario y contraseña para el Administrador de la oficina.');
+    }
+    if (!params.routesConfig || params.routesConfig.length === 0) {
+      throw new Error('Debe configurar al menos 1 ruta para la oficina.');
+    }
+
+    const usedUsernames = new Set<string>([cleanAdminUsername]);
+    for (let i = 0; i < params.routesConfig.length; i++) {
+      const rUser = (params.routesConfig[i].username || '').trim().toLowerCase();
+      const rPass = (params.routesConfig[i].password || '').trim();
+      if (!rUser || !rPass) {
+        throw new Error(`La Ruta ${i + 1} requiere usuario y contraseña de acceso.`);
+      }
+      if (usedUsernames.has(rUser)) {
+        throw new Error(`El usuario "${rUser}" está repetido. Cada ruta y el administrador deben tener un usuario único.`);
+      }
+      usedUsernames.add(rUser);
+    }
+
+    const nowIso = new Date().toISOString();
+    const todayStr = getLocalTodayStr();
+
+    const newRoutes: Route[] = [];
+    const collectorUsers: User[] = [];
+
+    params.routesConfig.forEach((rc, idx) => {
+      const routeId = rc.id || (idx === 0 ? 'route-norte' : idx === 1 ? 'route-centro' : idx === 2 ? 'route-sur' : `route-${idx + 1}-${Date.now()}`);
+      const collectorId = `usr-col-${idx + 1}`;
+      const colName = rc.collectorName.trim() || `Cobrador Ruta ${idx + 1}`;
+      const rName = rc.name.trim() || `Ruta ${idx + 1}`;
+      const rUser = rc.username.trim().toLowerCase();
+      const rPass = rc.password.trim();
+      const cashBase = rc.initialCashBase ?? 200000;
+
+      newRoutes.push({
+        id: routeId,
+        name: rName,
+        code: `R-${String(idx + 1).padStart(2, '0')}`,
+        collectorId,
+        collectorName: colName,
+        isActive: true,
+        description: rc.description?.trim() || `Asignada a ${colName}`,
+        initialCashBase: cashBase,
+        createdAt: todayStr,
+      });
+
+      collectorUsers.push({
+        id: collectorId,
+        name: colName,
+        username: rUser,
+        password: rPass,
+        email: `${rUser}@oficina.com`,
+        role: 'COBRADOR',
+        assignedRouteIds: [routeId],
+        routeId,
+        isActive: true,
+        createdAt: todayStr,
+      });
+    });
+
+    const allRouteIds = newRoutes.map((r) => r.id);
+    const adminUser: User = {
+      id: 'usr-adm-1',
+      name: params.adminName.trim() || 'Administrador de Oficina',
+      username: cleanAdminUsername,
+      password: cleanAdminPassword,
+      email: `${cleanAdminUsername}@oficina.com`,
+      role: 'ADMIN',
+      assignedRouteIds: ['ALL', ...allRouteIds],
+      isActive: true,
+      createdAt: todayStr,
+    };
+
+    this.users = [adminUser, ...collectorUsers];
+    this.routes = newRoutes;
+
+    const rateFraction =
+      params.defaultInterestRatePercent !== undefined
+        ? Math.max(0.01, params.defaultInterestRatePercent / 100)
+        : this.officeConfig.defaultInterestRate || 0.2;
+
+    this.officeConfig = {
+      ...this.officeConfig,
+      companyName: params.companyName.trim() || this.officeConfig.companyName,
+      city: params.city?.trim() || this.officeConfig.city,
+      supportPhone: params.supportPhone?.trim() || this.officeConfig.supportPhone,
+      defaultInterestRate: rateFraction,
+      paperworkFeeEnabled: params.paperworkFeeEnabled ?? this.officeConfig.paperworkFeeEnabled ?? true,
+      paperworkRate: params.paperworkRate ?? this.officeConfig.paperworkRate ?? 5000,
+      excludeSundays: params.excludeSundays ?? this.officeConfig.excludeSundays ?? true,
+      allowRouteNewLoans: params.allowRouteNewLoans ?? this.officeConfig.allowRouteNewLoans ?? true,
+      allowCollectorExpenses: params.allowCollectorExpenses ?? this.officeConfig.allowCollectorExpenses ?? true,
+      allowPartialPayments: params.allowPartialPayments ?? this.officeConfig.allowPartialPayments ?? true,
+      routeInitialCashBase: newRoutes[0]?.initialCashBase ?? 200000,
+      isSetupCompleted: true,
+    };
+
+    if (params.cleanCustomersData) {
+      this.customers = [];
+      this.loans = [];
+      this.installments = [];
+      this.payments = [];
+      this.renewals = [];
+      this.settlements = [];
+      this.promises = [];
+      this.nonPaymentVisits = [];
+      this.cashMovements = newRoutes
+        .filter((r) => (r.initialCashBase || 0) > 0)
+        .map((r, idx) => ({
+          id: `cm-base-${idx + 1}-${Date.now()}`,
+          routeId: r.id,
+          collectorId: r.collectorId,
+          type: 'INCOME' as const,
+          category: 'ADJUSTMENT' as const,
+          amount: r.initialCashBase || 0,
+          description: `Base inicial asignada a ${r.name}`,
+          createdAt: `${todayStr} 07:00:00`,
+        }));
+    }
+
+    const audit: AuditLog = {
+      id: `audit-setup-${Date.now()}`,
+      userId: adminUser.id,
+      timestamp: nowIso,
+      entity: 'CONFIG',
+      entityId: 'office-setup',
+      action: 'UPDATE',
+      newValue: JSON.stringify({
+        companyName: this.officeConfig.companyName,
+        adminUsername: adminUser.username,
+        routesCount: newRoutes.length,
+        routes: newRoutes.map((r) => ({ id: r.id, name: r.name })),
+      }),
+      reason: `Configuración de oficina con ${newRoutes.length} ruta(s) y credenciales personalizadas.`,
+    };
+    this.auditLogs.unshift(audit);
+
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
+      safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig)),
+      safeStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(this.auditLogs)),
+      ...(params.cleanCustomersData
+        ? [
+            safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
+            safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
+            safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
+            safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments)),
+            safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify(this.renewals)),
+            safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(this.settlements)),
+            safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
+            safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
+          ]
+        : []),
+    ]);
+
+    this.notify();
+    return { adminUser, createdRoutes: newRoutes, createdUsers: this.users };
+  }
+
+  public async updateAdminCredentials(params: {
+    name: string;
+    username: string;
+    password: string;
+  }): Promise<User> {
+    const cleanUsername = params.username.trim().toLowerCase();
+    const cleanPass = params.password.trim();
+    if (!cleanUsername || !cleanPass) {
+      throw new Error('El usuario y la contraseña del administrador no pueden estar vacíos.');
+    }
+
+    const conflict = this.users.find(
+      (u) => u.role === 'COBRADOR' && (u.username || '').toLowerCase() === cleanUsername
+    );
+    if (conflict) {
+      throw new Error(`El usuario "${cleanUsername}" ya está asignado a un cobrador de ruta.`);
+    }
+
+    const adminIdx = this.users.findIndex((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+    const updatedAdmin: User =
+      adminIdx >= 0
+        ? {
+            ...this.users[adminIdx],
+            name: params.name.trim() || this.users[adminIdx].name,
+            username: cleanUsername,
+            password: cleanPass,
+          }
+        : {
+            id: 'usr-adm-1',
+            name: params.name.trim() || 'Administrador de Oficina',
+            username: cleanUsername,
+            password: cleanPass,
+            email: `${cleanUsername}@oficina.com`,
+            role: 'ADMIN',
+            assignedRouteIds: ['ALL', ...this.routes.map((r) => r.id)],
+            isActive: true,
+            createdAt: getLocalTodayStr(),
+          };
+
+    if (adminIdx >= 0) {
+      this.users[adminIdx] = updatedAdmin;
+    } else {
+      this.users.unshift(updatedAdmin);
+    }
+
+    this.officeConfig = { ...this.officeConfig, isSetupCompleted: true };
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig)),
+    ]);
+    this.notify();
+    return updatedAdmin;
+  }
+
+  public async updateRouteWithCredentials(params: {
+    routeId: string;
+    routeName: string;
+    collectorName: string;
+    username: string;
+    password: string;
+    description?: string;
+    initialCashBase?: number;
+  }): Promise<void> {
+    const routeIdx = this.routes.findIndex((r) => r.id === params.routeId);
+    if (routeIdx === -1) throw new Error('Ruta no encontrada.');
+
+    const cleanUsername = params.username.trim().toLowerCase();
+    const cleanPassword = params.password.trim();
+    if (!params.routeName.trim() || !cleanUsername || !cleanPassword) {
+      throw new Error('Nombre de ruta, usuario y contraseña son obligatorios.');
+    }
+
+    const currentRoute = this.routes[routeIdx];
+    const duplicateUser = this.users.find(
+      (u) =>
+        u.id !== currentRoute.collectorId &&
+        (u.username || '').toLowerCase() === cleanUsername
+    );
+    if (duplicateUser) {
+      throw new Error(`El usuario "${cleanUsername}" ya está siendo usado por otro miembro de la oficina.`);
+    }
+
+    const collectorId = currentRoute.collectorId || `usr-col-${Date.now()}`;
+    const userIdx = this.users.findIndex((u) => u.id === collectorId);
+    const updatedCollector: User =
+      userIdx >= 0
+        ? {
+            ...this.users[userIdx],
+            name: params.collectorName.trim() || this.users[userIdx].name,
+            username: cleanUsername,
+            password: cleanPassword,
+            routeId: currentRoute.id,
+            assignedRouteIds: [currentRoute.id],
+          }
+        : {
+            id: collectorId,
+            name: params.collectorName.trim() || 'Cobrador',
+            username: cleanUsername,
+            password: cleanPassword,
+            email: `${cleanUsername}@oficina.com`,
+            role: 'COBRADOR',
+            routeId: currentRoute.id,
+            assignedRouteIds: [currentRoute.id],
+            isActive: true,
+            createdAt: getLocalTodayStr(),
+          };
+
+    if (userIdx >= 0) {
+      this.users[userIdx] = updatedCollector;
+    } else {
+      this.users.push(updatedCollector);
+    }
+
+    this.routes[routeIdx] = {
+      ...currentRoute,
+      name: params.routeName.trim(),
+      collectorId,
+      collectorName: updatedCollector.name,
+      description: params.description?.trim() ?? currentRoute.description,
+      initialCashBase: params.initialCashBase ?? currentRoute.initialCashBase,
+    };
+
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
+    ]);
+    this.notify();
+  }
+
+  public async deleteRoute(routeId: string): Promise<void> {
+    if (this.routes.length <= 1) {
+      throw new Error('La oficina debe mantener al menos 1 ruta activa.');
+    }
+    const targetRoute = this.routes.find((r) => r.id === routeId);
+    if (!targetRoute) return;
+
+    this.routes = this.routes.filter((r) => r.id !== routeId);
+    if (targetRoute.collectorId) {
+      const usedElsewhere = this.routes.some((r) => r.collectorId === targetRoute.collectorId);
+      if (!usedElsewhere) {
+        this.users = this.users.filter((u) => u.id !== targetRoute.collectorId);
+      }
+    }
+
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
+    ]);
+    this.notify();
+  }
+
   public async updateCustomerOrder(orderedCustomerIds: string[]): Promise<void> {
     this.customers = this.customers.map((c) => {
       const idx = orderedCustomerIds.indexOf(c.id);
