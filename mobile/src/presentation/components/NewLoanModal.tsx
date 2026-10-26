@@ -29,6 +29,7 @@ interface NewLoanModalProps {
   todayStr: string;
   baseAvailable?: number;
   preselectedCustomerId?: string;
+  isCollector?: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -40,6 +41,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   todayStr,
   baseAvailable,
   preselectedCustomerId,
+  isCollector = false,
   onClose,
   onSuccess,
 }) => {
@@ -126,11 +128,11 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     defaultCount: number;
     options: number[];
   }> = [
-    { key: 'DAILY', label: 'Diario (30d)', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
+    { key: 'DAILY', label: 'Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
     { key: 'WEEKLY', label: 'Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
     { key: 'BIWEEKLY', label: 'Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
     { key: 'MONTHLY', label: 'Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
-    { key: 'FIXED_DATE', label: '📅 Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
+    { key: 'FIXED_DATE', label: 'Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
   ];
 
   const currentFreqConfig = frequencies.find((f) => f.key === frequency) || frequencies[0];
@@ -383,33 +385,59 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </ScrollView>
 
             <Text style={styles.label}>3. Modalidad de Pago</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginBottom: 14 }}
-              contentContainerStyle={{ gap: 6 }}
-            >
-              {frequencies.map((f) => (
-                <TouchableOpacity
-                  key={f.key}
-                  style={[
-                    styles.cntPill,
-                    { paddingHorizontal: 12, paddingVertical: 8 },
-                    frequency === f.key && styles.cntPillActive,
-                  ]}
-                  onPress={() => handleSelectFrequency(f.key, f.defaultCount)}
-                >
-                  <Text
-                    style={[
-                      styles.cntPillText,
-                      frequency === f.key && { color: '#ffffff', fontWeight: '800' },
-                    ]}
-                  >
-                    {f.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={styles.modalityContainer}>
+              <View style={styles.modalityRow}>
+                {frequencies.slice(0, 3).map((f) => {
+                  const isSelected = frequency === f.key;
+                  return (
+                    <TouchableOpacity
+                      key={f.key}
+                      style={[
+                        styles.modalityBtn,
+                        isSelected && styles.modalityBtnActive,
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => handleSelectFrequency(f.key, f.defaultCount)}
+                    >
+                      <Text
+                        style={[
+                          styles.modalityBtnText,
+                          isSelected && styles.modalityBtnTextActive,
+                        ]}
+                      >
+                        {f.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.modalityRow}>
+                {frequencies.slice(3, 5).map((f) => {
+                  const isSelected = frequency === f.key;
+                  return (
+                    <TouchableOpacity
+                      key={f.key}
+                      style={[
+                        styles.modalityBtn,
+                        isSelected && styles.modalityBtnActive,
+                      ]}
+                      activeOpacity={0.75}
+                      onPress={() => handleSelectFrequency(f.key, f.defaultCount)}
+                    >
+                      <Text
+                        style={[
+                          styles.modalityBtnText,
+                          isSelected && styles.modalityBtnTextActive,
+                        ]}
+                      >
+                        {f.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
 
             {/* 4. Selector de Plazo o Fecha Fija adaptativo */}
             {isFixedDate ? (
@@ -493,21 +521,24 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   style={{
                     width: 90,
                     height: 40,
-                    backgroundColor: '#F8FAFC',
+                    backgroundColor: isCollector ? '#F1F5F9' : '#F8FAFC',
                     borderRadius: 10,
                     borderWidth: 1,
                     borderColor: '#CBD5E1',
                     paddingHorizontal: 12,
                     fontSize: 15,
                     fontWeight: '800',
-                    color: COLORS.textPrimary,
+                    color: isCollector ? '#475569' : COLORS.textPrimary,
                   }}
                   keyboardType="numeric"
                   value={interestPercentStr}
+                  editable={!isCollector}
                   onChangeText={setInterestPercentStr}
                 />
                 <Text style={{ flex: 1, fontSize: 11, color: COLORS.textSecondary, lineHeight: 15 }}>
-                  La tasa pactada queda congelada en este contrato y no modifica préstamos anteriores. Verifique siempre que la tasa cumpla los topes vigentes certificados por la Superintendencia Financiera según la modalidad legal.
+                  {isCollector
+                    ? 'Tasa comercial configurada por la administración de la oficina.'
+                    : 'La tasa pactada queda congelada en este contrato y no modifica préstamos anteriores. Verifique siempre que la tasa cumpla los topes vigentes según la modalidad legal.'}
                 </Text>
               </View>
             </View>
@@ -842,6 +873,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.textSecondary,
+  },
+  modalityContainer: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  modalityRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  modalityBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  modalityBtnActive: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 2,
+    borderColor: '#2563EB',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  modalityBtnText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  modalityBtnTextActive: {
+    color: '#1D4ED8',
+    fontWeight: '900',
   },
   installmentsRow: {
     flexDirection: 'row',

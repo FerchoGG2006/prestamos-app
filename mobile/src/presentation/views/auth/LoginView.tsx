@@ -30,6 +30,7 @@ import {
   AlertTriangle,
 } from 'lucide-react-native';
 import { localStore } from '../../../infrastructure/storage/local-store';
+import { verifyPassword } from '../../../core/utils/security';
 import { COLORS } from '../../theme/colors';
 
 interface LoginViewProps {
@@ -78,6 +79,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   // Modal de Registro / Configuración de Oficina y Credenciales
   const [setupVisible, setSetupVisible] = useState(false);
+  const [isSetupUnlocked, setIsSetupUnlocked] = useState(false);
   const [wizCurrentAdminPassword, setWizCurrentAdminPassword] = useState('');
   const [wizCompanyName, setWizCompanyName] = useState('');
   const [wizAdminUsername, setWizAdminUsername] = useState('');
@@ -86,7 +88,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [wizRoutesDraft, setWizRoutesDraft] = useState<EditableRouteDraft[]>([
     { name: '', username: '', password: '' },
   ]);
-  const [wizCleanPortfolio, setWizCleanPortfolio] = useState<boolean>(false);
   const [wizError, setWizError] = useState('');
 
   const handleLogin = () => {
@@ -122,8 +123,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
       if (
         !matchedUser ||
         !storedPassword ||
-        FORBIDDEN_DEFAULT_PASSWORDS.has(storedPassword.toLowerCase()) ||
-        cleanPass !== storedPassword
+        FORBIDDEN_DEFAULT_PASSWORDS.has(cleanPass.toLowerCase()) ||
+        !verifyPassword(cleanPass, storedPassword)
       ) {
         setErrorMessage('Credenciales incorrectas. Verifica tu usuario y contraseña.');
         return;
@@ -134,7 +135,36 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }, 120);
   };
 
+  const handleVerifyCurrentPassword = () => {
+    if (!wizCurrentAdminPassword.trim()) {
+      setWizError('Ingresa la clave actual del Administrador para desbloquear la edición.');
+      return;
+    }
+    const isValid = localStore.verifyAdminPassword(wizCurrentAdminPassword);
+    if (!isValid) {
+      setWizError('Clave actual incorrecta. La edición permanece bloqueada.');
+      setIsSetupUnlocked(false);
+      return;
+    }
+    setIsSetupUnlocked(true);
+    setWizError('');
+  };
+
+  const handleCurrentPasswordChange = (text: string) => {
+    setWizCurrentAdminPassword(text);
+    if (text.length >= 6 && localStore.verifyAdminPassword(text)) {
+      setIsSetupUnlocked(true);
+      setWizError('');
+    } else if (isSetupUnlocked && !localStore.verifyAdminPassword(text)) {
+      setIsSetupUnlocked(false);
+    }
+  };
+
   const resetWizardToBlank = () => {
+    if (isOfficeRegistered && !isSetupUnlocked) {
+      setWizError('Ingresa la clave actual del Administrador para autorizar cambios.');
+      return;
+    }
     setWizCurrentAdminPassword('');
     setWizCompanyName('');
     setWizAdminUsername('');
@@ -151,12 +181,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
     // para que el dueño escriba el nombre de su oficina y cree sus credenciales desde cero.
     if (!cfg.isSetupCompleted || !cfg.companyName?.trim()) {
       resetWizardToBlank();
+      setIsSetupUnlocked(true);
       setSetupVisible(true);
       return;
     }
 
-    // Si ya había registrado su oficina previamente, cargar nombres de ruta y usuarios,
-    // NUNCA exponer contraseñas en texto plano.
+    // Si ya había registrado su oficina previamente, la configuración está BLOQUEADA
+    // hasta que el Administrador ingrese su clave actual.
+    setIsSetupUnlocked(false);
     const currentUsers = localStore.getUsers();
     const currentRoutes = localStore.getRoutes();
     const existingAdmin = currentUsers.find(
@@ -203,6 +235,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   const changeRoutesCount = (newCount: number) => {
+    if (isOfficeRegistered && !isSetupUnlocked) {
+      setWizError('Debes ingresar la clave actual del Administrador para modificar las rutas.');
+      return;
+    }
     const clamped = Math.max(1, Math.min(15, newCount));
     setWizRoutesCount(clamped);
     setWizRoutesDraft((prev) => {
@@ -220,6 +256,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   const updateRouteDraft = (idx: number, field: keyof EditableRouteDraft, val: string) => {
+    if (isOfficeRegistered && !isSetupUnlocked) {
+      setWizError('Debes ingresar la clave actual del Administrador para realizar cambios.');
+      return;
+    }
     setWizRoutesDraft((prev) =>
       prev.map((item, i) => (i === idx ? { ...item, [field]: val } : item))
     );
@@ -228,6 +268,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   const handleSaveSetup = async (enterDirectlyAsAdmin: boolean) => {
     try {
+      if (isOfficeRegistered && !isSetupUnlocked) {
+        setWizError('Debes ingresar la clave actual del Administrador para autorizar cambios.');
+        return;
+      }
       if (!wizCompanyName.trim()) {
         setWizError('Escribe el nombre de tu oficina.');
         return;
@@ -273,7 +317,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         adminUsername: wizAdminUsername.trim().toLowerCase(),
         adminPassword: wizAdminPassword.trim(),
         currentAdminPassword: isOfficeRegistered ? wizCurrentAdminPassword.trim() : undefined,
-        cleanCustomersData: wizCleanPortfolio,
+        cleanCustomersData: true, // La cartera de la oficina siempre inicia limpia en $0 lista para registrar clientes
         routesConfig: wizRoutesDraft.map((d, i) => {
           const cleanName = d.name.trim() || `Ruta ${i + 1}`;
           return {
@@ -301,6 +345,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
       setWizError(err?.message || 'Error al guardar la configuración.');
     }
   };
+
+  const isFormEditable = !isOfficeRegistered || isSetupUnlocked;
 
   return (
     <KeyboardAvoidingView
@@ -482,7 +528,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <TouchableOpacity
                   onPress={resetWizardToBlank}
-                  style={styles.clearBtn}
+                  disabled={!isFormEditable}
+                  style={[styles.clearBtn, !isFormEditable && { opacity: 0.35 }]}
                 >
                   <RotateCcw size={12} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
                   <Text style={styles.clearBtnText}>Limpiar</Text>
@@ -510,39 +557,95 @@ export const LoginView: React.FC<LoginViewProps> = ({
               ) : null}
 
               {isOfficeRegistered && (
-                <View style={styles.authVerifyBox}>
-                  <Text style={styles.authVerifyTitle}>
-                    🔒 Autorización de Administrador Requerida
+                <View
+                  style={[
+                    styles.authVerifyBox,
+                    isSetupUnlocked && styles.authVerifyBoxUnlocked,
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text
+                      style={[
+                        styles.authVerifyTitle,
+                        { marginBottom: 0 },
+                        isSetupUnlocked && { color: COLORS.success },
+                      ]}
+                    >
+                      {isSetupUnlocked
+                        ? '✓ Administrador Autorizado'
+                        : '🔒 Autorización de Administrador Requerida'}
+                    </Text>
+                    <View
+                      style={[
+                        styles.lockStatusBadge,
+                        isSetupUnlocked ? styles.lockStatusBadgeUnlocked : styles.lockStatusBadgeLocked,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.lockStatusBadgeText,
+                          isSetupUnlocked ? styles.lockStatusBadgeTextUnlocked : styles.lockStatusBadgeTextLocked,
+                        ]}
+                      >
+                        {isSetupUnlocked ? 'DESBLOQUEADO' : 'BLOQUEADO'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.fieldCaption}>
+                    {isSetupUnlocked
+                      ? 'Clave confirmada. Edición habilitada para modificar datos y rutas.'
+                      : 'Ingresa la clave actual del Administrador para desbloquear la edición:'}
                   </Text>
-                  <Text style={styles.fieldCaption}>Clave Actual del Administrador</Text>
-                  <TextInput
-                    style={styles.compactInput}
-                    value={wizCurrentAdminPassword}
-                    onChangeText={setWizCurrentAdminPassword}
-                    placeholder="Ingresa la clave actual para autorizar cambios"
-                    placeholderTextColor={COLORS.textMuted}
-                    secureTextEntry
-                    autoCapitalize="none"
-                  />
+
+                  {!isSetupUnlocked ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                      <TextInput
+                        style={[styles.compactInput, { flex: 1 }]}
+                        value={wizCurrentAdminPassword}
+                        onChangeText={handleCurrentPasswordChange}
+                        onSubmitEditing={handleVerifyCurrentPassword}
+                        placeholder="Ingresa clave actual"
+                        placeholderTextColor={COLORS.textMuted}
+                        secureTextEntry
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity
+                        style={styles.verifyBtn}
+                        activeOpacity={0.8}
+                        onPress={handleVerifyCurrentPassword}
+                      >
+                        <ShieldCheck size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                        <Text style={styles.verifyBtnText}>Desbloquear</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </View>
               )}
 
               {/* 1. Tarjeta de Oficina y Administrador */}
-              <View style={styles.adminBox}>
+              <View style={[styles.adminBox, !isFormEditable && styles.boxLocked]}>
                 <View style={styles.sectionBadgeRow}>
                   <View style={styles.adminBadge}>
                     <Text style={styles.adminBadgeText}>1. DATOS DE TU OFICINA Y ADMIN</Text>
                   </View>
+                  {!isFormEditable && (
+                    <View style={styles.miniLockTag}>
+                      <Lock size={10} color="#64748B" style={{ marginRight: 3 }} />
+                      <Text style={styles.miniLockTagText}>Bloqueado</Text>
+                    </View>
+                  )}
                 </View>
 
                 <View style={{ marginBottom: 8 }}>
                   <Text style={styles.fieldCaption}>Nombre de la Oficina</Text>
                   <TextInput
-                    style={styles.compactInput}
+                    style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
                     value={wizCompanyName}
                     onChangeText={setWizCompanyName}
                     placeholder="Escribe el nombre de tu oficina"
                     placeholderTextColor={COLORS.textMuted}
+                    editable={isFormEditable}
                   />
                 </View>
 
@@ -550,31 +653,33 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   <View style={styles.colItem}>
                     <Text style={styles.fieldCaption}>Usuario Administrador</Text>
                     <TextInput
-                      style={styles.compactInput}
+                      style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
                       value={wizAdminUsername}
                       onChangeText={setWizAdminUsername}
                       placeholder="Crea tu usuario"
                       placeholderTextColor={COLORS.textMuted}
                       autoCapitalize="none"
+                      editable={isFormEditable}
                     />
                   </View>
                   <View style={styles.colItem}>
                     <Text style={styles.fieldCaption}>Clave Admin (mín. 6)</Text>
                     <TextInput
-                      style={styles.compactInput}
+                      style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
                       value={wizAdminPassword}
                       onChangeText={setWizAdminPassword}
                       placeholder="Mín. 6 caracteres"
                       placeholderTextColor={COLORS.textMuted}
                       secureTextEntry
                       autoCapitalize="none"
+                      editable={isFormEditable}
                     />
                   </View>
                 </View>
               </View>
 
               {/* 2. Selector de Cantidad de Rutas */}
-              <View style={styles.routesHeaderBar}>
+              <View style={[styles.routesHeaderBar, !isFormEditable && { opacity: 0.6 }]}>
                 <View style={styles.routesHeaderLeft}>
                   <RouteIcon size={15} color={COLORS.primary} />
                   <Text style={styles.routesHeaderTitle}>2. ¿Cuántas rutas tendrá la oficina?</Text>
@@ -582,14 +687,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
                 <View style={styles.stepperBox}>
                   <TouchableOpacity
-                    style={styles.stepBtn}
+                    style={[styles.stepBtn, !isFormEditable && { opacity: 0.35 }]}
+                    disabled={!isFormEditable}
                     onPress={() => changeRoutesCount(wizRoutesCount - 1)}
                   >
                     <Minus size={13} color={COLORS.primary} />
                   </TouchableOpacity>
                   <Text style={styles.stepCountText}>{wizRoutesCount}</Text>
                   <TouchableOpacity
-                    style={styles.stepBtn}
+                    style={[styles.stepBtn, !isFormEditable && { opacity: 0.35 }]}
+                    disabled={!isFormEditable}
                     onPress={() => changeRoutesCount(wizRoutesCount + 1)}
                   >
                     <Plus size={13} color={COLORS.primary} />
@@ -599,18 +706,19 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
               {/* 3. Tarjetas por Ruta */}
               {wizRoutesDraft.map((rt, idx) => (
-                <View key={idx} style={styles.routeCard}>
+                <View key={idx} style={[styles.routeCard, !isFormEditable && styles.boxLocked]}>
                   <View style={styles.routeTopLine}>
-                    <View style={styles.routeNumBadge}>
+                    <View style={[styles.routeNumBadge, !isFormEditable && { backgroundColor: '#64748B' }]}>
                       <Text style={styles.routeNumBadgeText}>RUTA {idx + 1}</Text>
                     </View>
                     <View style={styles.colItem}>
                       <TextInput
-                        style={styles.compactInput}
+                        style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
                         value={rt.name}
                         onChangeText={(v) => updateRouteDraft(idx, 'name', v)}
                         placeholder={`Nombre de la Ruta ${idx + 1} (opcional)`}
                         placeholderTextColor={COLORS.textMuted}
+                        editable={isFormEditable}
                       />
                     </View>
                   </View>
@@ -619,87 +727,59 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     <View style={styles.colItem}>
                       <Text style={styles.fieldCaption}>Usuario Cobrador</Text>
                       <TextInput
-                        style={[styles.compactInput, styles.inkInputText]}
+                        style={[styles.compactInput, styles.inkInputText, !isFormEditable && styles.inputLocked]}
                         value={rt.username}
                         onChangeText={(v) => updateRouteDraft(idx, 'username', v)}
                         placeholder={`Usuario ruta ${idx + 1}`}
                         placeholderTextColor={COLORS.textMuted}
                         autoCapitalize="none"
+                        editable={isFormEditable}
                       />
                     </View>
                     <View style={styles.colItem}>
                       <Text style={styles.fieldCaption}>Clave (mín. 6)</Text>
                       <TextInput
-                        style={styles.compactInput}
+                        style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
                         value={rt.password}
                         onChangeText={(v) => updateRouteDraft(idx, 'password', v)}
                         placeholder="Mín. 6 caracteres"
                         placeholderTextColor={COLORS.textMuted}
                         secureTextEntry
                         autoCapitalize="none"
+                        editable={isFormEditable}
                       />
                     </View>
                   </View>
                 </View>
               ))}
 
-              {/* Opción para iniciar la cartera en $0 sin datos de prueba */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setWizCleanPortfolio(!wizCleanPortfolio)}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  backgroundColor: wizCleanPortfolio ? COLORS.successLight : COLORS.surfaceSoft,
-                  borderColor: wizCleanPortfolio ? COLORS.successBorder : COLORS.border,
-                  borderWidth: 1,
-                  borderRadius: 12,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                }}
-              >
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.textPrimary }}>
-                    Iniciar oficina limpia (sin clientes de demostración)
-                  </Text>
-                  <Text style={{ fontSize: 10.5, color: COLORS.textSecondary, marginTop: 1 }}>
-                    {wizCleanPortfolio
-                      ? '✓ Activado: La cartera iniciará en $0 lista para registrar tus clientes.'
-                      : '○ Desactivado: Se conservarán los registros actuales.'}
+
+
+              {!isFormEditable && (
+                <View style={styles.lockedNoticeBanner}>
+                  <Lock size={13} color="#991B1B" style={{ marginRight: 6 }} />
+                  <Text style={styles.lockedNoticeText}>
+                    Formulario bloqueado. Ingresa la clave actual del Administrador arriba para autorizar cambios.
                   </Text>
                 </View>
-                <View
-                  style={{
-                    paddingHorizontal: 9,
-                    paddingVertical: 4,
-                    borderRadius: 8,
-                    backgroundColor: wizCleanPortfolio ? COLORS.success : COLORS.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 10.5,
-                      fontWeight: '800',
-                      color: wizCleanPortfolio ? '#FFFFFF' : COLORS.textPrimary,
-                    }}
-                  >
-                    {wizCleanPortfolio ? '✓ SÍ' : 'NO'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
+              )}
             </ScrollView>
 
             <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={styles.secondarySaveBtn}
+                style={[styles.secondarySaveBtn, !isFormEditable && { opacity: 0.35 }]}
+                disabled={!isFormEditable}
                 onPress={() => handleSaveSetup(false)}
               >
                 <Text style={styles.secondarySaveBtnText}>Guardar credenciales</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.primarySaveBtn}
+                style={[
+                  styles.primarySaveBtn,
+                  !isFormEditable && { opacity: 0.35, backgroundColor: '#94A3B8' },
+                ]}
+                disabled={!isFormEditable}
                 onPress={() => handleSaveSetup(true)}
               >
                 <Text style={styles.primarySaveBtnText}>Guardar y Entrar</Text>
@@ -1019,15 +1099,101 @@ const styles = StyleSheet.create({
   authVerifyBox: {
     backgroundColor: COLORS.accentLight,
     borderRadius: 12,
-    padding: 11,
-    borderWidth: 1,
+    padding: 12,
+    borderWidth: 1.5,
     borderColor: COLORS.accentBorder,
+  },
+  authVerifyBoxUnlocked: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
   },
   authVerifyTitle: {
     color: COLORS.textPrimary,
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: '800',
     marginBottom: 6,
+  },
+  lockStatusBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  lockStatusBadgeLocked: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  lockStatusBadgeUnlocked: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#BBF7D0',
+  },
+  lockStatusBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  lockStatusBadgeTextLocked: {
+    color: '#DC2626',
+  },
+  lockStatusBadgeTextUnlocked: {
+    color: '#166534',
+  },
+  verifyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: 9,
+    justifyContent: 'center',
+  },
+  verifyBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  boxLocked: {
+    opacity: 0.75,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  miniLockTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  miniLockTagText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  inputLocked: {
+    backgroundColor: '#F1F5F9',
+    color: '#64748B',
+    borderColor: '#E2E8F0',
+  },
+  lockedNoticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  lockedNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#991B1B',
   },
   adminBox: {
     backgroundColor: COLORS.surfaceSoft,

@@ -138,7 +138,8 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   const dockScrollClearance = insets.bottom + 96;
   const [activeFilter, setActiveFilter] = useState<FilterType>(initialFilter);
   const [searchQuery, setSearchQuery] = useState('');
-  const [privacyMode, setPrivacyMode] = useState(false);
+  // Por seguridad en la calle, el modo anti-miradas (ocultar montos) inicia activo por defecto
+  const [privacyMode, setPrivacyMode] = useState(true);
   const [frequencyFilter, setFrequencyFilter] = useState<'ALL' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY'>('ALL');
   const [optionsCustomer, setOptionsCustomer] = useState<Customer | null>(null);
   const [collapsedCompleted, setCollapsedCompleted] = useState<boolean>(false);
@@ -146,7 +147,11 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
 
   useEffect(() => {
     safeStorage.getItem('@prestamos_privacy_mode_v1').then((val) => {
-      if (val !== null) setPrivacyMode(val === 'true');
+      if (val !== null) {
+        setPrivacyMode(val === 'true');
+      } else {
+        setPrivacyMode(true);
+      }
     });
   }, []);
 
@@ -1039,55 +1044,82 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      {/* ENCABEZADO COMPACTO DE HOJA DE RUTA */}
-      <View style={[styles.routeHeaderBar, { paddingVertical: 8 }]}>
-        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={[styles.routeHeaderTitle, { fontSize: 16 }]}>Hoja de Ruta</Text>
-          <View style={styles.routeHeaderBadgePill}>
-            <Text style={styles.routeHeaderBadgeText}>
-              ● {counts.COBRAR_HOY} pendientes • ✓ {counts.PAGADOS} listos
-            </Text>
+      {/* ENCABEZADO PULIDO Y NÍTIDO DE HOJA DE RUTA */}
+      <View style={styles.routeHeaderSection}>
+        {/* FILA 1: TÍTULO Y BOTONES DE ACCIÓN */}
+        <View style={styles.routeHeaderTopRow}>
+          <Text style={styles.routeHeaderTitle} numberOfLines={1}>
+            Hoja de Ruta
+          </Text>
+
+          <View style={styles.routeHeaderActionsRow}>
+            <TouchableOpacity
+              style={styles.btnNuevoCreditoHeader}
+              activeOpacity={0.75}
+              onPress={onOpenNewLoan}
+            >
+              <FilePlus2 size={13} color="#D97706" style={{ marginRight: 4 }} />
+              <Text style={styles.btnNuevoCreditoHeaderText}>
+                + Crédito
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.btnOrdenarHeader,
+                isEditingRoute && styles.btnOrdenarHeaderActive,
+              ]}
+              activeOpacity={0.7}
+              onPress={isEditingRoute ? handleSaveRoute : handleStartEditRoute}
+            >
+              {isEditingRoute ? (
+                <>
+                  <CheckCircle size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
+                  <Text style={styles.btnOrdenarHeaderTextActive}>✓ Guardar</Text>
+                </>
+              ) : (
+                <>
+                  <ListOrdered size={13} color={COLORS.primary} style={{ marginRight: 4 }} />
+                  <Text style={styles.btnOrdenarHeaderText}>Ordenar</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <TouchableOpacity
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: COLORS.accentLight,
-              borderWidth: 1,
-              borderColor: COLORS.accentBorder,
-              paddingHorizontal: 9,
-              paddingVertical: 6,
-              borderRadius: 9,
-            }}
-            activeOpacity={0.75}
-            onPress={onOpenNewLoan}
-          >
-            <FilePlus2 size={12} color={COLORS.accent} style={{ marginRight: 4 }} />
-            <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.accent }}>
-              + Crédito
+        {/* FILA 2: BADGES SEMÁNTICOS CON RESPIRACIÓN Y NITIDEZ */}
+        <View style={styles.routeHeaderBadgesRow}>
+          <View style={styles.routeBadgePillPending}>
+            <View style={styles.badgePendingDot} />
+            <Text style={styles.routeBadgeTextPending}>
+              {counts.COBRAR_HOY} pendientes
             </Text>
-          </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.editRouteToggleBtn, isEditingRoute && styles.editRouteToggleBtnActive]}
-            activeOpacity={0.7}
-            onPress={isEditingRoute ? handleSaveRoute : handleStartEditRoute}
-          >
-            {isEditingRoute ? (
-              <>
-                <CheckCircle size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.saveRouteToggleText}>✓ Guardar</Text>
-              </>
-            ) : (
-              <>
-                <ListOrdered size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
-                <Text style={styles.editRouteToggleText}>Ordenar</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <View style={styles.routeBadgePillDone}>
+            <CheckCircle2 size={12} color="#16A34A" style={{ marginRight: 4 }} />
+            <Text style={styles.routeBadgeTextDone}>
+              {counts.PAGADOS} listos
+            </Text>
+          </View>
+
+          {counts.MORA > 0 && (
+            <View style={styles.routeBadgePillMora}>
+              <AlertCircle size={12} color="#DC2626" style={{ marginRight: 4 }} />
+              <Text style={styles.routeBadgeTextMora}>
+                {counts.MORA} en mora
+              </Text>
+            </View>
+          )}
+
+          {counts.PROMESAS > 0 && (
+            <View style={styles.routeBadgePillPromise}>
+              <Clock size={12} color="#D97706" style={{ marginRight: 4 }} />
+              <Text style={styles.routeBadgeTextPromise}>
+                {counts.PROMESAS} promesas
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -1843,37 +1875,153 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ENCABEZADO DE LA HOJA DE RUTA
-  routeHeaderBar: {
+  // ENCABEZADO DE LA HOJA DE RUTA (DISEÑO PULIDO Y NÍTIDO)
+  routeHeaderSection: {
     paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 10,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  routeHeaderTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 10,
   },
   routeHeaderTitle: {
-    fontSize: 18,
+    fontSize: 21,
     fontWeight: '900',
     color: COLORS.textPrimary,
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
+    flexShrink: 1,
+    marginRight: 8,
   },
-  routeHeaderSub: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    marginTop: 2,
+  routeHeaderActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  routeHeaderBadgePill: {
-    backgroundColor: COLORS.dockBg,
+  btnNuevoCreditoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 10,
+    shadowColor: '#D97706',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  btnNuevoCreditoHeaderText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#B45309',
+  },
+  btnOrdenarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 10,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  btnOrdenarHeaderActive: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  btnOrdenarHeaderText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  btnOrdenarHeaderTextActive: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  routeHeaderBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 6,
+  },
+  routeBadgePillPending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 4.5,
+    borderRadius: 9999,
+    gap: 5,
+  },
+  badgePendingDot: {
+    width: 6.5,
+    height: 6.5,
+    borderRadius: 4,
+    backgroundColor: '#2563EB',
+  },
+  routeBadgeTextPending: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1E40AF',
+  },
+  routeBadgePillDone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
     borderRadius: 9999,
   },
-  routeHeaderBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10.5,
+  routeBadgeTextDone: {
+    fontSize: 11,
     fontWeight: '800',
+    color: '#15803D',
+  },
+  routeBadgePillMora: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 9999,
+  },
+  routeBadgeTextMora: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#DC2626',
+  },
+  routeBadgePillPromise: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 9999,
+  },
+  routeBadgeTextPromise: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#B45309',
   },
 
   // 3. BUSCADOR INTEGRADO CON ORDENAMIENTO

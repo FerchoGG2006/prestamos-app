@@ -1,6 +1,7 @@
 import { Linking, Share, Alert, Platform } from 'react-native';
 import { Customer, Loan, Installment, Payment } from '../domain/types';
 import { formatCOP, getFrequencyLabel } from '../config/business-rules';
+import { maskDocumentNumber } from './security';
 
 export interface ReceiptFormatContext {
   companyConfig?: any;
@@ -68,7 +69,7 @@ export function formatDigitalPaymentReceipt(ctx: ReceiptFormatContext): string {
   const lines: string[] = [
     '🧾 *COMPROBANTE DE PAGO*',
     `📅 *Fecha:* ${ctx.payment.createdAt}`,
-    `👤 *Cliente:* ${ctx.customer.fullName}`,
+    `👤 *Cliente:* ${ctx.customer.fullName} (${maskDocumentNumber(ctx.customer.documentNumber)})`,
     `💵 *Pagó:* ${formatCOP(ctx.payment.amountReceived)}`,
     `💰 *Queda debiendo:* ${formatCOP(Math.max(0, ctx.remainingBalance))}`,
     `🔢 *Cuota que va:* ${currentInstLabel} de ${totalCount}`,
@@ -114,7 +115,7 @@ export function formatAccountStatementReminder(ctx: AccountStatementContext): st
     '📋 *ESTADO DE CUENTA DE CRÉDITO*',
     '━━━━━━━━━━━━━━━━━━━━━━━━━',
     `👤 *Cliente:* ${ctx.customer.fullName}`,
-    `🪪 *Documento:* CC ${ctx.customer.documentNumber || 'N/A'}`,
+    `🪪 *Documento:* ${maskDocumentNumber(ctx.customer.documentNumber) || 'CC ••••'}`,
     `🔖 *Crédito:* ${ctx.loan.loanNumber} (${getFrequencyLabel(ctx.loan.frequency)})`,
     '━━━━━━━━━━━━━━━━━━━━━━━━━',
     `💼 *Total Pactado:* ${formatCOP(ctx.loan.totalAgreed)}`,

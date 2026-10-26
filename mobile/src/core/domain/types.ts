@@ -81,6 +81,7 @@ export interface Route {
   isActive: boolean;
   description?: string;
   initialCashBase?: number;
+  targetAdministrative?: number; // Cupo/Administrativo asignado por la oficina a la ruta (ej. $20.000.000 COP)
   interestRate?: number;
   maxLoanLimit?: number;
   createdAt: string;

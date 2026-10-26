@@ -12,6 +12,9 @@ import {
   TextInput,
   Linking,
   Keyboard,
+  AppState,
+  AppStateStatus,
+  Modal,
 } from 'react-native';
 import {
   SafeAreaProvider,
@@ -79,7 +82,10 @@ import {
   ChevronDown,
   Store,
   MapPin,
+  Lock,
+  ShieldCheck,
 } from 'lucide-react-native';
+import { verifyPassword } from './src/core/utils/security';
 
 type AndroidNavMode = 'GESTURES_API35' | 'THREE_BUTTONS_API31';
 
@@ -326,7 +332,89 @@ function MainApp({
     () => localStore.getActiveSession()?.date || getLocalTodayStr()
   );
 
+  // Pilar 1: Seguridad en Calle — Bloqueo automático por inactividad o pase a segundo plano
+  const [isSessionLocked, setIsSessionLocked] = useState(false);
+  const [lockPasswordInput, setLockPasswordInput] = useState('');
+  const [lockError, setLockError] = useState('');
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let inactivityTimer: any;
+    const resetTimer = () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      // Auto-bloqueo tras 3 minutos (180.000 ms) sin interactuar
+      inactivityTimer = setTimeout(() => {
+        setIsSessionLocked(true);
+      }, 180000);
+    };
+
+    resetTimer();
+
+    const handleAppState = (state: AppStateStatus) => {
+      if (state === 'background' || state === 'inactive') {
+        setIsSessionLocked(true);
+      } else if (state === 'active') {
+        resetTimer();
+      }
+    };
+
+    const sub = AppState.addEventListener('change', handleAppState);
+
+    const onUserAction = () => {
+      if (!isSessionLocked) resetTimer();
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.addEventListener('mousedown', onUserAction);
+      window.addEventListener('keydown', onUserAction);
+      window.addEventListener('touchstart', onUserAction);
+    }
+
+    return () => {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      sub.remove();
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.removeEventListener('mousedown', onUserAction);
+        window.removeEventListener('keydown', onUserAction);
+        window.removeEventListener('touchstart', onUserAction);
+      }
+    };
+  }, [currentUser, isSessionLocked]);
+
+  const handleUnlockSession = () => {
+    if (!lockPasswordInput.trim()) {
+      setLockError('Ingresa tu contraseña para reanudar la sesión.');
+      return;
+    }
+    const entered = lockPasswordInput.trim();
+    const isUserValid = currentUser?.password
+      ? verifyPassword(entered, currentUser.password)
+      : false;
+    const isAdminValid = localStore.verifyAdminPassword(entered);
+
+    if (isUserValid || isAdminValid) {
+      setIsSessionLocked(false);
+      setLockPasswordInput('');
+      setLockError('');
+    } else {
+      setLockError('Contraseña incorrecta. Verifica tu clave de acceso.');
+    }
+  };
+
   const handleDeleteCustomer = async (customer: Customer, force?: boolean) => {
+    // Seguridad Operativa: Los cobradores no pueden eliminar clientes, solo la Administración
+    const isSessionAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+    if (!isSessionAdmin) {
+      const msg = 'Acceso Denegado: Los cobradores no tienen autorización para eliminar clientes. Esta acción debe ser solicitada a la administración de la oficina.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Acceso Denegado', msg);
+      }
+      return;
+    }
+
     try {
       const res = await localStore.deleteCustomer(customer.id, force);
       if (detailCustomer?.id === customer.id) {
@@ -449,6 +537,8 @@ function MainApp({
       console.warn('Error clearing login session:', err);
     }
     setCurrentUser(null);
+    setUserRole('COBRADOR');
+    setOfficeConfigVisible(false);
     setDetailCustomer(null);
   };
 
@@ -723,7 +813,11 @@ function MainApp({
               setHistoryInitialDoc(cust.documentNumber);
               setCollectorTab('HISTORIAL');
             }}
-            onDeleteCustomer={handleDeleteCustomer}
+            onDeleteCustomer={
+              currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN'
+                ? handleDeleteCustomer
+                : undefined
+            }
             onEditCustomer={handleOpenEditCustomer}
           />
         ) : collectorTab === 'HISTORIAL' ? (
@@ -1358,6 +1452,7 @@ function MainApp({
         todayStr={todayStr}
         baseAvailable={routeMetrics.cashAvailableInHand}
         preselectedCustomerId={preselectedLoanCustomerId}
+        isCollector={userRole === 'COBRADOR'}
         onClose={() => {
           setNewLoanModalVisible(false);
           setPreselectedLoanCustomerId('');
@@ -1428,11 +1523,13 @@ function MainApp({
         onSuccess={syncFromStore}
       />
 
-      <OfficeConfigModal
-        visible={officeConfigVisible}
-        onClose={() => setOfficeConfigVisible(false)}
-        onSuccess={syncFromStore}
-      />
+      {userRole === 'ADMIN' && (
+        <OfficeConfigModal
+          visible={officeConfigVisible}
+          onClose={() => setOfficeConfigVisible(false)}
+          onSuccess={syncFromStore}
+        />
+      )}
 
       <RouteSelectorModal
         visible={routeSelectorVisible}
@@ -1463,6 +1560,67 @@ function MainApp({
         }}
         onQuickWhatsApp={handleQuickWhatsAppAlert}
       />
+
+      {/* Pilar 1: Modal de Bloqueo Automático por Inactividad / Segundo Plano */}
+      <Modal
+        visible={isSessionLocked && Boolean(currentUser)}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={styles.lockOverlay}>
+          <View style={styles.lockCard}>
+            <View style={styles.lockIconBadge}>
+              <Lock size={28} color="#FFFFFF" />
+            </View>
+            <Text style={styles.lockTitle}>Sesión Protegida</Text>
+            <Text style={styles.lockSubtitle}>
+              La aplicación se bloqueó automáticamente por seguridad en calle. Ingresa tu contraseña para continuar operando.
+            </Text>
+
+            <View style={styles.lockUserInfo}>
+              <ShieldCheck size={14} color={COLORS.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.lockUserText}>
+                {currentUser?.name} • {currentUser?.role === 'ADMIN' ? 'Administración' : 'Cobrador'}
+              </Text>
+            </View>
+
+            {Boolean(lockError) && (
+              <Text style={styles.lockErrorText}>{lockError}</Text>
+            )}
+
+            <TextInput
+              style={styles.lockInput}
+              secureTextEntry
+              placeholder="Contraseña de acceso"
+              placeholderTextColor={COLORS.textMuted}
+              value={lockPasswordInput}
+              onChangeText={(t) => {
+                setLockPasswordInput(t);
+                if (lockError) setLockError('');
+              }}
+              onSubmitEditing={handleUnlockSession}
+            />
+
+            <TouchableOpacity style={styles.lockUnlockBtn} onPress={handleUnlockSession}>
+              <Text style={styles.lockUnlockBtnText}>Desbloquear Pantalla</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.lockLogoutBtn}
+              onPress={() => {
+                setIsSessionLocked(false);
+                setLockPasswordInput('');
+                setLockError('');
+                handleLogout();
+              }}
+            >
+              <LogOut size={13} color={COLORS.danger} style={{ marginRight: 6 }} />
+              <Text style={styles.lockLogoutBtnText}>Cerrar Sesión Activa</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 
@@ -2061,5 +2219,105 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 8.5,
     fontWeight: '900',
+  },
+  lockOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  lockCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  lockIconBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: COLORS.dockBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  lockTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
+  lockSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  lockUserInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginBottom: 14,
+  },
+  lockUserText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+  },
+  lockErrorText: {
+    fontSize: 12,
+    color: COLORS.danger,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  lockInput: {
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    backgroundColor: '#F8FAFC',
+    marginBottom: 14,
+  },
+  lockUnlockBtn: {
+    width: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  lockUnlockBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  lockLogoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  lockLogoutBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.danger,
   },
 });

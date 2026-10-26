@@ -48,6 +48,12 @@ import {
   getLocalTodayStr,
   addDaysToDate,
 } from '../../core/domain/calculator';
+import {
+  hashPassword,
+  verifyPassword,
+  encryptBackupData,
+  decryptBackupData,
+} from '../../core/utils/security';
 
 export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   companyName: '',
@@ -144,15 +150,15 @@ const safeStorage = {
 class LocalStore {
   private users: User[] = [...INITIAL_USERS];
   private routes: Route[] = [...INITIAL_ROUTES];
-  private customers: Customer[] = [...INITIAL_CUSTOMERS];
-  private loans: Loan[] = [...INITIAL_LOANS];
-  private installments: Installment[] = [...INITIAL_INSTALLMENTS];
-  private activeSession: CollectionSession | null = { ...INITIAL_SESSION };
+  private customers: Customer[] = [];
+  private loans: Loan[] = [];
+  private installments: Installment[] = [];
+  private activeSession: CollectionSession | null = null;
   private payments: Payment[] = [];
   private renewals: Renewal[] = [];
   private settlements: DailySettlement[] = [];
-  private promises: PaymentPromise[] = [...INITIAL_PROMISES];
-  private cashMovements: CashMovement[] = [...INITIAL_CASH_MOVEMENTS];
+  private promises: PaymentPromise[] = [];
+  private cashMovements: CashMovement[] = [];
   private nonPaymentVisits: NonPaymentVisit[] = [];
   private auditLogs: AuditLog[] = [];
   private officeConfig: OfficeCompanyConfig = { ...DEFAULT_OFFICE_CONFIG };
@@ -331,6 +337,30 @@ class LocalStore {
           safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
           safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
         }
+
+        // Si la cartera aún contiene clientes o préstamos demo de prueba antiguos ('cust-1'), limpiarla para inicio real
+        if (this.customers.some((c) => c.id === 'cust-1' || c.fullName?.includes('Ana María Gómez'))) {
+          this.customers = [];
+          this.loans = [];
+          this.installments = [];
+          this.payments = [];
+          this.renewals = [];
+          this.settlements = [];
+          this.promises = [];
+          this.cashMovements = [];
+          this.nonPaymentVisits = [];
+          await Promise.all([
+            safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify([])),
+          ]);
+        }
       }
 
       this.alignScenarioDatesIfNeeded();
@@ -338,14 +368,14 @@ class LocalStore {
       this.notify();
     } catch (error) {
       console.error('Error al inicializar LocalStore:', error);
-      this.users = [...INITIAL_USERS];
-      this.routes = [...INITIAL_ROUTES];
-      this.customers = [...INITIAL_CUSTOMERS];
-      this.loans = [...INITIAL_LOANS];
-      this.installments = [...INITIAL_INSTALLMENTS];
-      this.activeSession = { ...INITIAL_SESSION };
-      this.promises = [...INITIAL_PROMISES];
-      this.cashMovements = [...INITIAL_CASH_MOVEMENTS];
+      this.users = [];
+      this.routes = [];
+      this.customers = [];
+      this.loans = [];
+      this.installments = [];
+      this.activeSession = null;
+      this.promises = [];
+      this.cashMovements = [];
       this.officeConfig = { ...DEFAULT_OFFICE_CONFIG };
       this.alignScenarioDatesIfNeeded();
       this.isInitialized = true;
@@ -487,6 +517,17 @@ class LocalStore {
   }
 
   /**
+   * Verifica si la contraseña suministrada coincide con la del Administrador actual.
+   */
+  public verifyAdminPassword(password: string): boolean {
+    const existingAdmin = this.users.find(
+      (u) => (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') && Boolean(u.password?.trim())
+    );
+    if (!existingAdmin || !existingAdmin.password) return false;
+    return verifyPassword(password, existingAdmin.password);
+  }
+
+  /**
    * Configuración integral de la Oficina:
    * Crea las credenciales del Administrador y configura las N rutas elegidas con sus credenciales y parámetros a gusto de la oficina.
    */
@@ -534,15 +575,12 @@ class LocalStore {
     const existingAdmin = this.users.find(
       (u) => (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') && Boolean(u.password?.trim())
     );
-    if (
-      this.officeConfig.isSetupCompleted &&
-      existingAdmin?.password &&
-      params.currentAdminPassword !== undefined &&
-      params.currentAdminPassword.trim() !== existingAdmin.password
-    ) {
-      throw new Error(
-        'La clave actual del Administrador no coincide. Autorización requerida para modificar credenciales.'
-      );
+    if (this.officeConfig.isSetupCompleted && existingAdmin?.password) {
+      if (!params.currentAdminPassword || !verifyPassword(params.currentAdminPassword, existingAdmin.password)) {
+        throw new Error(
+          'La clave actual del Administrador no coincide. Autorización requerida para modificar credenciales.'
+        );
+      }
     }
 
     const cleanAdminUsername = params.adminUsername.trim().toLowerCase();
@@ -611,7 +649,7 @@ class LocalStore {
         id: collectorId,
         name: colName,
         username: rUser,
-        password: rPass,
+        password: hashPassword(rPass),
         email: `${rUser}@oficina.com`,
         role: 'COBRADOR',
         assignedRouteIds: [routeId],
@@ -626,7 +664,7 @@ class LocalStore {
       id: 'usr-adm-1',
       name: params.adminName.trim() || 'Administrador de Oficina',
       username: cleanAdminUsername,
-      password: cleanAdminPassword,
+      password: hashPassword(cleanAdminPassword),
       email: `${cleanAdminUsername}@oficina.com`,
       role: 'ADMIN',
       assignedRouteIds: ['ALL', ...allRouteIds],
@@ -658,7 +696,8 @@ class LocalStore {
       isSetupCompleted: true,
     };
 
-    if (params.cleanCustomersData) {
+    const shouldClean = params.cleanCustomersData !== false;
+    if (shouldClean) {
       this.customers = [];
       this.loans = [];
       this.installments = [];
@@ -703,7 +742,7 @@ class LocalStore {
       safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
       safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig)),
       safeStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(this.auditLogs)),
-      ...(params.cleanCustomersData
+      ...(shouldClean
         ? [
             safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
             safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
@@ -786,6 +825,7 @@ class LocalStore {
     password: string;
     description?: string;
     initialCashBase?: number;
+    targetAdministrative?: number;
   }): Promise<void> {
     const routeIdx = this.routes.findIndex((r) => r.id === params.routeId);
     if (routeIdx === -1) throw new Error('Ruta no encontrada.');
@@ -824,7 +864,7 @@ class LocalStore {
             ...this.users[userIdx],
             name: params.collectorName.trim() || this.users[userIdx].name,
             username: cleanUsername,
-            password: cleanPassword,
+            password: hashPassword(cleanPassword),
             routeId: currentRoute.id,
             assignedRouteIds: [currentRoute.id],
           }
@@ -832,7 +872,7 @@ class LocalStore {
             id: collectorId,
             name: params.collectorName.trim() || 'Cobrador',
             username: cleanUsername,
-            password: cleanPassword,
+            password: hashPassword(cleanPassword),
             email: `${cleanUsername}@oficina.com`,
             role: 'COBRADOR',
             routeId: currentRoute.id,
@@ -853,7 +893,12 @@ class LocalStore {
       collectorId,
       collectorName: updatedCollector.name,
       description: params.description?.trim() ?? currentRoute.description,
-      initialCashBase: params.initialCashBase ?? currentRoute.initialCashBase,
+      initialCashBase:
+        params.initialCashBase !== undefined ? params.initialCashBase : currentRoute.initialCashBase,
+      targetAdministrative:
+        params.targetAdministrative !== undefined
+          ? params.targetAdministrative
+          : currentRoute.targetAdministrative,
     };
 
     await Promise.all([
@@ -1040,13 +1085,24 @@ class LocalStore {
     const adjustmentMovements = scopedCashMovements.filter(
       (cm) => cm.type === 'INCOME' && cm.category === 'ADJUSTMENT'
     );
-    const initialCashBase =
-      adjustmentMovements.length > 0
-        ? adjustmentMovements.reduce((sum, cm) => sum + cm.amount, 0)
-        : (filterByRoute
-            ? this.routes.filter((r) => r.id === routeIdFilter)
-            : this.routes
-          ).reduce((sum, r) => sum + (r.initialCashBase || 0), 0);
+    const matchingRoutes = filterByRoute
+      ? this.routes.filter((r) => r.id === routeIdFilter)
+      : this.routes;
+
+    let initialCashBase = 0;
+    if (adjustmentMovements.length > 0) {
+      initialCashBase = adjustmentMovements.reduce((sum, cm) => sum + cm.amount, 0);
+    } else {
+      const hasTargetAdmin = matchingRoutes.some((r) => (r.targetAdministrative || 0) > 0);
+      if (hasTargetAdmin) {
+        // La oficina fijó un Administrativo Total (ej. 20M). Al ingresar clientes uno por uno,
+        // la base restante en mano para prestar es: Administrativo - Cartera colocada en calle
+        const totalTarget = matchingRoutes.reduce((sum, r) => sum + (r.targetAdministrative || 0), 0);
+        initialCashBase = Math.max(0, totalTarget - activeCapitalInStreet);
+      } else {
+        initialCashBase = matchingRoutes.reduce((sum, r) => sum + (r.initialCashBase || 0), 0);
+      }
+    }
 
     const cashAvailableInHand = Math.max(
       0,
@@ -1055,7 +1111,11 @@ class LocalStore {
 
     // Administrativo de la Ruta (Audio 3: "El administrativo es toda la plata que tiene la ruta...")
     // Valor total activo = Cartera activa prestada en calle + Base en efectivo disponible
-    const totalAdministrativeCapital = activeCapitalInStreet + cashAvailableInHand;
+    const targetAdminSum = matchingRoutes.reduce((sum, r) => sum + (r.targetAdministrative || 0), 0);
+    const totalAdministrativeCapital =
+      targetAdminSum > 0
+        ? targetAdminSum
+        : activeCapitalInStreet + cashAvailableInHand;
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
 
@@ -1102,6 +1162,19 @@ class LocalStore {
   }): Promise<{ payment: Payment; updatedLoan: Loan }> {
     const loan = this.loans.find((l) => l.id === params.loanId);
     if (!loan) throw new Error('Crédito no encontrado');
+
+    // Inmutabilidad de cierres contables: No permitir registrar pagos en días ya liquidados/cerrados
+    const isDaySettled = this.settlements.some(
+      (s) =>
+        s.routeId === loan.routeId &&
+        s.date === params.todayStr &&
+        s.status === 'SETTLED'
+    );
+    if (isDaySettled) {
+      throw new Error(
+        `El cuadre de la ruta para el día ${params.todayStr} ya fue cerrado y liquidado. Por seguridad contable, los cierres son inmutables y no permiten registrar nuevos abonos.`
+      );
+    }
 
     const idempotencyKey =
       params.idempotencyKey || `idem-${Date.now()}-${params.loanId}-${params.amountReceived}`;
@@ -1316,8 +1389,21 @@ class LocalStore {
    */
   public async deleteCustomer(
     customerId: string,
-    force: boolean = false
+    force: boolean = false,
+    adminPassword?: string
   ): Promise<{ success: boolean; message: string }> {
+    // Protección de seguridad: La eliminación de clientes es exclusiva del Administrador o requiere clave de autorización
+    const sessionUser = this.users.find((u) => u.id === this.activeSession?.collectorId);
+    const isSessionAdmin =
+      sessionUser?.role === 'ADMIN' || sessionUser?.role === 'SUPER_ADMIN';
+    if (!isSessionAdmin) {
+      if (!adminPassword || !this.verifyAdminPassword(adminPassword)) {
+        throw new Error(
+          'Acceso denegado: La eliminación de clientes es exclusiva de la administración de la oficina o requiere la clave de autorización del Administrador.'
+        );
+      }
+    }
+
     const customerIndex = this.customers.findIndex((c) => c.id === customerId);
     if (customerIndex === -1) {
       throw new Error('El cliente no fue encontrado en el sistema.');
@@ -2088,18 +2174,38 @@ class LocalStore {
   }
 
   /**
-   * Importa un paquete JSON de Ruta (proveniente de cartera.db o respaldo móvil) y lo persiste en AsyncStorage
+   * Exporta la copia de seguridad de la ruta cifrada con contraseña y verificación de integridad SHA-256
+   */
+  public exportEncryptedMobileSyncPackage(todayStr: string, passwordKey: string): string {
+    const pkg = this.exportMobileSyncPackage(todayStr);
+    const jsonStr = JSON.stringify(pkg, null, 2);
+    return encryptBackupData(jsonStr, passwordKey);
+  }
+
+  /**
+   * Importa un paquete JSON de Ruta (proveniente de cartera.db o respaldo móvil cifrado/plano) y lo persiste en AsyncStorage
    * haciendo merge inteligente por ID para nunca destruir registros existentes.
    */
-  public async importMobileSyncPackage(rawJson: string): Promise<{
+  public async importMobileSyncPackage(
+    rawJson: string,
+    passwordKey?: string
+  ): Promise<{
     importedCustomers: number;
     importedLoans: number;
   }> {
+    let effectiveJson = rawJson.trim();
+    if (effectiveJson.includes('kredia_backup_enc_v1')) {
+      if (!passwordKey) {
+        throw new Error('Esta copia de seguridad está protegida con contraseña. Ingrese la clave para restaurarla.');
+      }
+      effectiveJson = decryptBackupData(effectiveJson, passwordKey);
+    }
+
     let parsed: any;
     try {
-      parsed = JSON.parse(rawJson);
+      parsed = JSON.parse(effectiveJson);
     } catch {
-      throw new Error('El texto JSON no tiene un formato válido.');
+      throw new Error('El archivo no contiene un formato JSON válido de respaldo.');
     }
 
     if (!parsed || typeof parsed !== 'object') {
@@ -2284,6 +2390,34 @@ class LocalStore {
       customersCount: this.customers.length,
       loansCount: this.loans.length,
     };
+  }
+
+  /**
+   * Limpia toda la cartera (clientes, préstamos, cuotas, pagos, etc.)
+   * dejando el sistema 100% en blanco listo para registrar clientes reales uno a uno.
+   */
+  public async clearPortfolioToEmpty(): Promise<void> {
+    this.customers = [];
+    this.loans = [];
+    this.installments = [];
+    this.payments = [];
+    this.renewals = [];
+    this.settlements = [];
+    this.promises = [];
+    this.cashMovements = [];
+    this.nonPaymentVisits = [];
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify([])),
+      safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify([])),
+      safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify([])),
+      safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify([])),
+      safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify([])),
+      safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify([])),
+      safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify([])),
+      safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify([])),
+      safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify([])),
+    ]);
+    this.notify();
   }
 
   /**

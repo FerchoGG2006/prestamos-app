@@ -62,8 +62,12 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
           ? defaultRouteId
           : localStore.getRoutes()[0]?.id || 'route-norte';
       setSelectedRouteId(targetRoute);
+      if (isCollector) {
+        const fixedRate = Math.round((localStore.getOfficeConfig().defaultInterestRate || 0.2) * 100);
+        setInterestPercentStr(String(fixedRate));
+      }
     }
-  }, [visible, defaultRouteId]);
+  }, [visible, defaultRouteId, isCollector]);
 
   // Datos del Préstamo Inmediato o Migración de Cartulina Física
   const [withLoan, setWithLoan] = useState(true);
@@ -111,7 +115,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const quickPrincipals = [150000, 200000, 300000, 500000];
 
   const frequencies: Array<{ key: LoanFrequency; label: string; defaultCount: number }> = [
-    { key: 'DAILY', label: 'Diario (30d)', defaultCount: 30 },
+    { key: 'DAILY', label: 'Diario', defaultCount: 30 },
     { key: 'WEEKLY', label: 'Semanal', defaultCount: 4 },
     { key: 'BIWEEKLY', label: 'Quincenal', defaultCount: 2 },
     { key: 'MONTHLY', label: 'Mensual', defaultCount: 1 },
@@ -609,9 +613,17 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                   <View style={[styles.filledInputBlock, { flex: 1 }]}>
                     <Text style={styles.floatingLabel}>INTERÉS PACTADO (%)</Text>
                     <TextInput
-                      style={styles.filledTextInput}
+                      style={[
+                        styles.filledTextInput,
+                        isCollector && {
+                          backgroundColor: '#F1F5F9',
+                          color: '#475569',
+                          fontWeight: '700',
+                        },
+                      ]}
                       keyboardType="numeric"
                       value={interestPercentStr}
+                      editable={!isCollector}
                       onChangeText={setInterestPercentStr}
                     />
                   </View>
@@ -1038,22 +1050,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.surfaceSoft,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
   },
   freqBtnActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 2,
+    borderColor: '#2563EB',
   },
   freqBtnText: {
     fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.textSecondary,
+    color: '#475569',
   },
   freqBtnTextActive: {
-    color: '#FFFFFF',
+    color: '#1D4ED8',
+    fontWeight: '900',
   },
   // SUMMARY CARD
   summaryCard: {

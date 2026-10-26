@@ -21,6 +21,7 @@ import {
   localStore,
   DEFAULT_OFFICE_CONFIG,
 } from '../../infrastructure/storage/local-store';
+import { formatCOP } from '../../core/config/business-rules';
 import {
   Building2,
   X,
@@ -85,6 +86,8 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [newCollectorName, setNewCollectorName] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newTargetAdminStr, setNewTargetAdminStr] = useState('20000000');
+  const [newInitialCashBaseStr, setNewInitialCashBaseStr] = useState('0');
 
   // Credenciales de Administrador editables
   const [adminNameEdit, setAdminNameEdit] = useState('Administración General');
@@ -98,6 +101,8 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [editCollectorName, setEditCollectorName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
+  const [editTargetAdminStr, setEditTargetAdminStr] = useState('20000000');
+  const [editInitialCashBaseStr, setEditInitialCashBaseStr] = useState('0');
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -165,22 +170,28 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
     setEditCollectorName(collector?.name || route.collectorName || '');
     setEditUsername(collector?.username || '');
     setEditPassword(collector?.password || '');
+    setEditTargetAdminStr(String(route.targetAdministrative || 20000000));
+    setEditInitialCashBaseStr(String(route.initialCashBase || 0));
   };
 
   const handleSaveEditedRoute = async () => {
     if (!editingRouteId) return;
     try {
+      const parsedAdmin = parseInt(editTargetAdminStr.replace(/\D/g, ''), 10) || 0;
+      const parsedBase = parseInt(editInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
       await localStore.updateRouteWithCredentials({
         routeId: editingRouteId,
         routeName: editRouteName,
         collectorName: editCollectorName,
         username: editUsername,
         password: editPassword,
+        targetAdministrative: parsedAdmin,
+        initialCashBase: parsedBase,
       });
       setRoutesList([...localStore.getRoutes()]);
       setUsersList([...localStore.getUsers()]);
       setEditingRouteId(null);
-      Alert.alert('Ruta Actualizada', 'Se guardaron los cambios de la ruta y sus credenciales.');
+      Alert.alert('Ruta Actualizada', 'Se guardaron los cambios de la ruta, administrativo y credenciales.');
       onSuccess();
     } catch (err: any) {
       Alert.alert('Aviso', err.message || 'No se pudo actualizar la ruta.');
@@ -236,6 +247,8 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       const routeId = `route-${Date.now()}`;
       const collectorId = `usr-col-${Date.now()}`;
       const colDisplayName = newCollectorName.trim() || newRouteName.trim();
+      const parsedNewAdmin = parseInt(newTargetAdminStr.replace(/\D/g, ''), 10) || 20000000;
+      const parsedNewBase = parseInt(newInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
 
       const newCollector: User = {
         id: collectorId,
@@ -258,6 +271,8 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         collectorName: colDisplayName,
         isActive: true,
         description: `Ruta asignada a ${colDisplayName}`,
+        targetAdministrative: parsedNewAdmin,
+        initialCashBase: parsedNewBase,
         createdAt: new Date().toISOString(),
       };
 
@@ -273,10 +288,12 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setNewCollectorName('');
       setNewUsername('');
       setNewPassword('');
+      setNewTargetAdminStr('20000000');
+      setNewInitialCashBaseStr('0');
 
       Alert.alert(
         '¡Ruta Creada Exitosamente!',
-        `Se habilitó "${newRoute.name}".\n\nCredenciales de Acceso:\nUsuario: ${newCollector.username}\nContraseña: ${newCollector.password}`
+        `Se habilitó "${newRoute.name}".\n\nAdministrativo: ${formatCOP(parsedNewAdmin)}\nCredenciales de Acceso:\nUsuario: ${newCollector.username}\nContraseña: ${newCollector.password}`
       );
     } catch (err: any) {
       Alert.alert('Error al crear ruta', err.message || 'No se pudo guardar la ruta.');
@@ -589,57 +606,6 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   />
                   <Text style={styles.inputHelp}>
                     Este mensaje se imprime al final de los recibos de WhatsApp y tirillas.
-                  </Text>
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>
-                    📡 URL Servidor PC Oficina (Sincronización Wi-Fi Local)
-                  </Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={officeServerUrl}
-                    onChangeText={setOfficeServerUrl}
-                    placeholder="http://192.168.1.10:8765"
-                    placeholderTextColor={COLORS.textMuted}
-                    autoCapitalize="none"
-                  />
-                  <Text style={styles.inputHelp}>
-                    Dirección IP del PC de Oficina en la red Wi-Fi local (puerto 8765 por defecto).
-                  </Text>
-                </View>
-
-                {/* Licencia, Activación y Garantía de Propiedad de Datos */}
-                <View
-                  style={{
-                    backgroundColor: '#F0FDFA',
-                    borderWidth: 1,
-                    borderColor: '#99F6E4',
-                    borderRadius: 14,
-                    padding: 12,
-                    marginTop: 4,
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F766E' }}>
-                      🛡️ Licencia Comercial Kredia — Oficina + Rutas
-                    </Text>
-                    <View
-                      style={{
-                        backgroundColor: '#DCFCE7',
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        borderRadius: 6,
-                      }}
-                    >
-                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#166534' }}>ACTIVA</Text>
-                    </View>
-                  </View>
-                  <Text style={{ fontSize: 11, color: '#334155', marginTop: 4, lineHeight: 15 }}>
-                    • ID de Instalación: <Text style={{ fontWeight: '800' }}>KRD-COL-2026-OFC01</Text> • Tolerancia Offline: <Text style={{ fontWeight: '800' }}>14 días</Text>
-                  </Text>
-                  <Text style={{ fontSize: 10.5, color: '#475569', marginTop: 4, lineHeight: 14 }}>
-                    Garantía de Propiedad de Datos: La cartera y los registros pertenecen a la oficina operadora. Incluso ante vencimiento de suscripción, la consulta en modo lectura y la exportación JSON/CSV en la pestaña "5. Respaldo" nunca se bloquean.
                   </Text>
                 </View>
               </View>
@@ -988,6 +954,32 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       </View>
                     </View>
 
+                    <View style={styles.inputRow}>
+                      <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                        <Text style={styles.inputLabel}>Administrativo de la Ruta ($ COP)</Text>
+                        <TextInput
+                          style={styles.textInput}
+                          value={newTargetAdminStr}
+                          onChangeText={(t) => setNewTargetAdminStr(t.replace(/\D/g, ''))}
+                          placeholder="20000000"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                      <View style={[styles.inputGroup, { flex: 1 }]}>
+                        <Text style={styles.inputLabel}>Base Inicial en Efectivo ($ COP)</Text>
+                        <TextInput
+                          style={styles.textInput}
+                          value={newInitialCashBaseStr}
+                          onChangeText={(t) => setNewInitialCashBaseStr(t.replace(/\D/g, ''))}
+                          placeholder="0"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                    <Text style={{ fontSize: 10.5, color: '#0F766E', marginBottom: 8, fontStyle: 'italic' }}>
+                      💡 La base se calcula automáticamente: Administrativo - Cartera en calle de los clientes que vayas ingresando uno a uno.
+                    </Text>
+
                     <TouchableOpacity
                       style={styles.createRouteSubmitBtn}
                       onPress={handleCreateRouteWithCredentials}
@@ -1080,6 +1072,26 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                               />
                             </View>
                           </View>
+                          <View style={styles.inputRow}>
+                            <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                              <Text style={styles.inputLabel}>Administrativo de la Ruta ($ COP)</Text>
+                              <TextInput
+                                style={styles.textInput}
+                                value={editTargetAdminStr}
+                                onChangeText={(t) => setEditTargetAdminStr(t.replace(/\D/g, ''))}
+                                keyboardType="numeric"
+                              />
+                            </View>
+                            <View style={[styles.inputGroup, { flex: 1 }]}>
+                              <Text style={styles.inputLabel}>Base Inicial en Efectivo ($ COP)</Text>
+                              <TextInput
+                                style={styles.textInput}
+                                value={editInitialCashBaseStr}
+                                onChangeText={(t) => setEditInitialCashBaseStr(t.replace(/\D/g, ''))}
+                                keyboardType="numeric"
+                              />
+                            </View>
+                          </View>
                           <TouchableOpacity
                             style={styles.createRouteSubmitBtn}
                             onPress={handleSaveEditedRoute}
@@ -1091,27 +1103,81 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                           </TouchableOpacity>
                         </View>
                       ) : (
-                        <View style={styles.credentialsBox}>
-                          <View style={styles.credentialRow}>
-                            <Text style={styles.credLabel}>USUARIO</Text>
-                            <Text style={styles.credValue}>{username}</Text>
-                            <Text style={[styles.credLabel, { width: 52, marginLeft: 10 }]}>
-                              CLAVE
-                            </Text>
-                            <Text style={styles.credValue}>
-                              {isPasswordRevealed ? password : '••••••'}
-                            </Text>
-                            <TouchableOpacity
-                              onPress={() => togglePasswordVisibility(route.id)}
-                              style={styles.eyeBtnSmall}
-                            >
-                              {isPasswordRevealed ? (
-                                <EyeOff size={14} color={COLORS.textSecondary} />
-                              ) : (
-                                <Eye size={14} color={COLORS.textSecondary} />
-                              )}
-                            </TouchableOpacity>
+                        <View>
+                          <View style={styles.credentialsBox}>
+                            <View style={styles.credentialRow}>
+                              <Text style={styles.credLabel}>USUARIO</Text>
+                              <Text style={styles.credValue}>{username}</Text>
+                              <Text style={[styles.credLabel, { width: 52, marginLeft: 10 }]}>
+                                CLAVE
+                              </Text>
+                              <Text style={styles.credValue}>
+                                {isPasswordRevealed ? password : '••••••'}
+                              </Text>
+                              <TouchableOpacity
+                                onPress={() => togglePasswordVisibility(route.id)}
+                                style={styles.eyeBtnSmall}
+                              >
+                                {isPasswordRevealed ? (
+                                  <EyeOff size={14} color={COLORS.textSecondary} />
+                                ) : (
+                                  <Eye size={14} color={COLORS.textSecondary} />
+                                )}
+                              </TouchableOpacity>
+                            </View>
                           </View>
+
+                          {/* Balance Financiero de la Ruta: Administrativo vs Cartera en Calle vs Base */}
+                          {(() => {
+                            const routeLoans = localStore
+                              .getLoans()
+                              .filter((l) => l.routeId === route.id && l.status === 'ACTIVE');
+                            const carteraCalle = routeLoans.reduce((sum, l) => sum + (l.principal || 0), 0);
+                            const targetAdmin = route.targetAdministrative || 20000000;
+                            const baseDisponible = Math.max(0, targetAdmin - carteraCalle);
+
+                            return (
+                              <View
+                                style={{
+                                  marginTop: 8,
+                                  padding: 10,
+                                  backgroundColor: '#F8FAFC',
+                                  borderRadius: 10,
+                                  borderWidth: 1,
+                                  borderColor: '#E2E8F0',
+                                  gap: 4,
+                                }}
+                              >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
+                                    📈 Administrativo Asignado:
+                                  </Text>
+                                  <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.textPrimary }}>
+                                    {formatCOP(targetAdmin)}
+                                  </Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
+                                    👥 Cartera en Calle ({routeLoans.length} créditos):
+                                  </Text>
+                                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F766E' }}>
+                                    {formatCOP(carteraCalle)}
+                                  </Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
+                                    💵 Base Disponible para Prestar:
+                                  </Text>
+                                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0284C7' }}>
+                                    {formatCOP(baseDisponible)}
+                                  </Text>
+                                </View>
+                                <Text style={{ fontSize: 10, color: '#64748B', marginTop: 2, fontStyle: 'italic' }}>
+                                  💡 Al ingresar los clientes uno a uno, el sistema calcula la Base automáticamente: Administrativo - Cartera en Calle.
+                                </Text>
+                              </View>
+                            );
+                          })()}
                         </View>
                       )}
                     </View>
@@ -1229,19 +1295,19 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
                 <View style={styles.backupDivider} />
 
-                {/* Zona de Datos de Prueba (movida desde el Header para mantener la barra superior limpia) */}
-                <Text style={styles.restoreSectionTitle}>Entorno de Pruebas (Demo)</Text>
+                {/* Zona de Limpieza para Inicio de Cartera Real */}
+                <Text style={styles.restoreSectionTitle}>Inicio Limpio de Cartera</Text>
                 <Text style={styles.restoreSectionSub}>
-                  Si deseas cargar nuevamente los clientes y préstamos de demostración para practicar cobros y liquidaciones:
+                  Limpia todos los clientes, préstamos y movimientos para dejar la cartera 100% en blanco, lista para registrar los clientes reales uno a uno:
                 </Text>
                 <TouchableOpacity
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: '#F1F5F9',
+                    backgroundColor: '#FEF2F2',
                     borderWidth: 1,
-                    borderColor: '#CBD5E1',
+                    borderColor: '#FECACA',
                     paddingVertical: 10,
                     paddingHorizontal: 14,
                     borderRadius: 12,
@@ -1249,18 +1315,31 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   }}
                   activeOpacity={0.8}
                   onPress={async () => {
-                    await localStore.resetToDemoSeed();
-                    onSuccess();
-                    onClose();
                     Alert.alert(
-                      'Datos Demo Restaurados',
-                      'Se han cargado nuevamente los clientes, préstamos y saldos de prueba.'
+                      '¿Iniciar Cartera Limpia?',
+                      'Esta acción eliminará todos los clientes y créditos actuales para dejar la cartera en blanco ($0), lista para ingresar tus clientes reales.',
+                      [
+                        { text: 'Cancelar', style: 'cancel' },
+                        {
+                          text: 'Sí, Iniciar Limpia',
+                          style: 'destructive',
+                          onPress: async () => {
+                            await localStore.clearPortfolioToEmpty();
+                            onSuccess();
+                            onClose();
+                            Alert.alert(
+                              'Cartera Limpia',
+                              'La cartera ha sido reiniciada en blanco ($0). Ya puedes comenzar a registrar tus clientes uno a uno.'
+                            );
+                          },
+                        },
+                      ]
                     );
                   }}
                 >
-                  <RotateCcw size={14} color={COLORS.textSecondary} style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.textSecondary }}>
-                    Cargar Cartera de Prueba (Reset Demo)
+                  <RotateCcw size={14} color="#DC2626" style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#DC2626' }}>
+                    🧹 Iniciar Cartera Limpia ($0)
                   </Text>
                 </TouchableOpacity>
               </View>

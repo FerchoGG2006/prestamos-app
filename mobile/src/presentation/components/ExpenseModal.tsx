@@ -63,6 +63,22 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
       return;
     }
 
+    if (numericAmount > 250000) {
+      Alert.alert(
+        'Límite Excedido',
+        'El gasto supera el tope operativo permitido en calle ($250.000 COP). Gastos mayores deben ser autorizados y registrados directamente por la administración de la oficina.'
+      );
+      return;
+    }
+
+    if (numericAmount > 50000 && description.trim().length < 5) {
+      Alert.alert(
+        'Justificación Requerida',
+        'Para gastos superiores a $50.000 COP, es obligatorio especificar el detalle o motivo concreto en la nota para la auditoría de caja.'
+      );
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await localStore.recordRouteExpense({
@@ -171,6 +187,13 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
             value={description}
             onChangeText={setDescription}
           />
+          {numericAmount > 50000 && (
+            <View style={styles.highExpenseNotice}>
+              <Text style={styles.highExpenseNoticeText}>
+                ⚠️ Gasto mayor a $50.000 COP. Por control de auditoría, es obligatorio detallar el motivo específico en la nota anterior.
+              </Text>
+            </View>
+          )}
           </ScrollView>
 
           <View style={styles.actions}>
@@ -323,5 +346,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  highExpenseNotice: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 12,
+  },
+  highExpenseNoticeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#92400E',
+    lineHeight: 16,
   },
 });
