@@ -515,9 +515,10 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
         {/* 3. Crédito Activo y Plan de Amortización */}
         {activeLoan && (
           <View style={styles.loanDetailCard}>
-            <View style={styles.rowBetween}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            {/* Cabecera del Crédito Activo */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                   <Text style={styles.cardSectionTag}>CRÉDITO ACTIVO #{activeLoan.loanNumber}</Text>
                   <View style={styles.frequencyTag}>
                     <Text style={styles.frequencyTagText}>
@@ -537,39 +538,48 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                   Cuota {formatCOP(activeLoan.installmentAmount)}
                 </Text>
               </View>
+            </View>
 
-              <View style={styles.actionBtnsInline}>
-                <TouchableOpacity
-                  style={styles.payNowBtn}
-                  onPress={() => onPayLoan(customer, activeLoan)}
-                >
-                  <CheckCircle size={14} color="#ffffff" style={{ marginRight: 5 }} />
-                  <Text style={styles.payNowBtnText}>Cobrar</Text>
-                </TouchableOpacity>
+            {/* Acciones Ergonómicas: CTA Primario de Cobro + Acciones Secundarias Etiquetadas */}
+            <View style={styles.loanActionsContainer}>
+              <TouchableOpacity
+                style={styles.payPrimaryBtn}
+                onPress={() => onPayLoan(customer, activeLoan)}
+                activeOpacity={0.85}
+              >
+                <CheckCircle size={18} color="#ffffff" style={{ marginRight: 8 }} />
+                <Text style={styles.payPrimaryBtnText}>
+                  Registrar Pago • {formatCOP(activeLoan.installmentAmount)}
+                </Text>
+              </TouchableOpacity>
 
+              <View style={styles.secondaryActionsRow}>
                 {onPromiseLoan && (
                   <TouchableOpacity
-                    style={styles.actionIconBtn}
+                    style={styles.secondaryActionChip}
                     onPress={() => onPromiseLoan(customer, activeLoan)}
                   >
-                    <Clock size={14} color={COLORS.textSecondary} />
+                    <Clock size={13} color={COLORS.navy} />
+                    <Text style={styles.secondaryActionText}>⏳ Promesa</Text>
                   </TouchableOpacity>
                 )}
 
                 {onNonPayment && (
                   <TouchableOpacity
-                    style={[styles.actionIconBtn, { borderColor: '#FDE68A', backgroundColor: '#FEF3C7' }]}
+                    style={[styles.secondaryActionChip, styles.noPaymentChip]}
                     onPress={() => onNonPayment(customer, activeLoan)}
                   >
-                    <AlertCircle size={14} color="#D97706" />
+                    <AlertCircle size={13} color="#B45309" />
+                    <Text style={[styles.secondaryActionText, { color: '#B45309' }]}>! No Pago</Text>
                   </TouchableOpacity>
                 )}
 
                 <TouchableOpacity
-                  style={styles.renewNowBtn}
+                  style={[styles.secondaryActionChip, styles.renewChip]}
                   onPress={() => onRenewLoan(customer, activeLoan)}
                 >
-                  <RefreshCw size={14} color={COLORS.purple} />
+                  <RefreshCw size={13} color={COLORS.ochre} />
+                  <Text style={[styles.secondaryActionText, { color: COLORS.ochreDark }]}>↻ Renovar</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -950,6 +960,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
         <Modal
           visible={auditModalState.visible}
           transparent
+          statusBarTranslucent={false}
           animationType="fade"
           onRequestClose={() =>
             setAuditModalState({ visible: false, mode: 'REVERSE_PAYMENT' })
@@ -1327,6 +1338,61 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: COLORS.textPrimary,
     marginTop: 2,
+  },
+  loanActionsContainer: {
+    marginBottom: 14,
+    gap: 8,
+  },
+  payPrimaryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.dockBg,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    shadowColor: COLORS.dockBg,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  payPrimaryBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  secondaryActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  secondaryActionChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    minHeight: 38,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: COLORS.surfaceCard,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+  },
+  secondaryActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.navy,
+  },
+  noPaymentChip: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  renewChip: {
+    backgroundColor: '#FFFBEB',
+    borderColor: COLORS.ochreBorder,
   },
   actionBtnsInline: {
     flexDirection: 'row',

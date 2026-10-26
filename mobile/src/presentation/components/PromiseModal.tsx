@@ -97,7 +97,13 @@ export const PromiseModal: React.FC<PromiseModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent={false}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
@@ -105,7 +111,7 @@ export const PromiseModal: React.FC<PromiseModalProps> = ({
         <View
           style={[
             styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 16) },
+            { paddingBottom: Math.max(insets.bottom, 12) + 8 },
           ]}
         >
           {/* Drag Handle Superior (Patrón #4 de Gemini Share) */}
@@ -242,7 +248,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 24,
     maxHeight: '90%',
     flexShrink: 1,
     borderTopWidth: 1,

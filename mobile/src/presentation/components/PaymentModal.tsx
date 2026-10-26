@@ -202,7 +202,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   ];
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent={false}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
@@ -210,90 +216,95 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         <View
           style={[
             styles.sheetContainer,
-            { paddingBottom: Math.max(insets.bottom, 16) },
+            { paddingBottom: Math.max(insets.bottom, 12) + 8 },
           ]}
         >
-          {/* Handle superior estilo Bottom Sheet (Patrón #4 de Gemini Share) */}
+          {/* Handle superior estilo Bottom Sheet */}
           <View style={styles.sheetHandle} />
 
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>
-                {completedPayment ? 'Comprobante de Cobro' : 'Abono Rápido'}
+                {completedPayment ? 'Comprobante de Cobro' : 'Registrar Pago'}
               </Text>
               <Text style={styles.subtitle}>
                 {customer.fullName} • Crédito {loan.loanNumber}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.closeBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <X size={20} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
 
           {completedPayment ? (
-            /* PATRÓN #7 DE GEMINI SHARE: ESQUEUMORFISMO LIGERO EN EL RECIBO (TIRILLA TIPO DATÁFONO CON BORDER-STYLE: DASHED) */
-            <View style={styles.receiptTicketCard}>
-              {/* Píldora Semántica (borderRadius: 9999) */}
-              <View style={styles.semanticApprovedPill}>
-                <Sparkles size={13} color={COLORS.success} />
-                <Text style={styles.semanticApprovedPillText}>
-                  ✓ TRANSACCIÓN APROBADA
-                </Text>
-              </View>
-
-              {/* Jerarquía Tipográfica Agresiva en el Monto */}
-              <Text style={styles.receiptAmountText}>
-                {formatCOP(completedPayment.amountReceived)}
-              </Text>
-              <Text style={styles.receiptSubText}>
-                Medio: {completedPayment.paymentMethod} • Ref: {completedPayment.id}
-              </Text>
-
-              {/* Línea Punteada Perforada Estilo Recibo Físico / Datáfono */}
-              <View style={styles.perforatedDividerWrap}>
-                <View style={styles.ticketNotchLeft} />
-                <View style={styles.dashedLine} />
-                <View style={styles.ticketNotchRight} />
-              </View>
-
-              {/* Detalle de cuotas aplicadas */}
-              <View style={styles.breakdownList}>
-                <View style={styles.receiptMetaRow}>
-                  <Receipt size={14} color={COLORS.textMuted} />
-                  <Text style={styles.receiptMetaTitle}>
-                    DESGLOSE CONTABLE ({completedPayment.installmentsBreakdown.length} CUOTA/S)
+            <ScrollView
+              style={styles.body}
+              contentContainerStyle={{ paddingBottom: 8 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.receiptTicketCard}>
+                <View style={styles.semanticApprovedPill}>
+                  <Sparkles size={13} color={COLORS.success} />
+                  <Text style={styles.semanticApprovedPillText}>
+                    ✓ PAGO REGISTRADO EN DISPOSITIVO
                   </Text>
                 </View>
-                {completedPayment.installmentsBreakdown.map((b) => (
-                  <View key={b.installmentId} style={styles.breakdownRow}>
-                    <Text style={styles.breakdownLabel}>
-                      Cuota #{b.installmentNumber} ({b.resultingStatus})
-                    </Text>
-                    <Text style={styles.breakdownValue}>
-                      {formatCOP(b.amountApplied)}
+
+                <Text style={styles.receiptAmountText}>
+                  {formatCOP(completedPayment.amountReceived)}
+                </Text>
+                <Text style={styles.receiptSubText}>
+                  Medio: {completedPayment.paymentMethod} • Ref: {completedPayment.id}
+                </Text>
+
+                <View style={styles.perforatedDividerWrap}>
+                  <View style={styles.ticketNotchLeft} />
+                  <View style={styles.dashedLine} />
+                  <View style={styles.ticketNotchRight} />
+                </View>
+
+                <View style={styles.breakdownList}>
+                  <View style={styles.receiptMetaRow}>
+                    <Receipt size={14} color={COLORS.textMuted} />
+                    <Text style={styles.receiptMetaTitle}>
+                      DESGLOSE CONTABLE ({completedPayment.installmentsBreakdown.length} CUOTA/S)
                     </Text>
                   </View>
-                ))}
+                  {completedPayment.installmentsBreakdown.map((b) => (
+                    <View key={b.installmentId} style={styles.breakdownRow}>
+                      <Text style={styles.breakdownLabel}>
+                        Cuota #{b.installmentNumber} ({b.resultingStatus})
+                      </Text>
+                      <Text style={styles.breakdownValue}>
+                        {formatCOP(b.amountApplied)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.dashedLineSimple} />
+
+                <TouchableOpacity
+                  style={styles.whatsappReceiptBtn}
+                  onPress={handleSendWhatsAppReceipt}
+                >
+                  <MessageCircle size={18} color="#ffffff" style={{ marginRight: 8 }} />
+                  <Text style={styles.whatsappReceiptBtnText}>
+                    📲 Enviar Recibo por WhatsApp al Cliente
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.doneBtn} onPress={onClose}>
+                  <Text style={styles.doneBtnText}>Volver a la Ruta</Text>
+                </TouchableOpacity>
               </View>
-
-              {/* Segunda línea punteada inferior */}
-              <View style={styles.dashedLineSimple} />
-
-              <TouchableOpacity
-                style={styles.whatsappReceiptBtn}
-                onPress={handleSendWhatsAppReceipt}
-              >
-                <MessageCircle size={18} color="#ffffff" style={{ marginRight: 8 }} />
-                <Text style={styles.whatsappReceiptBtnText}>
-                  📲 Enviar Recibo por WhatsApp al Cliente
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.doneBtn} onPress={onClose}>
-                <Text style={styles.doneBtnText}>Volver a la Ruta</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           ) : (
             /* FORMULARIO DE ABONO RÁPIDO CON FILLED INPUTS + FLOATING LABELS INTERNOS (Patrón #5 + Mejora IA #3) */
             <>
@@ -515,7 +526,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 24,
     borderTopWidth: 1,
     borderColor: COLORS.microBorder,
   },

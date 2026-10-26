@@ -224,7 +224,8 @@ class LocalStore {
       }
 
       if (needInitialSeed) {
-        // Inicialización limpia para operación real en producción (sin datos demo)
+        // Inicialización limpia para operación real en producción (sin datos demo ni claves predeterminadas)
+        this.users = [];
         this.customers = [];
         this.loans = [];
         this.installments = [];
@@ -247,6 +248,7 @@ class LocalStore {
         this.renewals = [];
         this.settlements = [];
         await Promise.all([
+          safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
           safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
           safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
           safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
@@ -280,9 +282,19 @@ class LocalStore {
           }
         }
 
-        // Garantizar que cada ruta activa tenga su propio usuario cobrador único (auto-sanación de sesiones previas)
+        // Eliminar contraseñas predeterminadas heredadas ('123') si la oficina no ha sido configurada
+        let sanitizedLegacyPasswords = false;
+        this.users = this.users.map((u) => {
+          if (u.password === '123') {
+            sanitizedLegacyPasswords = true;
+            return { ...u, password: '' };
+          }
+          return u;
+        });
+
+        // Garantizar que cada ruta activa tenga su propio usuario cobrador único sin asignar claves por defecto
         const usedCollectorIds = new Set<string>();
-        let usersOrRoutesHealed = false;
+        let usersOrRoutesHealed = sanitizedLegacyPasswords;
         this.routes = this.routes.map((rt, idx) => {
           const isSharedOrMissing =
             !rt.collectorId ||
@@ -303,7 +315,7 @@ class LocalStore {
               id: dedicatedId,
               name: rt.collectorName || rt.name || `Ruta ${idx + 1}`,
               username: defaultUsername,
-              password: '123',
+              password: '',
               email: `${defaultUsername}@oficina.com`,
               role: 'COBRADOR',
               assignedRouteIds: [rt.id],
@@ -485,6 +497,7 @@ class LocalStore {
     adminName: string;
     adminUsername: string;
     adminPassword: string;
+    currentAdminPassword?: string;
     defaultInterestRatePercent?: number;
     paperworkFeeEnabled?: boolean;
     paperworkRate?: number;
@@ -503,10 +516,47 @@ class LocalStore {
       initialCashBase?: number;
     }>;
   }): Promise<{ adminUser: User; createdRoutes: Route[]; createdUsers: User[] }> {
+    const FORBIDDEN_DEFAULT_PASSWORDS = new Set([
+      '123',
+      '1234',
+      '12345',
+      '123456',
+      '000',
+      '0000',
+      '000000',
+      'admin',
+      'password',
+      'cobrador',
+    ]);
+
+    // Si la oficina ya estaba configurada y tiene un administrador con clave activa,
+    // exigir verificación de la contraseña actual antes de permitir cambios desde el login.
+    const existingAdmin = this.users.find(
+      (u) => (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') && Boolean(u.password?.trim())
+    );
+    if (
+      this.officeConfig.isSetupCompleted &&
+      existingAdmin?.password &&
+      params.currentAdminPassword !== undefined &&
+      params.currentAdminPassword.trim() !== existingAdmin.password
+    ) {
+      throw new Error(
+        'La clave actual del Administrador no coincide. Autorización requerida para modificar credenciales.'
+      );
+    }
+
     const cleanAdminUsername = params.adminUsername.trim().toLowerCase();
     const cleanAdminPassword = params.adminPassword.trim();
     if (!cleanAdminUsername || !cleanAdminPassword) {
       throw new Error('Debe definir un usuario y contraseña para el Administrador de la oficina.');
+    }
+    if (
+      cleanAdminPassword.length < 6 ||
+      FORBIDDEN_DEFAULT_PASSWORDS.has(cleanAdminPassword.toLowerCase())
+    ) {
+      throw new Error(
+        'Por seguridad, la clave del Administrador debe tener al menos 6 caracteres y no ser una clave predeterminada.'
+      );
     }
     if (!params.routesConfig || params.routesConfig.length === 0) {
       throw new Error('Debe configurar al menos 1 ruta para la oficina.');
@@ -518,6 +568,11 @@ class LocalStore {
       const rPass = (params.routesConfig[i].password || '').trim();
       if (!rUser || !rPass) {
         throw new Error(`La Ruta ${i + 1} requiere usuario y contraseña de acceso.`);
+      }
+      if (rPass.length < 6 || FORBIDDEN_DEFAULT_PASSWORDS.has(rPass.toLowerCase())) {
+        throw new Error(
+          `La clave de la Ruta ${i + 1} debe tener al menos 6 caracteres y no usar valores predeterminados.`
+        );
       }
       if (usedUsernames.has(rUser)) {
         throw new Error(`El usuario "${rUser}" está repetido. Cada ruta y el administrador deben tener un usuario único.`);
@@ -676,6 +731,9 @@ class LocalStore {
     if (!cleanUsername || !cleanPass) {
       throw new Error('El usuario y la contraseña del administrador no pueden estar vacíos.');
     }
+    if (cleanPass.length < 6 || cleanPass === '123' || cleanPass === '123456') {
+      throw new Error('Por seguridad, la contraseña del administrador debe tener al menos 6 caracteres y no ser una clave por defecto.');
+    }
 
     const conflict = this.users.find(
       (u) => u.role === 'COBRADOR' && (u.username || '').toLowerCase() === cleanUsername
@@ -736,6 +794,9 @@ class LocalStore {
     const cleanPassword = params.password.trim();
     if (!params.routeName.trim() || !cleanUsername || !cleanPassword) {
       throw new Error('Nombre de ruta, usuario y contraseña son obligatorios.');
+    }
+    if (cleanPassword.length < 6 || cleanPassword === '123' || cleanPassword === '123456') {
+      throw new Error('Por seguridad, la contraseña de la ruta debe tener al menos 6 caracteres y no ser una clave por defecto.');
     }
 
     const currentRoute = this.routes[routeIdx];

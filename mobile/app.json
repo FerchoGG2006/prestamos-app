@@ -24,7 +24,7 @@
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#F8FAFC",
+        "backgroundColor": "#F6F4EE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -34,13 +34,13 @@
     },
     "androidStatusBar": {
       "barStyle": "dark-content",
-      "backgroundColor": "#F8FAFC",
+      "backgroundColor": "#F6F4EE",
       "hidden": false,
       "translucent": false
     },
     "androidNavigationBar": {
       "barStyle": "dark-content",
-      "backgroundColor": "#F8FAFC"
+      "backgroundColor": "#F6F4EE"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -56,3 +56,6 @@ yarn-error.*
 .classpath
 .settings/
 
+
+dist-*/
+*.hbc

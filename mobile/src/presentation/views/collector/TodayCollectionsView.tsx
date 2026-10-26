@@ -857,24 +857,28 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
 
     let badgeStyle = styles.badgeHoy;
     let badgeTextStyle = styles.badgeHoyText;
-    let badgeLabel = 'Cobrar hoy';
+    let badgeLabel = '● Cobrar hoy';
 
     if (item.isCreatedToday) {
-      badgeStyle = { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' };
-      badgeTextStyle = { color: '#1D4ED8' };
-      badgeLabel = 'CRÉDITO NUEVO';
+      badgeStyle = { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder };
+      badgeTextStyle = { color: COLORS.primary };
+      badgeLabel = '★ Crédito nuevo';
     } else if (delinquency.hasDelinquency) {
       badgeStyle = styles.badgeMora;
       badgeTextStyle = styles.badgeMoraText;
-      badgeLabel = `Mora (${delinquency.overdueDays}d)`;
+      badgeLabel = `! Mora (${delinquency.overdueDays}d)`;
+    } else if (item.todayPromise) {
+      badgeStyle = { backgroundColor: COLORS.warningLight, borderColor: COLORS.warningBorder };
+      badgeTextStyle = { color: COLORS.warning };
+      badgeLabel = '⏳ Promesa';
     } else if (todayInstallment?.status === 'PARCIAL') {
       badgeStyle = styles.badgeParcial;
       badgeTextStyle = styles.badgeParcialText;
-      badgeLabel = 'Abono parcial';
+      badgeLabel = '◐ Abono parcial';
     } else if (!item.isDueToday) {
       badgeStyle = styles.badgeAlDia;
       badgeTextStyle = styles.badgeAlDiaText;
-      badgeLabel = 'Al día';
+      badgeLabel = '✓ Al día';
     }
 
     const collectionAmount = item.expectedToday > 0 ? item.expectedToday : activeLoan.installmentAmount;
@@ -925,43 +929,43 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           </View>
         </TouchableOpacity>
 
-        {/* FILA 3: ACCIONES - BOTÓN DE COBRO CON MONTO INTEGRADO + 3 BOTONES COMPACTOS */}
+        {/* FILA 3: ACCIONES - BOTÓN PRIMARIO ERGONÓMICO + ACCIONES SECUNDARIAS DISCRETAS */}
         <View style={styles.cleanActionRow}>
           <TouchableOpacity
             style={styles.btnCobrarPrimario}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
             onPress={() => onSelectCustomerToPay(customer, activeLoan)}
           >
             <Text style={styles.btnCobrarPrimarioText}>
-              💵 Cobrar {maskIfPrivate(collectionAmount)}
+              Registrar pago • {maskIfPrivate(collectionAmount)}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.btnAccionCircular, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}
+            style={[styles.btnAccionCircular, { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder }]}
             activeOpacity={0.75}
             onPress={() => handleQuickCall(customer.phone)}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
-            <Phone size={15} color="#1D4ED8" />
+            <Phone size={15} color={COLORS.primary} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.btnAccionCircular, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}
+            style={[styles.btnAccionCircular, { backgroundColor: COLORS.successLight, borderColor: COLORS.successBorder }]}
             activeOpacity={0.75}
             onPress={() => handleQuickWhatsApp(customer, activeLoan, item.customerInstallments)}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
-            <MessageCircle size={15} color="#15803D" />
+            <MessageCircle size={15} color={COLORS.success} />
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.btnAccionCircular, { backgroundColor: '#F8FAFC', borderColor: '#CBD5E1' }]}
+            style={[styles.btnAccionCircular, { backgroundColor: COLORS.surfaceSoft, borderColor: COLORS.border }]}
             activeOpacity={0.75}
             onPress={() => setOptionsCustomer(customer)}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
-            <MoreVertical size={16} color="#475569" />
+            <MoreVertical size={16} color={COLORS.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1041,27 +1045,95 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           <Text style={[styles.routeHeaderTitle, { fontSize: 16 }]}>Hoja de Ruta</Text>
           <View style={styles.routeHeaderBadgePill}>
             <Text style={styles.routeHeaderBadgeText}>
-              {counts.COBRAR_HOY} pendientes • {counts.PAGADOS} listos
+              ● {counts.COBRAR_HOY} pendientes • ✓ {counts.PAGADOS} listos
             </Text>
           </View>
         </View>
 
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: COLORS.accentLight,
+              borderWidth: 1,
+              borderColor: COLORS.accentBorder,
+              paddingHorizontal: 9,
+              paddingVertical: 6,
+              borderRadius: 9,
+            }}
+            activeOpacity={0.75}
+            onPress={onOpenNewLoan}
+          >
+            <FilePlus2 size={12} color={COLORS.accent} style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.accent }}>
+              + Crédito
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.editRouteToggleBtn, isEditingRoute && styles.editRouteToggleBtnActive]}
+            activeOpacity={0.7}
+            onPress={isEditingRoute ? handleSaveRoute : handleStartEditRoute}
+          >
+            {isEditingRoute ? (
+              <>
+                <CheckCircle size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.saveRouteToggleText}>✓ Guardar</Text>
+              </>
+            ) : (
+              <>
+                <ListOrdered size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
+                <Text style={styles.editRouteToggleText}>Ordenar</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* BARRA RESUMEN OPERATIVO DE RUTA (Cobrado vs Meta + Liquidar) */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          backgroundColor: COLORS.bgSecondary,
+          marginHorizontal: 16,
+          marginBottom: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+        }}
+      >
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.textSecondary }}>
+            COBRADO HOY:{' '}
+            <Text style={{ color: COLORS.primary, fontSize: 12.5 }}>
+              {maskIfPrivate(metrics.collectedToday)}
+            </Text>{' '}
+            / Meta {maskIfPrivate(metrics.expectedDailyGoal)} ({metrics.progressPercentage}%)
+          </Text>
+        </View>
         <TouchableOpacity
-          style={[styles.editRouteToggleBtn, isEditingRoute && styles.editRouteToggleBtnActive]}
-          activeOpacity={0.7}
-          onPress={isEditingRoute ? handleSaveRoute : handleStartEditRoute}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: COLORS.primaryLight,
+            borderWidth: 1,
+            borderColor: COLORS.primaryBorder,
+            paddingHorizontal: 9,
+            paddingVertical: 5,
+            borderRadius: 8,
+          }}
+          activeOpacity={0.75}
+          onPress={isAdminMode ? onOpenSettlement : onOpenDailyReport || onOpenSettlement}
         >
-          {isEditingRoute ? (
-            <>
-              <CheckCircle size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
-              <Text style={styles.saveRouteToggleText}>✓ Guardar</Text>
-            </>
-          ) : (
-            <>
-              <ListOrdered size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.editRouteToggleText}>⚡ Ordenar</Text>
-            </>
-          )}
+          <Landmark size={11} color={COLORS.primary} style={{ marginRight: 4 }} />
+          <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.primary }}>
+            Liquidar
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -2490,20 +2562,23 @@ const styles = StyleSheet.create({
   },
   btnCobrarPrimario: {
     flex: 1,
+    minHeight: 44,
     backgroundColor: COLORS.primary,
     borderRadius: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   btnCobrarPrimarioText: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '800',
     color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
   btnAccionCircular: {
-    width: 38,
-    height: 38,
+    width: 42,
+    height: 42,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',

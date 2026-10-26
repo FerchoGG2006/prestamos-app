@@ -1,60 +1,68 @@
 /**
- * PALETA DE COLORES Y TOKENS DE DISEÑO — KREDIA LIGHT FINTECH
- * Paleta unificada entre Login, Dashboard, Hoja de Ruta y Configuración:
- * 1. Base Neutra Luminosa: #F3F7FA y Blanco Puro (#FFFFFF) con texto Slate (#0F172A / #475569).
- * 2. Color Primario Kredia (Teal Financiero): #0D9488 para acciones principales, navegación activa y botones primarios.
- * 3. Color Secundario Kredia (Índigo / Esmeralda): #4F46E5 para acentos informativos y #059669 para recaudos exitosos.
+ * PALETA DE COLORES Y TOKENS DE DISEÑO UNIFICADOS — KREDIA (MÓVIL & ESCRITORIO)
+ * Identidad visual unificada:
+ * - Azul tinta: #12263F (Acción principal, encabezados ejecutivos, navegación inferior)
+ * - Fondo cálido: #F6F4EE (Fondo general descansado y legible en exteriores)
+ * - Ocre de acento: #C9892B (Acento de marca, indicadores activos, resaltados de ruta)
+ * - Blanco puro: #FFFFFF (Superficies de tarjetas, hojas modales y tablas)
+ * - Estados operativos reservados: Verde (#15803D), Rojo (#DC2626), Ámbar (#D97706)
+ *   (Nunca usar el color como único indicador de estado; acompañar siempre de símbolo + etiqueta).
  */
 
 export const COLORS = {
-  // 1. NEUTRO BASE (Superficies y Fondos)
-  bgPrimary: '#F3F7FA',       // Fondo Kredia Light Fintech descansado y moderno
-  bgSecondary: '#FFFFFF',     // Blanco puro para tarjetas Bento, listas y Bottom Sheets
-  bgTertiary: '#E2E8F0',      // Separadores sutiles y pistas de progreso
-  bgElevated: '#F1F5F9',      // Slate 100 para Filled Inputs
-  bgLight: '#F3F7FA',
-  surfaceSoft: '#F1F5F9',     // Slate suave para bloques secundarios
-  surfaceLavender: '#EEF2FF', // Índigo ultra suave para acentos Kredia
+  // 1. SUPERFICIES Y FONDOS CÁLIDOS
+  bgPrimary: '#F6F4EE',       // Fondo cálido principal
+  bgSecondary: '#FFFFFF',     // Blanco puro para superficies, tarjetas y modales
+  bgTertiary: '#E6E2D8',      // Separadores cálidos y pistas de progreso
+  bgElevated: '#EFECE4',      // Superficie cálida para inputs rellenos
+  bgLight: '#F6F4EE',
+  surfaceCard: '#FFFFFF',     // Superficie de tarjetas
+  surfaceSoft: '#F2EFE7',     // Bloques secundarios cálidos
+  surfaceLavender: '#FDF6EA', // Superficie suave de acento ocre
   receiptPaper: '#FFFFFF',
 
-  // Tipografía y Jerarquía
-  textPrimary: '#0F172A',     // Slate 900 (Montos clave y encabezados)
-  textSecondary: '#475569',   // Slate 600 (Subtítulos e indicadores)
-  textMuted: '#64748B',       // Slate 500 (Labels y metadatos)
-  textOnPrimary: '#FFFFFF',   // Texto blanco sobre botones y dock
+  // 2. TIPOGRAFÍA Y JERARQUÍA (Alto contraste para lectura a plena luz del día)
+  textPrimary: '#12263F',     // Azul tinta profundo para títulos y montos
+  textSecondary: '#475569',   // Subtítulos y metadatos principales
+  textMuted: '#64748B',       // Etiquetas auxiliares
+  textOnPrimary: '#FFFFFF',   // Texto blanco sobre azul tinta
 
-  // 2. COLOR PRIMARIO DE MARCA KREDIA (Teal Financiero)
-  primary: '#0D9488',         // Teal Kredia principal de acción y navegación
-  primaryHover: '#0F766E',
-  primaryLight: '#F0FDFA',    // Fondo Teal pastel suave
-  primaryBorder: '#99F6E4',
-  heroGradientStart: '#0F172A', // Slate 900 sobrio y ejecutivo
-  heroGradientEnd: '#1E293B',   // Slate 800 elegante
+  // 3. IDENTIDAD DE MARCA: AZUL TINTA (#12263F) & OCRE DE ACENTO (#C9892B)
+  primary: '#12263F',         // Azul tinta principal
+  primaryHover: '#1B365D',
+  primaryLight: '#EDF2F7',    // Fondo azul tinta suave
+  primaryBorder: '#CBD5E1',
+
+  navy: '#12263F',            // Azul tinta token
+  ochre: '#C9892B',           // Ocre de acento token
+  ochreDark: '#9A6318',       // Ocre oscuro para contraste de texto
+  ochreBorder: '#F3D5A3',     // Borde suave de ocre
+
+  accent: '#C9892B',          // Ocre de acento
+  accentHover: '#B0741E',
+  accentLight: '#FDF6EA',     // Fondo ocre cálido suave
+  accentBorder: '#F3D5A3',
+
+  heroGradientStart: '#12263F',
+  heroGradientEnd: '#1B365D',
   heroSubCardBg: 'rgba(255, 255, 255, 0.08)',
-  heroTrackBg: 'rgba(255, 255, 255, 0.16)',
-  heroBarFill: '#14B8A6',
+  heroTrackBg: 'rgba(255, 255, 255, 0.18)',
+  heroBarFill: '#C9892B',
 
-  // Floating Bottom Dock (Elegante Slate 900 con acento Kredia)
-  dockBg: '#0F172A',
-  dockBorder: 'rgba(255, 255, 255, 0.08)',
+  // 4. NAVEGACIÓN INFERIOR (Azul Tinta + Ocre de Acento)
+  dockBg: '#12263F',
+  dockBorder: 'rgba(255, 255, 255, 0.10)',
   dockInactive: '#94A3B8',
-  dockActive: '#2DD4BF',
-  fabBg: '#0D9488',
+  dockActive: '#E5A93C',
+  fabBg: '#C9892B',
   fabRing: '#FFFFFF',
 
-  // 3. COLOR SECUNDARIO FINANCIERO (Verde Esmeralda - Recaudo / Éxito)
-  success: '#059669',
-  successBright: '#10B981',
+  // 5. ESTADOS OPERATIVOS RESERVADOS (Verde, Rojo y Ámbar)
+  success: '#15803D',
+  successBright: '#16A34A',
   successLight: '#ECFDF5',
   successBorder: '#A7F3D0',
 
-  // Acento Ejecutivo Kredia (Índigo Fintech)
-  info: '#4F46E5',
-  infoBright: '#4338CA',
-  infoLight: '#EEF2FF',
-  infoBorder: '#C7D2FE',
-
-  // Estados de Alerta Semafórica (Estrictamente funcionales)
   warning: '#D97706',
   warningLight: '#FFFBEB',
   warningBorder: '#FDE68A',
@@ -63,18 +71,23 @@ export const COLORS = {
   dangerLight: '#FEF2F2',
   dangerBorder: '#FECACA',
 
-  // Alias de compatibilidad: redirigidos al Índigo Kredia
-  purple: '#4F46E5',
-  purpleBright: '#4338CA',
-  purpleLight: '#EEF2FF',
-  purpleBorder: '#C7D2FE',
+  // Acentos informativos y compatibilidad redirigidos a Azul Tinta / Ocre
+  info: '#12263F',
+  infoBright: '#1B365D',
+  infoLight: '#EDF2F7',
+  infoBorder: '#CBD5E1',
 
-  // Micro-bordes y Sombras sutiles
-  microBorder: 'rgba(15, 23, 42, 0.06)',
-  inputBorder: '#CBD5E1',
-  border: '#E2E8F0',
-  borderStrong: '#CBD5E1',
-  overlayBackdrop: 'rgba(15, 23, 42, 0.45)',
+  purple: '#C9892B',
+  purpleBright: '#B0741E',
+  purpleLight: '#FDF6EA',
+  purpleBorder: '#F3D5A3',
+
+  // 6. BORDES Y SOMBRAS
+  microBorder: 'rgba(18, 38, 63, 0.08)',
+  inputBorder: '#D6D1C4',
+  border: '#E6E2D8',
+  borderStrong: '#CFC9B8',
+  overlayBackdrop: 'rgba(18, 38, 63, 0.48)',
 };
 
 export { TYPOGRAPHY, FONT_FAMILY, FONT_FAMILY_MONO } from './typography';

@@ -89,7 +89,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   // Credenciales de Administrador editables
   const [adminNameEdit, setAdminNameEdit] = useState('Administración General');
   const [adminUserEdit, setAdminUserEdit] = useState('admin');
-  const [adminPassEdit, setAdminPassEdit] = useState('123');
+  const [adminPassEdit, setAdminPassEdit] = useState('');
   const [showAdminPassEdit, setShowAdminPassEdit] = useState(false);
 
   // Edición de una ruta existente
@@ -135,7 +135,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       if (adm) {
         setAdminNameEdit(adm.name || 'Administración General');
         setAdminUserEdit(adm.username || 'admin');
-        setAdminPassEdit(adm.password || '123');
+        setAdminPassEdit(adm.password || '');
       }
       setEditingRouteId(null);
     }
@@ -164,7 +164,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
     setEditRouteName(route.name);
     setEditCollectorName(collector?.name || route.collectorName || '');
     setEditUsername(collector?.username || '');
-    setEditPassword(collector?.password || '123');
+    setEditPassword(collector?.password || '');
   };
 
   const handleSaveEditedRoute = async () => {
@@ -225,6 +225,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const handleCreateRouteWithCredentials = async () => {
     if (!newRouteName.trim() || !newUsername.trim() || !newPassword.trim()) {
       Alert.alert('Campos Incompletos', 'Por favor ingresa el nombre de la ruta, usuario y contraseña.');
+      return;
+    }
+    if (newPassword.trim().length < 6 || newPassword.trim() === '123' || newPassword.trim() === '123456') {
+      Alert.alert('Contraseña insegura', 'Por seguridad, la contraseña de la ruta debe tener al menos 6 caracteres y no ser una clave por defecto.');
       return;
     }
 
@@ -423,7 +427,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent={false}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
@@ -431,7 +441,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         <View
           style={[
             styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+            { paddingBottom: Math.max(insets.bottom, 12) + 8, flexShrink: 1 },
           ]}
         >
           <View style={styles.sheetHandle} />
@@ -971,7 +981,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                           style={styles.textInput}
                           value={newPassword}
                           onChangeText={setNewPassword}
-                          placeholder="Ej. 123"
+                          placeholder="Mínimo 6 caracteres"
                           placeholderTextColor={COLORS.textMuted}
                           autoCapitalize="none"
                         />
@@ -992,7 +1002,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                 {routesList.map((route, idx) => {
                   const assignedCollector = usersList.find((u) => u.id === route.collectorId);
                   const username = assignedCollector?.username || `ruta${idx + 1}`;
-                  const password = assignedCollector?.password || '123';
+                  const password = assignedCollector?.password || '';
                   const isPasswordRevealed = !!revealedPasswords[route.id];
                   const isEditingThis = editingRouteId === route.id;
 
@@ -1292,7 +1302,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '92%',
-    paddingBottom: 24,
   },
   sheetHandle: {
     width: 36,

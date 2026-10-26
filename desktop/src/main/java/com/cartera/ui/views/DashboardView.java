@@ -79,6 +79,9 @@ public class DashboardView extends VBox {
     private final ObservableList<RouteRowItem> routeRows = FXCollections.observableArrayList();
     private final TableView<RouteRowItem> multiRouteTable = new TableView<>();
 
+    // Contenedor de Alertas Operativas Accionables
+    private final VBox alertsContainer = new VBox(10);
+
     public DashboardView(TodayCollectionsService collectionsService, Runnable onGoToCollections) {
         this(collectionsService, null, null, dest -> {
             if (onGoToCollections != null) onGoToCollections.run();
@@ -186,7 +189,7 @@ public class DashboardView extends VBox {
                 createActionCard("💼", "Patrimonio & Caja", "Movimientos de capital y flujo de efectivo", () -> navigate("Administrativo"))
         );
 
-        contentBox.getChildren().addAll(headerBox, heroCard, pillars, multiRouteCard, lblActionsTitle, actionCards);
+        contentBox.getChildren().addAll(headerBox, heroCard, alertsContainer, pillars, multiRouteCard, lblActionsTitle, actionCards);
 
         ScrollPane scrollPane = new ScrollPane(contentBox);
         scrollPane.setFitToWidth(true);
@@ -222,6 +225,16 @@ public class DashboardView extends VBox {
 
         multiRouteTable.setPrefHeight(180);
         multiRouteTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+
+        VBox emptyBox = new VBox(6);
+        emptyBox.setAlignment(Pos.CENTER);
+        emptyBox.setPadding(new Insets(24));
+        Label emptyTitle = new Label("No hay rutas registradas");
+        emptyTitle.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #334155;");
+        Label emptyHint = new Label("Configure rutas operativas desde el módulo de Configuración.");
+        emptyHint.setStyle("-fx-font-size: 11px; -fx-text-fill: #94a3b8;");
+        emptyBox.getChildren().addAll(emptyTitle, emptyHint);
+        multiRouteTable.setPlaceholder(emptyBox);
 
         TableColumn<RouteRowItem, RouteRowItem> colRoute = new TableColumn<>("RUTA");
         colRoute.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
@@ -419,6 +432,61 @@ public class DashboardView extends VBox {
         lblActiveDebt.setText(CURRENCY.format(m.totalActiveDebt()));
         lblCash.setText(CURRENCY.format(m.cashBalance()));
         lblOverdue.setText(CURRENCY.format(m.overdueAmount()));
+
+        // 2b. Alertas Operativas Accionables
+        alertsContainer.getChildren().clear();
+        BigDecimal overdue = m.overdueAmount() != null ? m.overdueAmount() : BigDecimal.ZERO;
+        int remainingToCollect = Math.max(0, actionableCount - paidCount);
+
+        if (overdue.compareTo(BigDecimal.ZERO) > 0) {
+            HBox alertMora = new HBox(12);
+            alertMora.getStyleClass().add("alert-card-danger");
+            alertMora.setAlignment(Pos.CENTER_LEFT);
+
+            Label icon = new Label("⚠️");
+            icon.setStyle("-fx-font-size: 18px;");
+
+            VBox textCol = new VBox(2);
+            HBox.setHgrow(textCol, Priority.ALWAYS);
+            Label title = new Label("Cartera en Mora Detectada (" + CURRENCY.format(overdue) + ")");
+            title.getStyleClass().add("alert-title");
+            title.setStyle("-fx-text-fill: #DC2626; -fx-font-weight: bold;");
+            Label desc = new Label("Existen cuotas vencidas que requieren gestión o cobro prioritario en las rutas.");
+            desc.getStyleClass().add("alert-desc");
+            textCol.getChildren().addAll(title, desc);
+
+            Button btnAction = new Button("Ver Cobros y Rutas →");
+            btnAction.setStyle("-fx-background-color: #DC2626; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-radius: 6; -fx-padding: 6 12; -fx-cursor: hand;");
+            btnAction.setOnAction(e -> navigate("Cobros y Rutas"));
+
+            alertMora.getChildren().addAll(icon, textCol, btnAction);
+            alertsContainer.getChildren().add(alertMora);
+        }
+
+        if (remainingToCollect > 0 && paidCount > 0) {
+            HBox alertProgress = new HBox(12);
+            alertProgress.getStyleClass().add("alert-card-warning");
+            alertProgress.setAlignment(Pos.CENTER_LEFT);
+
+            Label icon = new Label("⏳");
+            icon.setStyle("-fx-font-size: 18px;");
+
+            VBox textCol = new VBox(2);
+            HBox.setHgrow(textCol, Priority.ALWAYS);
+            Label title = new Label("Cobranza del Día en Curso");
+            title.getStyleClass().add("alert-title");
+            title.setStyle("-fx-text-fill: #D97706; -fx-font-weight: bold;");
+            Label desc = new Label("Faltan " + remainingToCollect + " clientes por gestionar en la jornada activa.");
+            desc.getStyleClass().add("alert-desc");
+            textCol.getChildren().addAll(title, desc);
+
+            Button btnAction = new Button("Supervisar Ruta →");
+            btnAction.setStyle("-fx-background-color: #D97706; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-radius: 6; -fx-padding: 6 12; -fx-cursor: hand;");
+            btnAction.setOnAction(e -> navigate("Cobros y Rutas"));
+
+            alertProgress.getChildren().addAll(icon, textCol, btnAction);
+            alertsContainer.getChildren().add(alertProgress);
+        }
 
         // 3. Cargar comparativo Multi-Ruta
         if (routeRepository != null) {

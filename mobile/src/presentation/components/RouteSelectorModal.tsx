@@ -95,7 +95,13 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent={false}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
@@ -103,7 +109,7 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
         <View
           style={[
             styles.sheetContainer,
-            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+            { paddingBottom: Math.max(insets.bottom, 12) + 8, flexShrink: 1 },
           ]}
         >
           {/* Header */}
@@ -302,7 +308,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '85%',
-    paddingBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.15,

@@ -11,6 +11,7 @@ import {
   Platform,
   TextInput,
   Linking,
+  Keyboard,
 } from 'react-native';
 import {
   SafeAreaProvider,
@@ -220,7 +221,17 @@ function MainApp({
   onTogglePhoneFrame,
 }: MainAppProps) {
   const insets = useSafeAreaInsets();
-  const dockClearance = insets.bottom + 88;
+  const dockClearance = insets.bottom + 84;
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Usuario autenticado activo en el dispositivo (Seguridad Operativa)
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -229,8 +240,8 @@ function MainApp({
   const [userRole, setUserRole] = useState<'COBRADOR' | 'ADMIN'>('COBRADOR');
   const [selectedRouteId, setSelectedRouteId] = useState<string>('ALL');
 
-  // Tabs: HOME (botón central: dashboard con cuadros), RUTA (hoja de cobro en calle), CLIENTES, HISTORIAL, LIQUIDAR
-  const [collectorTab, setCollectorTab] = useState<'HOME' | 'RUTA' | 'CLIENTES' | 'HISTORIAL' | 'LIQUIDAR'>('HOME');
+  // Tabs: RUTA (prioridad operativa en calle), CLIENTES, HOME (Resumen/Caja), HISTORIAL, LIQUIDAR
+  const [collectorTab, setCollectorTab] = useState<'HOME' | 'RUTA' | 'CLIENTES' | 'HISTORIAL' | 'LIQUIDAR'>('RUTA');
   // Filtro con el que se abre la hoja de ruta (la campana la abre en 'PROMESAS')
   const [routeInitialFilter, setRouteInitialFilter] = useState<FilterType>('TODOS');
   const [historyInitialDoc, setHistoryInitialDoc] = useState<string>('');
@@ -379,6 +390,7 @@ function MainApp({
           if (found) {
             setCurrentUser(found);
             setUserRole(found.role === 'COBRADOR' ? 'COBRADOR' : 'ADMIN');
+            setCollectorTab(found.role === 'COBRADOR' ? 'RUTA' : 'HOME');
             if (found.role === 'COBRADOR') {
               const assignedRoute = localStore
                 .getRoutes()
@@ -407,6 +419,7 @@ function MainApp({
   const handleLoginSuccess = async (user: User, remember: boolean) => {
     setCurrentUser(user);
     setUserRole(user.role === 'COBRADOR' ? 'COBRADOR' : 'ADMIN');
+    setCollectorTab(user.role === 'COBRADOR' ? 'RUTA' : 'HOME');
     if (user.role === 'COBRADOR') {
       const assignedRoute = localStore
         .getRoutes()
@@ -566,11 +579,11 @@ function MainApp({
       <StatusBar
         hidden={false}
         barStyle="dark-content"
-        backgroundColor="#F8FAFC"
+        backgroundColor={COLORS.bgPrimary}
         translucent={false}
       />
 
-      {/* Top Bar Móvil Limpio (Kredia Light Fintech UI) */}
+      {/* Top Bar Móvil Simplificado (Prioridad Operativa y Estado Local Offline) */}
       <View style={styles.topBar}>
         <TouchableOpacity
           style={[styles.brandRow, { flex: 1, marginRight: 8 }]}
@@ -585,35 +598,32 @@ function MainApp({
             <Store size={15} color="#FFFFFF" />
           </View>
           <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <Text style={styles.brandTitle} numberOfLines={1}>
                 {activeRouteLabel}
               </Text>
-              {userRole === 'ADMIN' && <ChevronDown size={13} color={COLORS.primary} />}
+              {userRole === 'ADMIN' && <ChevronDown size={14} color={COLORS.primary} />}
             </View>
             <Text style={styles.brandSub} numberOfLines={1}>
-              {localStore.getOfficeConfig().companyName || 'Kredia'} •{' '}
-              {userRole === 'ADMIN'
-                ? 'Admin'
-                : currentUser?.username || 'Ruta'}
+              {localStore.getOfficeConfig().companyName || 'Kredia'} • ● Local activo
             </Text>
           </View>
         </TouchableOpacity>
 
         <View style={styles.rightTopActions}>
-          {/* Campana: Centro Inteligente de Notificaciones */}
+          {/* Campana: Alertas de Mora, Promesas y Renovación */}
           <TouchableOpacity
             style={styles.topActionIconBtn}
             activeOpacity={0.7}
             onPress={() => setNotificationsModalVisible(true)}
           >
             <Bell
-              size={16}
+              size={17}
               color={
                 totalNotificationsCount > 0
                   ? overdueAlertsCount > 0
-                    ? '#DC2626'
-                    : '#D97706'
+                    ? COLORS.danger
+                    : COLORS.warning
                   : COLORS.textPrimary
               }
             />
@@ -622,7 +632,7 @@ function MainApp({
                 style={[
                   styles.topBadgeCircle,
                   {
-                    backgroundColor: overdueAlertsCount > 0 ? '#DC2626' : '#F59E0B',
+                    backgroundColor: overdueAlertsCount > 0 ? COLORS.danger : COLORS.warning,
                     minWidth: 16,
                     height: 16,
                   },
@@ -633,23 +643,23 @@ function MainApp({
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.simulateDayBtn}
-            activeOpacity={0.7}
-            onPress={() => setRecaudoModalVisible(true)}
-          >
-            <Landmark size={11} color="#0D9488" style={{ marginRight: 3 }} />
-            <Text style={styles.simulateDayText}>Recaudo</Text>
-          </TouchableOpacity>
-
-          {userRole === 'ADMIN' && (
+          {userRole === 'ADMIN' ? (
             <TouchableOpacity
               style={styles.officeConfigBtn}
               activeOpacity={0.7}
               onPress={() => setOfficeConfigVisible(true)}
             >
-              <Settings size={11} color="#4F46E5" style={{ marginRight: 3 }} />
+              <Settings size={13} color={COLORS.primary} style={{ marginRight: 4 }} />
               <Text style={styles.officeConfigText}>Oficina</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.simulateDayBtn}
+              activeOpacity={0.7}
+              onPress={() => setExpenseModalVisible(true)}
+            >
+              <Fuel size={13} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={styles.simulateDayText}>Gasto</Text>
             </TouchableOpacity>
           )}
 
@@ -670,8 +680,7 @@ function MainApp({
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             onPress={handleLogout}
           >
-            <LogOut size={12} color="#DC2626" style={{ marginRight: 3 }} />
-            <Text style={styles.logoutTopBtnText}>Salir</Text>
+            <LogOut size={14} color={COLORS.danger} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1056,9 +1065,9 @@ function MainApp({
                                   >
                                     {activeLoan
                                       ? isOverdue
-                                        ? `Mora • ${activeLoan.loanNumber}`
-                                        : `Al Día • ${activeLoan.loanNumber}`
-                                      : 'Libre'}
+                                        ? `! Mora • ${activeLoan.loanNumber}`
+                                        : `✓ Al Día • ${activeLoan.loanNumber}`
+                                      : '○ Libre'}
                                   </Text>
                                 </View>
                               </View>
@@ -1125,22 +1134,26 @@ function MainApp({
             settlements={settlements}
             routes={routes}
             users={localStore.getUsers()}
-            onOpenNewSettlement={() => setSettlementModalVisible(true)}
+            onOpenNewSettlement={() =>
+              userRole === 'COBRADOR'
+                ? setCollectorCuadreModalVisible(true)
+                : setSettlementModalVisible(true)
+            }
           />
         )}
       </View>
 
-      {/* FLOATING BOTTOM DOCK KREDIA */}
-      {!detailCustomer && (
+      {/* NAVEGACIÓN INFERIOR UNIFICADA POR ENCIMA DEL SISTEMA ANDROID */}
+      {!detailCustomer && !isKeyboardVisible && (
         <View
           style={[
             styles.floatingDockWrapper,
-            { bottom: insets.bottom + 8 },
+            { bottom: Math.max(insets.bottom, 8) + 6 },
           ]}
           pointerEvents="box-none"
         >
           <View style={styles.floatingDockPill}>
-            {/* Tab 1: Hoja de Ruta de Cobro en Calle */}
+            {/* 1. Ruta (Prioridad #1 del Cobrador) */}
             <TouchableOpacity
               style={styles.dockNavBtn}
               onPress={() => openRoute()}
@@ -1161,164 +1174,109 @@ function MainApp({
               </Text>
             </TouchableOpacity>
 
-            {/* Tab 2: Clientes (Cobrador) o Liquidaciones (Admin) */}
-            {userRole === 'COBRADOR' ? (
-              <TouchableOpacity
-                style={styles.dockNavBtn}
-                onPress={() => setCollectorTab('CLIENTES')}
+            {/* 2. Clientes */}
+            <TouchableOpacity
+              style={styles.dockNavBtn}
+              onPress={() => setCollectorTab('CLIENTES')}
+            >
+              <Users
+                size={19}
+                color={
+                  collectorTab === 'CLIENTES' ? COLORS.dockActive : COLORS.dockInactive
+                }
+              />
+              <Text
+                style={[
+                  styles.dockNavText,
+                  collectorTab === 'CLIENTES' && styles.dockNavTextActive,
+                ]}
               >
-                <Users
-                  size={19}
-                  color={
-                    collectorTab === 'CLIENTES' ? COLORS.dockActive : COLORS.dockInactive
-                  }
-                />
-                <Text
-                  style={[
-                    styles.dockNavText,
-                    collectorTab === 'CLIENTES' && styles.dockNavTextActive,
-                  ]}
-                >
-                  Clientes
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.dockNavBtn}
-                onPress={() => setCollectorTab('LIQUIDAR')}
-              >
-                <Landmark
-                  size={19}
-                  color={
-                    collectorTab === 'LIQUIDAR' ? COLORS.dockActive : COLORS.dockInactive
-                  }
-                />
-                <Text
-                  style={[
-                    styles.dockNavText,
-                    collectorTab === 'LIQUIDAR' && styles.dockNavTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
-                  Cierres
-                </Text>
-              </TouchableOpacity>
-            )}
+                Clientes
+              </Text>
+            </TouchableOpacity>
 
-            {/* Botón Central con Emblema de la Oficina / Kredia: Dashboard Principal */}
-            <View style={styles.fabCenterSlot}>
-              <View style={styles.centralFabHalo}>
-                <TouchableOpacity
-                  style={[
-                    styles.centralFabButton,
-                    collectorTab === 'HOME' && !detailCustomer && styles.centralFabButtonActive,
-                  ]}
-                  activeOpacity={0.85}
-                  onPress={handleCentralLogoPress}
-                >
-                  <View style={styles.centralLogoBadge}>
-                    <Text style={styles.centralLogoText}>
-                      {(localStore.getOfficeConfig().companyName || 'Kredia')
-                        .split(/\s+/)
-                        .filter(Boolean)
-                        .slice(0, 2)
-                        .map((w) => w[0].toUpperCase())
-                        .join('') || 'KR'}
-                    </Text>
-                    <Text style={styles.centralLogoSub}>INICIO</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </View>
+            {/* 3. Resumen / Caja del Día */}
+            <TouchableOpacity
+              style={styles.dockNavBtn}
+              onPress={handleCentralLogoPress}
+            >
+              <Store
+                size={19}
+                color={
+                  collectorTab === 'HOME' ? COLORS.dockActive : COLORS.dockInactive
+                }
+              />
+              <Text
+                style={[
+                  styles.dockNavText,
+                  collectorTab === 'HOME' && styles.dockNavTextActive,
+                ]}
+              >
+                Resumen
+              </Text>
+            </TouchableOpacity>
 
-            {/* Tab 3: Clientes (Admin) o Historial (Cobrador) con badge */}
-            {userRole === 'ADMIN' ? (
-              <TouchableOpacity
-                style={styles.dockNavBtn}
-                onPress={() => setCollectorTab('CLIENTES')}
-              >
-                <Users
-                  size={19}
-                  color={
-                    collectorTab === 'CLIENTES' ? COLORS.dockActive : COLORS.dockInactive
-                  }
-                />
-                <Text
-                  style={[
-                    styles.dockNavText,
-                    collectorTab === 'CLIENTES' && styles.dockNavTextActive,
-                  ]}
-                >
-                  Clientes
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.dockNavBtn}
-                onPress={() => {
-                  setHistoryInitialDoc('');
-                  setCollectorTab('HISTORIAL');
-                }}
-              >
-                <View style={{ position: 'relative' }}>
-                  <Receipt
-                    size={19}
-                    color={
-                      collectorTab === 'HISTORIAL' ? COLORS.dockActive : COLORS.dockInactive
-                    }
-                  />
-                  {todayPaymentsCount > 0 && (
-                    <View style={styles.dockBadgePill}>
-                      <Text style={styles.dockBadgeText}>{todayPaymentsCount}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text
-                  style={[
-                    styles.dockNavText,
-                    collectorTab === 'HISTORIAL' && styles.dockNavTextActive,
-                  ]}
-                >
-                  Historial
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Tab 4: Cobrador -> Gasto Ruta | Admin -> Historial Crediticio */}
-            {userRole === 'COBRADOR' ? (
-              <TouchableOpacity
-                style={styles.dockNavBtn}
-                onPress={() => setExpenseModalVisible(true)}
-              >
-                <Fuel size={19} color={COLORS.dockInactive} />
-                <Text style={styles.dockNavText}>
-                  Gastos
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={styles.dockNavBtn}
-                onPress={() => {
-                  setHistoryInitialDoc('');
-                  setCollectorTab('HISTORIAL');
-                }}
-              >
-                <ClipboardList
+            {/* 4. Historial de Cobros y Créditos */}
+            <TouchableOpacity
+              style={styles.dockNavBtn}
+              onPress={() => {
+                setHistoryInitialDoc('');
+                setCollectorTab('HISTORIAL');
+              }}
+            >
+              <View style={{ position: 'relative' }}>
+                <Receipt
                   size={19}
                   color={
                     collectorTab === 'HISTORIAL' ? COLORS.dockActive : COLORS.dockInactive
                   }
                 />
-                <Text
-                  style={[
-                    styles.dockNavText,
-                    collectorTab === 'HISTORIAL' && styles.dockNavTextActive,
-                  ]}
-                >
-                  Historial
-                </Text>
-              </TouchableOpacity>
-            )}
+                {todayPaymentsCount > 0 && (
+                  <View style={styles.dockBadgePill}>
+                    <Text style={styles.dockBadgeText}>{todayPaymentsCount}</Text>
+                  </View>
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.dockNavText,
+                  collectorTab === 'HISTORIAL' && styles.dockNavTextActive,
+                ]}
+              >
+                Historial
+              </Text>
+            </TouchableOpacity>
+
+            {/* 5. Liquidar / Cuadre del Día */}
+            <TouchableOpacity
+              style={styles.dockNavBtn}
+              onPress={() => {
+                if (userRole === 'COBRADOR') {
+                  setCollectorCuadreModalVisible(true);
+                } else {
+                  setCollectorTab('LIQUIDAR');
+                }
+              }}
+            >
+              <Landmark
+                size={19}
+                color={
+                  collectorTab === 'LIQUIDAR' || collectorCuadreModalVisible
+                    ? COLORS.dockActive
+                    : COLORS.dockInactive
+                }
+              />
+              <Text
+                style={[
+                  styles.dockNavText,
+                  (collectorTab === 'LIQUIDAR' || collectorCuadreModalVisible) &&
+                    styles.dockNavTextActive,
+                ]}
+                numberOfLines={1}
+              >
+                Liquidar
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -1515,7 +1473,7 @@ function MainApp({
         style={[
           styles.safeArea,
           {
-            backgroundColor: '#F3F7FA',
+            backgroundColor: COLORS.bgPrimary,
           },
         ]}
         edges={['top', 'bottom', 'left', 'right']}
@@ -1523,7 +1481,7 @@ function MainApp({
         <StatusBar
           hidden={false}
           barStyle="dark-content"
-          backgroundColor="#F3F7FA"
+          backgroundColor={COLORS.bgPrimary}
           translucent={false}
         />
         <LoginView
@@ -1592,8 +1550,8 @@ const styles = StyleSheet.create({
     borderColor: '#334155',
   },
   androidProfileChipActive: {
-    backgroundColor: '#0D9488',
-    borderColor: '#2DD4BF',
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.accent,
   },
   androidProfileChipText: {
     color: '#94A3B8',
@@ -1609,9 +1567,9 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.bgPrimary,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: COLORS.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1626,11 +1584,11 @@ const styles = StyleSheet.create({
   androidStatusClock: {
     fontSize: 11.5,
     fontWeight: '800',
-    color: '#0F172A',
+    color: COLORS.textPrimary,
   },
   androidStatusIcons: {
     fontSize: 10,
-    color: '#475569',
+    color: COLORS.textSecondary,
   },
   androidStatusRight: {
     flexDirection: 'row',
@@ -1639,16 +1597,16 @@ const styles = StyleSheet.create({
   androidStatusMeta: {
     fontSize: 10.5,
     fontWeight: '700',
-    color: '#0F172A',
+    color: COLORS.textPrimary,
   },
   androidSystemNavBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.bgPrimary,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 999,
@@ -1662,13 +1620,13 @@ const styles = StyleSheet.create({
   androidNavButtonGlyph: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#475569',
+    color: COLORS.textSecondary,
   },
   androidGesturePill: {
     width: 108,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#475569',
+    backgroundColor: COLORS.textSecondary,
   },
   phoneHomeIndicator: {
     width: 120,
@@ -1699,10 +1657,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   brandBadgeIcon: {
-    width: 34,
-    height: 34,
+    width: 36,
+    height: 36,
     borderRadius: 11,
-    backgroundColor: '#0D9488',
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1715,7 +1673,7 @@ const styles = StyleSheet.create({
   },
   brandSub: {
     fontFamily: FONT_FAMILY,
-    color: COLORS.textMuted,
+    color: COLORS.textSecondary,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -1725,55 +1683,55 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   logoutTopBtn: {
-    flexDirection: 'row',
+    width: 34,
+    height: 34,
     alignItems: 'center',
-    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    backgroundColor: COLORS.dangerLight,
     borderWidth: 1,
-    borderColor: '#FECACA',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
+    borderColor: COLORS.dangerBorder,
+    borderRadius: 10,
   },
   logoutTopBtnText: {
     fontSize: 11,
-    color: '#DC2626',
+    color: COLORS.danger,
     fontWeight: '800',
   },
   officeConfigBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#C7D2FE',
+    borderColor: COLORS.primaryBorder,
   },
   officeConfigText: {
-    color: '#4F46E5',
-    fontSize: 10.5,
+    color: COLORS.primary,
+    fontSize: 11,
     fontWeight: '800',
   },
   simulateDayBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0FDFA',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#99F6E4',
+    borderColor: COLORS.primaryBorder,
   },
   simulateDayText: {
-    color: '#0D9488',
-    fontSize: 10.5,
+    color: COLORS.primary,
+    fontSize: 11,
     fontWeight: '800',
   },
   frameToggleBtn: {
     backgroundColor: COLORS.surfaceSoft,
     paddingHorizontal: 7,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingVertical: 6,
+    borderRadius: 9,
     borderWidth: 1,
     borderColor: COLORS.microBorder,
   },
@@ -1800,9 +1758,9 @@ const styles = StyleSheet.create({
   addCustomerHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0D9488',
+    backgroundColor: COLORS.primary,
     paddingHorizontal: 13,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: 10,
   },
   addCustomerHeaderText: {
@@ -1822,7 +1780,7 @@ const styles = StyleSheet.create({
   },
   directorySubheader: {
     fontSize: 12,
-    color: '#64748b',
+    color: COLORS.textSecondary,
     marginTop: 2,
     fontWeight: '500',
   },
@@ -1836,12 +1794,12 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'ios' ? 8 : 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: COLORS.border,
   },
   searchBarInput: {
     flex: 1,
     fontSize: 13,
-    color: '#0f172a',
+    color: COLORS.textPrimary,
     paddingVertical: 6,
   },
   clearSearchBtn: {
@@ -1854,21 +1812,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: COLORS.border,
   },
   filterChipActive: {
-    backgroundColor: '#F0FDFA',
-    borderColor: '#0D9488',
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
   filterChipText: {
     fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
-    color: '#64748b',
+    color: COLORS.textSecondary,
   },
   filterChipTextActive: {
     fontFamily: FONT_FAMILY,
-    color: '#0F766E',
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   customerCardWrapper: {

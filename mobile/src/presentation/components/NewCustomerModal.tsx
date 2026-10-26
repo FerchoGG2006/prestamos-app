@@ -241,7 +241,13 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent={false}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
@@ -249,7 +255,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
         <View
           style={[
             styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 16) },
+            { paddingBottom: Math.max(insets.bottom, 12) + 8 },
           ]}
         >
           <View style={styles.sheetHandle} />
@@ -862,7 +868,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 24,
     maxHeight: '92%',
     flexShrink: 1,
     borderTopWidth: 1,

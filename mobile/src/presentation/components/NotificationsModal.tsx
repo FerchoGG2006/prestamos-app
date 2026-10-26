@@ -191,12 +191,18 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent={false}
+      onRequestClose={onClose}
+    >
       <View style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}>
         <View
           style={[
             styles.container,
-            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+            { paddingBottom: Math.max(insets.bottom, 12) + 8, flexShrink: 1 },
           ]}
         >
           {/* Header */}
@@ -368,7 +374,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '85%',
-    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.1,

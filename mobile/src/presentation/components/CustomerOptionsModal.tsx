@@ -143,7 +143,13 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
     .join('');
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent={false}
+      onRequestClose={onClose}
+    >
       <View style={[styles.modalOverlay, { paddingTop: Math.max(insets.top, 12) }]}>
         <View
           style={[

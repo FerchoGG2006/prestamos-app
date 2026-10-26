@@ -104,7 +104,7 @@ public final class CarteraApplication extends Application {
         routeRepository = context.getBean(RouteRepository.class);
 
         root = new BorderPane();
-        root.setStyle("-fx-background-color: #f8fafc;");
+        root.setStyle("-fx-background-color: #F6F4EE;");
 
         // Inicializar vistas con servicios inyectados de Spring
         var collectionsService = context.getBean(TodayCollectionsService.class);
@@ -210,7 +210,7 @@ public final class CarteraApplication extends Application {
         configurationView.setOnRoutesChanged(this::reloadGlobalRoutes);
 
         mainContainer = new BorderPane();
-        mainContainer.setStyle("-fx-background-color: #f8fafc;");
+        mainContainer.setStyle("-fx-background-color: #F6F4EE;");
         mainContainer.setTop(topBar());
 
         root.setLeft(sidebar());
@@ -219,7 +219,7 @@ public final class CarteraApplication extends Application {
         loginView = new LoginView(authService, this::onLoginSuccess);
 
         appRoot = new StackPane();
-        appRoot.setStyle("-fx-background-color: #f1f5f9;");
+        appRoot.setStyle("-fx-background-color: #F6F4EE;");
         appRoot.getChildren().add(loginView);
 
         Rectangle2D visualBounds = Screen.getPrimary().getVisualBounds();

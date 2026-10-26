@@ -27,8 +27,10 @@ import {
   Building2,
   Route as RouteIcon,
   RotateCcw,
+  AlertTriangle,
 } from 'lucide-react-native';
 import { localStore } from '../../../infrastructure/storage/local-store';
+import { COLORS } from '../../theme/colors';
 
 interface LoginViewProps {
   users: User[];
@@ -43,6 +45,19 @@ interface EditableRouteDraft {
   username: string;
   password: string;
 }
+
+const FORBIDDEN_DEFAULT_PASSWORDS = new Set([
+  '123',
+  '1234',
+  '12345',
+  '123456',
+  '000',
+  '0000',
+  '000000',
+  'admin',
+  'password',
+  'cobrador',
+]);
 
 export const LoginView: React.FC<LoginViewProps> = ({
   onLoginSuccess,
@@ -63,6 +78,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   // Modal de Registro / Configuración de Oficina y Credenciales
   const [setupVisible, setSetupVisible] = useState(false);
+  const [wizCurrentAdminPassword, setWizCurrentAdminPassword] = useState('');
   const [wizCompanyName, setWizCompanyName] = useState('');
   const [wizAdminUsername, setWizAdminUsername] = useState('');
   const [wizAdminPassword, setWizAdminPassword] = useState('');
@@ -76,6 +92,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const handleLogin = () => {
     const cleanUser = username.trim().toLowerCase();
     const cleanPass = password.trim();
+
+    if (!isOfficeRegistered) {
+      setErrorMessage(
+        'Primero registra tu oficina y crea las credenciales de acceso para habilitar el sistema.'
+      );
+      return;
+    }
 
     if (!cleanUser || !cleanPass) {
       setErrorMessage('Ingresa tu usuario y contraseña.');
@@ -95,8 +118,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
           (u.email || '').toLowerCase() === cleanUser
       );
 
-      if (!matchedUser || cleanPass !== (matchedUser.password || '123')) {
-        setErrorMessage('Credenciales incorrectas. Verifica tu usuario y clave.');
+      const storedPassword = matchedUser?.password?.trim() || '';
+      if (
+        !matchedUser ||
+        !storedPassword ||
+        FORBIDDEN_DEFAULT_PASSWORDS.has(storedPassword.toLowerCase()) ||
+        cleanPass !== storedPassword
+      ) {
+        setErrorMessage('Credenciales incorrectas. Verifica tu usuario y contraseña.');
         return;
       }
 
@@ -106,6 +135,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   const resetWizardToBlank = () => {
+    setWizCurrentAdminPassword('');
     setWizCompanyName('');
     setWizAdminUsername('');
     setWizAdminPassword('');
@@ -125,7 +155,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
-    // Si ya había registrado su oficina previamente, cargar sus datos actuales
+    // Si ya había registrado su oficina previamente, cargar nombres de ruta y usuarios,
+    // NUNCA exponer contraseñas en texto plano.
     const currentUsers = localStore.getUsers();
     const currentRoutes = localStore.getRoutes();
     const existingAdmin = currentUsers.find(
@@ -133,9 +164,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
     );
 
     const adminUserStr = (existingAdmin?.username || '').toLowerCase();
+    setWizCurrentAdminPassword('');
     setWizCompanyName(cfg.companyName || '');
     setWizAdminUsername(adminUserStr);
-    setWizAdminPassword(existingAdmin?.password || '');
+    setWizAdminPassword('');
 
     const count = Math.max(1, currentRoutes.length || 1);
     setWizRoutesCount(count);
@@ -161,7 +193,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         id: r?.id,
         name: r?.name || '',
         username: candidateUser,
-        password: col?.password || '',
+        password: '',
       });
     }
 
@@ -200,15 +232,37 @@ export const LoginView: React.FC<LoginViewProps> = ({
         setWizError('Escribe el nombre de tu oficina.');
         return;
       }
+      if (isOfficeRegistered && !wizCurrentAdminPassword.trim()) {
+        setWizError('Ingresa la clave actual del Administrador para autorizar cambios.');
+        return;
+      }
       if (!wizAdminUsername.trim() || !wizAdminPassword.trim()) {
-        setWizError('Crea el usuario y la clave para el Administrador.');
+        setWizError('Crea el usuario y la nueva clave para el Administrador.');
+        return;
+      }
+      if (
+        wizAdminPassword.trim().length < 6 ||
+        FORBIDDEN_DEFAULT_PASSWORDS.has(wizAdminPassword.trim().toLowerCase())
+      ) {
+        setWizError(
+          'La clave del Administrador debe tener mínimo 6 caracteres y no usar valores predeterminados.'
+        );
         return;
       }
 
       for (let i = 0; i < wizRoutesDraft.length; i++) {
         const rt = wizRoutesDraft[i];
         if (!rt.username.trim() || !rt.password.trim()) {
-          setWizError(`Define el usuario y clave para la Ruta ${i + 1}.`);
+          setWizError(`Define el usuario y clave (mín. 6 caracteres) para la Ruta ${i + 1}.`);
+          return;
+        }
+        if (
+          rt.password.trim().length < 6 ||
+          FORBIDDEN_DEFAULT_PASSWORDS.has(rt.password.trim().toLowerCase())
+        ) {
+          setWizError(
+            `La clave de la Ruta ${i + 1} debe tener al menos 6 caracteres y no usar valores predeterminados.`
+          );
           return;
         }
       }
@@ -218,6 +272,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         adminName: 'Administración General',
         adminUsername: wizAdminUsername.trim().toLowerCase(),
         adminPassword: wizAdminPassword.trim(),
+        currentAdminPassword: isOfficeRegistered ? wizCurrentAdminPassword.trim() : undefined,
         cleanCustomersData: wizCleanPortfolio,
         routesConfig: wizRoutesDraft.map((d, i) => {
           const cleanName = d.name.trim() || `Ruta ${i + 1}`;
@@ -257,123 +312,150 @@ export const LoginView: React.FC<LoginViewProps> = ({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-      <View style={styles.centerContent}>
-        {/* Identidad Propia de la Aplicación: Kredia */}
-        <View style={styles.header}>
-          <View style={styles.brandEmblem}>
-            <Text style={styles.brandEmblemLetter}>K</Text>
-            <View style={styles.brandEmblemDot}>
-              <ShieldCheck size={11} color="#FFFFFF" />
+        <View style={styles.centerContent}>
+          {/* Identidad Visual Unificada: Azul Tinta (#12263F) + Ocre (#C9892B) */}
+          <View style={styles.header}>
+            <View style={styles.brandEmblem}>
+              <Text style={styles.brandEmblemLetter}>K</Text>
+              <View style={styles.brandEmblemDot}>
+                <ShieldCheck size={11} color="#FFFFFF" />
+              </View>
             </View>
-          </View>
-          <Text style={styles.appBrandName}>Kredia</Text>
-          <Text style={styles.appTagline}>Sistema de Gestión de Cartera y Rutas</Text>
+            <Text style={styles.appBrandName}>Kredia</Text>
+            <Text style={styles.appTagline}>Gestión de Cartera y Cobro en Ruta</Text>
 
-          {isOfficeRegistered && (
-            <View style={styles.activeOfficeBadge}>
-              <Building2 size={11} color="#0F766E" style={{ marginRight: 5 }} />
-              <Text style={styles.activeOfficeBadgeText} numberOfLines={1}>
-                {officeConfig.companyName}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Tarjeta Blanca Fintech: Solo Usuario y Contraseña */}
-        <View style={styles.card}>
-          {savedNotice ? (
-            <View style={styles.successBox}>
-              <CheckCircle2 size={14} color="#059669" />
-              <Text style={styles.successText}>{savedNotice}</Text>
-            </View>
-          ) : null}
-
-          {errorMessage ? (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            </View>
-          ) : null}
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Usuario</Text>
-            <View style={styles.inputWrapper}>
-              <UserIcon size={16} color="#64748B" style={styles.inputIcon} />
-              <TextInput
-                style={styles.textInput}
-                value={username}
-                onChangeText={(v) => {
-                  setUsername(v);
-                  setErrorMessage('');
-                }}
-                placeholder="Ingresa tu usuario"
-                placeholderTextColor="#94A3B8"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Contraseña</Text>
-            <View style={styles.inputWrapper}>
-              <Lock size={16} color="#64748B" style={styles.inputIcon} />
-              <TextInput
-                style={styles.textInput}
-                value={password}
-                onChangeText={(v) => {
-                  setPassword(v);
-                  setErrorMessage('');
-                }}
-                placeholder="Ingresa tu contraseña"
-                placeholderTextColor="#94A3B8"
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                onSubmitEditing={handleLogin}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeBtn}
-              >
-                {showPassword ? (
-                  <EyeOff size={16} color="#64748B" />
-                ) : (
-                  <Eye size={16} color="#64748B" />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[styles.submitBtn, isLoading && { opacity: 0.7 }]}
-            activeOpacity={0.85}
-            onPress={handleLogin}
-            disabled={isLoading}
-          >
-            {isLoading && (
-              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+            {isOfficeRegistered ? (
+              <View style={styles.activeOfficeBadge}>
+                <Building2 size={12} color={COLORS.primary} style={{ marginRight: 5 }} />
+                <Text style={styles.activeOfficeBadgeText} numberOfLines={1}>
+                  {officeConfig.companyName}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.unconfiguredNoticeBadge}>
+                <AlertTriangle size={12} color={COLORS.warning} style={{ marginRight: 5 }} />
+                <Text style={styles.unconfiguredNoticeText}>
+                  Oficina pendiente de configuración inicial
+                </Text>
+              </View>
             )}
-            <Text style={styles.submitBtnText}>Ingresar</Text>
+          </View>
+
+          {/* Tarjeta Blanca de Acceso */}
+          <View style={styles.card}>
+            {savedNotice ? (
+              <View style={styles.successBox}>
+                <CheckCircle2 size={14} color={COLORS.success} />
+                <Text style={styles.successText}>{savedNotice}</Text>
+              </View>
+            ) : null}
+
+            {errorMessage ? (
+              <View style={styles.errorBox}>
+                <AlertTriangle size={14} color={COLORS.danger} style={{ marginRight: 6 }} />
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Usuario de Ruta o Administración</Text>
+              <View style={styles.inputWrapper}>
+                <UserIcon size={16} color={COLORS.textSecondary} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  value={username}
+                  onChangeText={(v) => {
+                    setUsername(v);
+                    setErrorMessage('');
+                  }}
+                  placeholder="Ingresa tu usuario asignado"
+                  placeholderTextColor={COLORS.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Contraseña</Text>
+              <View style={styles.inputWrapper}>
+                <Lock size={16} color={COLORS.textSecondary} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.textInput}
+                  value={password}
+                  onChangeText={(v) => {
+                    setPassword(v);
+                    setErrorMessage('');
+                  }}
+                  placeholder="Ingresa tu contraseña"
+                  placeholderTextColor={COLORS.textMuted}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  onSubmitEditing={handleLogin}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  {showPassword ? (
+                    <EyeOff size={16} color={COLORS.textSecondary} />
+                  ) : (
+                    <Eye size={16} color={COLORS.textSecondary} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.submitBtn, isLoading && { opacity: 0.7 }]}
+              activeOpacity={0.85}
+              onPress={handleLogin}
+              disabled={isLoading}
+            >
+              {isLoading && (
+                <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
+              )}
+              <Text style={styles.submitBtnText}>Iniciar Jornada</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Botón para Registrar o Configurar Oficina y Credenciales */}
+          <TouchableOpacity
+            style={[
+              styles.setupPill,
+              !isOfficeRegistered && styles.setupPillHighlight,
+            ]}
+            activeOpacity={0.75}
+            onPress={openSetupModal}
+          >
+            <SlidersHorizontal
+              size={14}
+              color={!isOfficeRegistered ? COLORS.accent : COLORS.primary}
+              style={{ marginRight: 6 }}
+            />
+            <Text
+              style={[
+                styles.setupPillText,
+                !isOfficeRegistered && { color: COLORS.primary, fontWeight: '800' },
+              ]}
+            >
+              {isOfficeRegistered
+                ? 'Configurar oficina y rutas (Requiere clave Admin)'
+                : 'Registrar mi oficina y crear credenciales'}
+            </Text>
           </TouchableOpacity>
         </View>
-
-        {/* Botón Ligero para Registrar o Configurar Oficina y Credenciales */}
-        <TouchableOpacity
-          style={styles.setupPill}
-          activeOpacity={0.75}
-          onPress={openSetupModal}
-        >
-          <SlidersHorizontal size={13} color="#0D9488" style={{ marginRight: 6 }} />
-          <Text style={styles.setupPillText}>
-            {isOfficeRegistered
-              ? 'Configurar oficina y credenciales'
-              : 'Registrar mi oficina y crear credenciales'}
-          </Text>
-        </TouchableOpacity>
-      </View>
       </ScrollView>
 
-      {/* Modal Fintech Claro: Creación / Configuración de Oficina y Credenciales */}
-      <Modal visible={setupVisible} animationType="fade" transparent>
+      {/* Modal de Configuración de Oficina y Credenciales */}
+      <Modal
+        visible={setupVisible}
+        animationType="fade"
+        transparent
+        statusBarTranslucent={false}
+        onRequestClose={() => setSetupVisible(false)}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={[
@@ -385,16 +467,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
           ]}
         >
           <View style={styles.modalSheet}>
-            {/* Encabezado Claro */}
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <View style={styles.modalIconCircle}>
-                  <Building2 size={16} color="#0D9488" />
+                  <Building2 size={16} color={COLORS.primary} />
                 </View>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.modalTitle}>Configurar Oficina y Rutas</Text>
                   <Text style={styles.modalSubtitle}>
-                    Crea las credenciales de tu oficina y de cada ruta
+                    Claves personales seguras (mínimo 6 caracteres)
                   </Text>
                 </View>
               </View>
@@ -403,14 +484,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   onPress={resetWizardToBlank}
                   style={styles.clearBtn}
                 >
-                  <RotateCcw size={12} color="#64748B" style={{ marginRight: 4 }} />
+                  <RotateCcw size={12} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
                   <Text style={styles.clearBtnText}>Limpiar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setSetupVisible(false)}
                   style={styles.closeBtn}
                 >
-                  <X size={16} color="#64748B" />
+                  <X size={16} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -423,9 +504,28 @@ export const LoginView: React.FC<LoginViewProps> = ({
             >
               {wizError ? (
                 <View style={styles.errorBox}>
+                  <AlertTriangle size={14} color={COLORS.danger} style={{ marginRight: 6 }} />
                   <Text style={styles.errorText}>{wizError}</Text>
                 </View>
               ) : null}
+
+              {isOfficeRegistered && (
+                <View style={styles.authVerifyBox}>
+                  <Text style={styles.authVerifyTitle}>
+                    🔒 Autorización de Administrador Requerida
+                  </Text>
+                  <Text style={styles.fieldCaption}>Clave Actual del Administrador</Text>
+                  <TextInput
+                    style={styles.compactInput}
+                    value={wizCurrentAdminPassword}
+                    onChangeText={setWizCurrentAdminPassword}
+                    placeholder="Ingresa la clave actual para autorizar cambios"
+                    placeholderTextColor={COLORS.textMuted}
+                    secureTextEntry
+                    autoCapitalize="none"
+                  />
+                </View>
+              )}
 
               {/* 1. Tarjeta de Oficina y Administrador */}
               <View style={styles.adminBox}>
@@ -442,7 +542,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     value={wizCompanyName}
                     onChangeText={setWizCompanyName}
                     placeholder="Escribe el nombre de tu oficina"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={COLORS.textMuted}
                   />
                 </View>
 
@@ -454,28 +554,29 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       value={wizAdminUsername}
                       onChangeText={setWizAdminUsername}
                       placeholder="Crea tu usuario"
-                      placeholderTextColor="#94A3B8"
+                      placeholderTextColor={COLORS.textMuted}
                       autoCapitalize="none"
                     />
                   </View>
                   <View style={styles.colItem}>
-                    <Text style={styles.fieldCaption}>Clave Administrador</Text>
+                    <Text style={styles.fieldCaption}>Clave Admin (mín. 6)</Text>
                     <TextInput
                       style={styles.compactInput}
                       value={wizAdminPassword}
                       onChangeText={setWizAdminPassword}
-                      placeholder="Crea tu clave"
-                      placeholderTextColor="#94A3B8"
+                      placeholder="Mín. 6 caracteres"
+                      placeholderTextColor={COLORS.textMuted}
+                      secureTextEntry
                       autoCapitalize="none"
                     />
                   </View>
                 </View>
               </View>
 
-              {/* 2. Selector Ligero de Cantidad de Rutas */}
+              {/* 2. Selector de Cantidad de Rutas */}
               <View style={styles.routesHeaderBar}>
                 <View style={styles.routesHeaderLeft}>
-                  <RouteIcon size={15} color="#0D9488" />
+                  <RouteIcon size={15} color={COLORS.primary} />
                   <Text style={styles.routesHeaderTitle}>2. ¿Cuántas rutas tendrá la oficina?</Text>
                 </View>
 
@@ -484,19 +585,19 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     style={styles.stepBtn}
                     onPress={() => changeRoutesCount(wizRoutesCount - 1)}
                   >
-                    <Minus size={13} color="#0D9488" />
+                    <Minus size={13} color={COLORS.primary} />
                   </TouchableOpacity>
                   <Text style={styles.stepCountText}>{wizRoutesCount}</Text>
                   <TouchableOpacity
                     style={styles.stepBtn}
                     onPress={() => changeRoutesCount(wizRoutesCount + 1)}
                   >
-                    <Plus size={13} color="#0D9488" />
+                    <Plus size={13} color={COLORS.primary} />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* 3. Tarjetas Ligeras por Ruta (campos limpios para que la oficina los configure a su gusto) */}
+              {/* 3. Tarjetas por Ruta */}
               {wizRoutesDraft.map((rt, idx) => (
                 <View key={idx} style={styles.routeCard}>
                   <View style={styles.routeTopLine}>
@@ -509,7 +610,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         value={rt.name}
                         onChangeText={(v) => updateRouteDraft(idx, 'name', v)}
                         placeholder={`Nombre de la Ruta ${idx + 1} (opcional)`}
-                        placeholderTextColor="#94A3B8"
+                        placeholderTextColor={COLORS.textMuted}
                       />
                     </View>
                   </View>
@@ -518,22 +619,23 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     <View style={styles.colItem}>
                       <Text style={styles.fieldCaption}>Usuario Cobrador</Text>
                       <TextInput
-                        style={[styles.compactInput, styles.tealInputText]}
+                        style={[styles.compactInput, styles.inkInputText]}
                         value={rt.username}
                         onChangeText={(v) => updateRouteDraft(idx, 'username', v)}
-                        placeholder={`Crea usuario ruta ${idx + 1}`}
-                        placeholderTextColor="#94A3B8"
+                        placeholder={`Usuario ruta ${idx + 1}`}
+                        placeholderTextColor={COLORS.textMuted}
                         autoCapitalize="none"
                       />
                     </View>
                     <View style={styles.colItem}>
-                      <Text style={styles.fieldCaption}>Clave de Acceso</Text>
+                      <Text style={styles.fieldCaption}>Clave (mín. 6)</Text>
                       <TextInput
                         style={styles.compactInput}
                         value={rt.password}
                         onChangeText={(v) => updateRouteDraft(idx, 'password', v)}
-                        placeholder="Crea su clave"
-                        placeholderTextColor="#94A3B8"
+                        placeholder="Mín. 6 caracteres"
+                        placeholderTextColor={COLORS.textMuted}
+                        secureTextEntry
                         autoCapitalize="none"
                       />
                     </View>
@@ -549,8 +651,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  backgroundColor: wizCleanPortfolio ? '#ECFDF5' : '#F8FAFC',
-                  borderColor: wizCleanPortfolio ? '#A7F3D0' : '#E2E8F0',
+                  backgroundColor: wizCleanPortfolio ? COLORS.successLight : COLORS.surfaceSoft,
+                  borderColor: wizCleanPortfolio ? COLORS.successBorder : COLORS.border,
                   borderWidth: 1,
                   borderRadius: 12,
                   paddingHorizontal: 12,
@@ -558,13 +660,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 }}
               >
                 <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
-                    Iniciar oficina limpia (sin clientes de prueba)
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.textPrimary }}>
+                    Iniciar oficina limpia (sin clientes de demostración)
                   </Text>
-                  <Text style={{ fontSize: 10.5, color: '#64748B', marginTop: 1 }}>
+                  <Text style={{ fontSize: 10.5, color: COLORS.textSecondary, marginTop: 1 }}>
                     {wizCleanPortfolio
-                      ? 'Activado: La cartera iniciará en $0 lista para registrar tus clientes y cartulinas.'
-                      : 'Desactivado: Se conservarán los clientes actuales de demostración.'}
+                      ? '✓ Activado: La cartera iniciará en $0 lista para registrar tus clientes.'
+                      : '○ Desactivado: Se conservarán los registros actuales.'}
                   </Text>
                 </View>
                 <View
@@ -572,23 +674,22 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     paddingHorizontal: 9,
                     paddingVertical: 4,
                     borderRadius: 8,
-                    backgroundColor: wizCleanPortfolio ? '#0D9488' : '#E2E8F0',
+                    backgroundColor: wizCleanPortfolio ? COLORS.success : COLORS.border,
                   }}
                 >
                   <Text
                     style={{
                       fontSize: 10.5,
                       fontWeight: '800',
-                      color: wizCleanPortfolio ? '#FFFFFF' : '#475569',
+                      color: wizCleanPortfolio ? '#FFFFFF' : COLORS.textPrimary,
                     }}
                   >
-                    {wizCleanPortfolio ? 'SÍ' : 'NO'}
+                    {wizCleanPortfolio ? '✓ SÍ' : 'NO'}
                   </Text>
                 </View>
               </TouchableOpacity>
             </ScrollView>
 
-            {/* Pie del Modal con Doble Acción Clara */}
             <View style={styles.modalFooter}>
               <TouchableOpacity
                 style={styles.secondarySaveBtn}
@@ -614,7 +715,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F3F7FA',
+    backgroundColor: COLORS.bgPrimary,
   },
   scrollContent: {
     flexGrow: 1,
@@ -632,16 +733,16 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   brandEmblem: {
-    width: 52,
-    height: 52,
+    width: 54,
+    height: 54,
     borderRadius: 16,
-    backgroundColor: '#0D9488',
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
-    shadowColor: '#0D9488',
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.22,
     shadowRadius: 8,
     elevation: 3,
   },
@@ -658,21 +759,21 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#0F172A',
+    backgroundColor: COLORS.accent,
     borderWidth: 2,
-    borderColor: '#F3F7FA',
+    borderColor: COLORS.bgPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   appBrandName: {
-    color: '#0F172A',
+    color: COLORS.textPrimary,
     fontSize: 24,
     fontWeight: '900',
     letterSpacing: -0.5,
     marginBottom: 2,
   },
   appTagline: {
-    color: '#64748B',
+    color: COLORS.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -683,25 +784,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
-    backgroundColor: '#E6F7F5',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#99F6E4',
+    borderColor: COLORS.border,
     maxWidth: '90%',
   },
   activeOfficeBadgeText: {
-    color: '#0F766E',
+    color: COLORS.textPrimary,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  unconfiguredNoticeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: COLORS.warningLight,
+    borderWidth: 1,
+    borderColor: COLORS.warningBorder,
+  },
+  unconfiguredNoticeText: {
+    color: COLORS.warning,
     fontSize: 11,
     fontWeight: '700',
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.bgSecondary,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#0F172A',
+    borderColor: COLORS.border,
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 16,
     elevation: 2,
   },
@@ -710,8 +827,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#ECFDF5',
-    borderColor: '#A7F3D0',
+    backgroundColor: COLORS.successLight,
+    borderColor: COLORS.successBorder,
     borderWidth: 1,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -719,13 +836,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   successText: {
-    color: '#065F46',
+    color: COLORS.success,
     fontSize: 11.5,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   errorBox: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#FECACA',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.dangerLight,
+    borderColor: COLORS.dangerBorder,
     borderWidth: 1,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -733,16 +853,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   errorText: {
-    color: '#DC2626',
+    color: COLORS.danger,
     fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: '700',
+    flexShrink: 1,
   },
   inputGroup: {
-    marginBottom: 13,
+    marginBottom: 14,
   },
   inputLabel: {
-    color: '#334155',
+    color: COLORS.textPrimary,
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 5,
@@ -750,10 +870,10 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.surfaceSoft,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: COLORS.inputBorder,
     paddingHorizontal: 12,
   },
   inputIcon: {
@@ -762,23 +882,23 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     minWidth: 0,
-    height: 42,
-    color: '#0F172A',
-    fontSize: 14,
-    fontWeight: '500',
+    height: 46,
+    color: COLORS.textPrimary,
+    fontSize: 14.5,
+    fontWeight: '600',
   },
   eyeBtn: {
-    padding: 6,
+    padding: 8,
   },
   submitBtn: {
     flexDirection: 'row',
-    backgroundColor: '#0D9488',
+    backgroundColor: COLORS.primary,
     borderRadius: 12,
-    height: 44,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 6,
-    shadowColor: '#0D9488',
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -786,8 +906,8 @@ const styles = StyleSheet.create({
   },
   submitBtnText: {
     color: '#FFFFFF',
-    fontSize: 14.5,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
   },
   setupPill: {
     flexDirection: 'row',
@@ -795,37 +915,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'center',
     marginTop: 16,
-    paddingVertical: 7,
+    paddingVertical: 9,
     paddingHorizontal: 14,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.bgSecondary,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.border,
+  },
+  setupPillHighlight: {
+    borderColor: COLORS.accentBorder,
+    backgroundColor: COLORS.accentLight,
   },
   setupPillText: {
-    color: '#475569',
+    color: COLORS.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+    backgroundColor: COLORS.overlayBackdrop,
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
   modalSheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.bgSecondary,
     borderRadius: 22,
-    maxHeight: '88%',
+    maxHeight: '90%',
+    flexShrink: 1,
     width: '100%',
     maxWidth: 400,
     alignSelf: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.border,
     overflow: 'hidden',
-    shadowColor: '#0F172A',
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.14,
     shadowRadius: 24,
     elevation: 6,
   },
@@ -835,9 +960,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 13,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.surfaceSoft,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: COLORS.border,
   },
   modalHeaderLeft: {
     flexDirection: 'row',
@@ -849,17 +974,17 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: '#E6F7F5',
+    backgroundColor: COLORS.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalTitle: {
-    color: '#0F172A',
+    color: COLORS.textPrimary,
     fontSize: 14,
     fontWeight: '800',
   },
   modalSubtitle: {
-    color: '#64748B',
+    color: COLORS.textSecondary,
     fontSize: 10.5,
     fontWeight: '500',
   },
@@ -869,32 +994,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: COLORS.bgSecondary,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.border,
   },
   clearBtnText: {
-    color: '#475569',
+    color: COLORS.textSecondary,
     fontSize: 10.5,
     fontWeight: '700',
   },
   closeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F1F5F9',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.bgSecondary,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modalBody: {
     padding: 14,
   },
+  authVerifyBox: {
+    backgroundColor: COLORS.accentLight,
+    borderRadius: 12,
+    padding: 11,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+  },
+  authVerifyTitle: {
+    color: COLORS.textPrimary,
+    fontSize: 11.5,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
   adminBox: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.surfaceSoft,
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.border,
   },
   sectionBadgeRow: {
     flexDirection: 'row',
@@ -902,21 +1042,21 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   adminBadge: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#C7D2FE',
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primaryBorder,
     borderWidth: 1,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
   adminBadgeText: {
-    color: '#4F46E5',
+    color: COLORS.primary,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
   fieldCaption: {
-    color: '#475569',
+    color: COLORS.textSecondary,
     fontSize: 11,
     fontWeight: '600',
     marginBottom: 4,
@@ -924,18 +1064,18 @@ const styles = StyleSheet.create({
   compactInput: {
     width: '100%',
     minWidth: 0,
-    height: 36,
-    backgroundColor: '#FFFFFF',
+    height: 40,
+    backgroundColor: COLORS.bgSecondary,
     borderRadius: 9,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: COLORS.inputBorder,
     paddingHorizontal: 10,
-    color: '#0F172A',
+    color: COLORS.textPrimary,
     fontSize: 13,
     fontWeight: '600',
   },
-  tealInputText: {
-    color: '#0F766E',
+  inkInputText: {
+    color: COLORS.primary,
     fontWeight: '700',
   },
   twoColRow: {
@@ -950,12 +1090,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#F0FDFA',
+    backgroundColor: COLORS.accentLight,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#CCFBF1',
+    borderColor: COLORS.accentBorder,
   },
   routesHeaderLeft: {
     flexDirection: 'row',
@@ -963,7 +1103,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   routesHeaderTitle: {
-    color: '#0F766E',
+    color: COLORS.textPrimary,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -971,34 +1111,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.bgSecondary,
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#99F6E4',
+    borderColor: COLORS.accentBorder,
   },
   stepBtn: {
-    width: 24,
-    height: 24,
+    width: 26,
+    height: 26,
     borderRadius: 6,
-    backgroundColor: '#E6F7F5',
+    backgroundColor: COLORS.surfaceSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepCountText: {
-    color: '#0F766E',
+    color: COLORS.textPrimary,
     fontSize: 14,
     fontWeight: '800',
     minWidth: 18,
     textAlign: 'center',
   },
   routeCard: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.surfaceSoft,
     borderRadius: 14,
     padding: 11,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.border,
     gap: 8,
   },
   routeTopLine: {
@@ -1007,17 +1147,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   routeNumBadge: {
-    height: 36,
+    height: 40,
     paddingHorizontal: 10,
     borderRadius: 8,
-    backgroundColor: '#E6F7F5',
-    borderWidth: 1,
-    borderColor: '#99F6E4',
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   routeNumBadgeText: {
-    color: '#0D9488',
+    color: '#FFFFFF',
     fontSize: 10.5,
     fontWeight: '800',
   },
@@ -1026,36 +1164,36 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 15,
     paddingVertical: 12,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.surfaceSoft,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: COLORS.border,
   },
   secondarySaveBtn: {
     flex: 1,
-    height: 40,
+    height: 44,
     borderRadius: 10,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.bgSecondary,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
+    borderColor: COLORS.inputBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
   secondarySaveBtnText: {
-    color: '#334155',
+    color: COLORS.textPrimary,
     fontSize: 12,
     fontWeight: '700',
   },
   primarySaveBtn: {
     flex: 1.2,
-    height: 40,
+    height: 44,
     borderRadius: 10,
-    backgroundColor: '#0D9488',
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primarySaveBtnText: {
     color: '#FFFFFF',
     fontSize: 12.5,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });

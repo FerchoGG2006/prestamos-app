@@ -245,7 +245,13 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      statusBarTranslucent={false}
+      onRequestClose={onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
@@ -253,7 +259,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
         <View
           style={[
             styles.container,
-            { paddingBottom: Math.max(insets.bottom, 16), flexShrink: 1 },
+            { paddingBottom: Math.max(insets.bottom, 12) + 8, flexShrink: 1 },
           ]}
         >
           <View style={styles.sheetHandle} />
@@ -680,7 +686,6 @@ const styles = StyleSheet.create({
     maxHeight: '92%',
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 24,
     borderTopWidth: 1,
     borderColor: COLORS.microBorder,
   },
