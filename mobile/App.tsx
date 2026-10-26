@@ -254,6 +254,21 @@ function MainApp() {
           if (found) {
             setCurrentUser(found);
             setUserRole(found.role === 'COBRADOR' ? 'COBRADOR' : 'ADMIN');
+            if (found.role === 'COBRADOR') {
+              const assignedRoute = localStore
+                .getRoutes()
+                .find(
+                  (r) =>
+                    r.collectorId === found.id ||
+                    r.id === found.routeId ||
+                    found.assignedRouteIds?.includes(r.id)
+                );
+              setSelectedRouteId(
+                assignedRoute?.id || found.routeId || found.assignedRouteIds?.[0] || 'route-norte'
+              );
+            } else {
+              setSelectedRouteId('ALL');
+            }
           }
         }
       });
@@ -270,8 +285,15 @@ function MainApp() {
     if (user.role === 'COBRADOR') {
       const assignedRoute = localStore
         .getRoutes()
-        .find((r) => r.collectorId === user.id || r.id === user.routeId);
-      setSelectedRouteId(assignedRoute?.id || user.routeId || 'route-norte');
+        .find(
+          (r) =>
+            r.collectorId === user.id ||
+            r.id === user.routeId ||
+            user.assignedRouteIds?.includes(r.id)
+        );
+      setSelectedRouteId(
+        assignedRoute?.id || user.routeId || user.assignedRouteIds?.[0] || 'route-norte'
+      );
     } else {
       setSelectedRouteId('ALL');
     }
@@ -295,6 +317,7 @@ function MainApp() {
   const effectiveRouteFilter =
     userRole === 'COBRADOR'
       ? currentUser?.routeId ||
+        currentUser?.assignedRouteIds?.[0] ||
         routes.find((r) => r.collectorId === currentUser?.id)?.id ||
         'route-norte'
       : selectedRouteId;
@@ -420,8 +443,10 @@ function MainApp() {
               {userRole === 'ADMIN' && <ChevronDown size={13} color={COLORS.textPrimary} />}
             </View>
             <Text style={styles.brandSub}>
-              {currentUser?.name || 'Carlos Cobrador'} •{' '}
-              {userRole === 'ADMIN' ? 'Filtrar / Cambiar Ruta' : `Ruta ${activeRouteLabel}`}
+              {localStore.getOfficeConfig().companyName || 'Kredia'} •{' '}
+              {userRole === 'ADMIN'
+                ? 'Administrador • Cambiar Ruta'
+                : `Usuario: ${currentUser?.username || 'cobrador'}`}
             </Text>
           </View>
         </TouchableOpacity>

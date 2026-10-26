@@ -221,22 +221,24 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   };
 
   const handleCreateRouteWithCredentials = async () => {
-    if (!newRouteName.trim() || !newCollectorName.trim() || !newUsername.trim() || !newPassword.trim()) {
-      Alert.alert('Campos Incompletos', 'Por favor diligencie todos los campos para crear la nueva ruta.');
+    if (!newRouteName.trim() || !newUsername.trim() || !newPassword.trim()) {
+      Alert.alert('Campos Incompletos', 'Por favor ingresa el nombre de la ruta, usuario y contraseña.');
       return;
     }
 
     try {
       const routeId = `route-${Date.now()}`;
       const collectorId = `usr-col-${Date.now()}`;
+      const colDisplayName = newCollectorName.trim() || newRouteName.trim();
 
       const newCollector: User = {
         id: collectorId,
-        name: newCollectorName.trim(),
+        name: colDisplayName,
         username: newUsername.trim().toLowerCase(),
         password: newPassword.trim(),
         email: `${newUsername.trim().toLowerCase()}@cartera.com`,
         role: 'COBRADOR',
+        routeId,
         assignedRouteIds: [routeId],
         isActive: true,
         createdAt: new Date().toISOString(),
@@ -247,8 +249,9 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         name: newRouteName.trim(),
         code: `R-${routesList.length + 1}`,
         collectorId: collectorId,
+        collectorName: colDisplayName,
         isActive: true,
-        description: `Ruta asignada a ${newCollectorName}`,
+        description: `Ruta asignada a ${colDisplayName}`,
         createdAt: new Date().toISOString(),
       };
 
@@ -793,49 +796,35 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
               </View>
             )}
 
-            {/* PESTAÑA 4: GESTIÓN DE RUTAS Y CREDENCIALES (AUDIO 1) */}
+            {/* PESTAÑA 4: GESTIÓN DE RUTAS Y CREDENCIALES */}
             {activeTab === 'RUTAS' && (
               <View style={styles.sectionContainer}>
                 {/* 4.A: Credenciales del Administrador de la Oficina */}
                 <View style={styles.newRouteCard}>
                   <Text style={styles.newRouteCardTitle}>
-                    👑 Credenciales del Administrador de la Oficina
+                    Administrador de la Oficina
                   </Text>
-                  <Text style={styles.sectionHeaderSub}>
-                    Define tu propio usuario y contraseña gerencial para administrar la oficina y todas sus rutas.
-                  </Text>
-
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>Nombre del Administrador</Text>
-                    <TextInput
-                      style={styles.textInput}
-                      value={adminNameEdit}
-                      onChangeText={setAdminNameEdit}
-                      placeholder="Ej. Administración General"
-                      placeholderTextColor={COLORS.textMuted}
-                    />
-                  </View>
 
                   <View style={styles.inputRow}>
                     <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                      <Text style={styles.inputLabel}>Usuario Admin *</Text>
+                      <Text style={styles.inputLabel}>Usuario Admin</Text>
                       <TextInput
                         style={styles.textInput}
                         value={adminUserEdit}
                         onChangeText={setAdminUserEdit}
-                        placeholder="Ej. admin"
+                        placeholder="admin"
                         placeholderTextColor={COLORS.textMuted}
                         autoCapitalize="none"
                       />
                     </View>
                     <View style={[styles.inputGroup, { flex: 1 }]}>
-                      <Text style={styles.inputLabel}>Contraseña Admin *</Text>
+                      <Text style={styles.inputLabel}>Clave Admin</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <TextInput
                           style={[styles.textInput, { flex: 1 }]}
                           value={adminPassEdit}
                           onChangeText={setAdminPassEdit}
-                          placeholder="Contraseña"
+                          placeholder="Clave"
                           placeholderTextColor={COLORS.textMuted}
                           secureTextEntry={!showAdminPassEdit}
                           autoCapitalize="none"
@@ -858,9 +847,9 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                     style={styles.createRouteSubmitBtn}
                     onPress={handleSaveAdminCredentials}
                   >
-                    <CheckCircle size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <CheckCircle size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
                     <Text style={styles.createRouteSubmitText}>
-                      Actualizar Credencial de Administrador
+                      Guardar Credencial Admin
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -868,10 +857,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                 <View style={styles.routesHeaderRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.sectionHeaderTitle}>
-                      Rutas de la Oficina ({routesList.length}) y Credenciales
+                      Rutas Activas ({routesList.length})
                     </Text>
                     <Text style={styles.sectionHeaderSub}>
-                      Configura cuántas rutas tiene tu oficina y personaliza el usuario y clave de cada cobrador.
+                      Cada cobrador entra con su usuario y el sistema identifica su ruta.
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -880,57 +869,46 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   >
                     <Plus size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
                     <Text style={styles.newRouteBtnText}>
-                      {showNewRouteForm ? 'Cerrar' : '+ Añadir Ruta'}
+                      {showNewRouteForm ? 'Cerrar' : '+ Nueva Ruta'}
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Formulario para Crear Nueva Ruta con Credenciales */}
+                {/* Formulario Ligero para Crear Nueva Ruta con Credenciales */}
                 {showNewRouteForm && (
                   <View style={styles.newRouteCard}>
-                    <Text style={styles.newRouteCardTitle}>Habilitar Nueva Ruta de Cobro</Text>
+                    <Text style={styles.newRouteCardTitle}>Nueva Ruta de Cobro</Text>
 
                     <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Nombre de la Ruta *</Text>
+                      <Text style={styles.inputLabel}>Nombre de la Ruta</Text>
                       <TextInput
                         style={styles.textInput}
                         value={newRouteName}
                         onChangeText={setNewRouteName}
-                        placeholder="Ej. Ruta 3 - Sur"
-                        placeholderTextColor={COLORS.textMuted}
-                      />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>Nombre del Cobrador Asignado *</Text>
-                      <TextInput
-                        style={styles.textInput}
-                        value={newCollectorName}
-                        onChangeText={setNewCollectorName}
-                        placeholder="Ej. Andrés Martínez"
+                        placeholder="Ej. Ruta 4 - Occidente"
                         placeholderTextColor={COLORS.textMuted}
                       />
                     </View>
 
                     <View style={styles.inputRow}>
                       <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                        <Text style={styles.inputLabel}>Usuario de Acceso *</Text>
+                        <Text style={styles.inputLabel}>Usuario</Text>
                         <TextInput
                           style={styles.textInput}
                           value={newUsername}
                           onChangeText={setNewUsername}
-                          placeholder="Ej. ruta3"
+                          placeholder="Ej. ruta4"
                           placeholderTextColor={COLORS.textMuted}
                           autoCapitalize="none"
                         />
                       </View>
                       <View style={[styles.inputGroup, { flex: 1 }]}>
-                        <Text style={styles.inputLabel}>Contraseña de Ruta *</Text>
+                        <Text style={styles.inputLabel}>Clave</Text>
                         <TextInput
                           style={styles.textInput}
                           value={newPassword}
                           onChangeText={setNewPassword}
-                          placeholder="Ej. ruta3-2026"
+                          placeholder="Ej. 123"
                           placeholderTextColor={COLORS.textMuted}
                           autoCapitalize="none"
                         />
@@ -941,17 +919,17 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       style={styles.createRouteSubmitBtn}
                       onPress={handleCreateRouteWithCredentials}
                     >
-                      <CheckCircle size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
-                      <Text style={styles.createRouteSubmitText}>Crear Ruta y Credenciales</Text>
+                      <CheckCircle size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
+                      <Text style={styles.createRouteSubmitText}>Crear Ruta</Text>
                     </TouchableOpacity>
                   </View>
                 )}
 
-                {/* Listado de Rutas y Credenciales Activas */}
+                {/* Listado Compacto de Rutas y Credenciales Activas */}
                 {routesList.map((route, idx) => {
                   const assignedCollector = usersList.find((u) => u.id === route.collectorId);
                   const username = assignedCollector?.username || `ruta${idx + 1}`;
-                  const password = assignedCollector?.password || `${username}-excelencia`;
+                  const password = assignedCollector?.password || '123';
                   const isPasswordRevealed = !!revealedPasswords[route.id];
                   const isEditingThis = editingRouteId === route.id;
 
@@ -959,7 +937,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                     <View key={route.id} style={styles.routeItemCard}>
                       <View style={styles.routeItemTop}>
                         <View style={styles.routeBadge}>
-                          <Text style={styles.routeBadgeText}>RUTA {idx + 1}</Text>
+                          <Text style={styles.routeBadgeText}>R{idx + 1}</Text>
                         </View>
                         <Text style={styles.routeItemTitle}>{route.name}</Text>
                         <TouchableOpacity
@@ -969,13 +947,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                               : handleStartEditRoute(route, assignedCollector)
                           }
                           style={{
-                            paddingHorizontal: 8,
-                            paddingVertical: 3,
-                            borderRadius: 6,
-                            backgroundColor: COLORS.primaryLight,
+                            paddingHorizontal: 10,
+                            paddingVertical: 4,
+                            borderRadius: 8,
+                            backgroundColor: '#E6F7F5',
                           }}
                         >
-                          <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.primary }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#0D9488' }}>
                             {isEditingThis ? 'Cancelar' : 'Editar'}
                           </Text>
                         </TouchableOpacity>
@@ -983,13 +961,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                           <TouchableOpacity
                             onPress={() => handleDeleteRouteItem(route)}
                             style={{
-                              paddingHorizontal: 8,
-                              paddingVertical: 3,
-                              borderRadius: 6,
-                              backgroundColor: '#FEE2E2',
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                              borderRadius: 8,
+                              backgroundColor: '#FEF2F2',
                             }}
                           >
-                            <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#DC2626' }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#DC2626' }}>
                               Eliminar
                             </Text>
                           </TouchableOpacity>
@@ -1003,20 +981,15 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                             <TextInput
                               style={styles.textInput}
                               value={editRouteName}
-                              onChangeText={setEditRouteName}
-                            />
-                          </View>
-                          <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Nombre del Cobrador</Text>
-                            <TextInput
-                              style={styles.textInput}
-                              value={editCollectorName}
-                              onChangeText={setEditCollectorName}
+                              onChangeText={(v) => {
+                                setEditRouteName(v);
+                                setEditCollectorName(v);
+                              }}
                             />
                           </View>
                           <View style={styles.inputRow}>
                             <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                              <Text style={styles.inputLabel}>Usuario de Ruta</Text>
+                              <Text style={styles.inputLabel}>Usuario</Text>
                               <TextInput
                                 style={styles.textInput}
                                 value={editUsername}
@@ -1025,7 +998,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                               />
                             </View>
                             <View style={[styles.inputGroup, { flex: 1 }]}>
-                              <Text style={styles.inputLabel}>Contraseña de Ruta</Text>
+                              <Text style={styles.inputLabel}>Clave</Text>
                               <TextInput
                                 style={styles.textInput}
                                 value={editPassword}
@@ -1040,47 +1013,33 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                           >
                             <CheckCircle size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
                             <Text style={styles.createRouteSubmitText}>
-                              Guardar Cambios de Ruta
+                              Guardar Cambios
                             </Text>
                           </TouchableOpacity>
                         </View>
                       ) : (
-                        <>
-                          <Text style={styles.routeCollectorName}>
-                            👤 Cobrador:{' '}
-                            <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>
-                              {assignedCollector ? assignedCollector.name : 'Sin asignar'}
+                        <View style={styles.credentialsBox}>
+                          <View style={styles.credentialRow}>
+                            <Text style={styles.credLabel}>USUARIO</Text>
+                            <Text style={styles.credValue}>{username}</Text>
+                            <Text style={[styles.credLabel, { width: 52, marginLeft: 10 }]}>
+                              CLAVE
                             </Text>
-                          </Text>
-
-                          <View style={styles.credentialsBox}>
-                            <View style={styles.credentialRow}>
-                              <Text style={styles.credLabel}>USUARIO:</Text>
-                              <Text style={styles.credValue}>{username}</Text>
-                            </View>
-
-                            <View style={styles.credentialRow}>
-                              <Text style={styles.credLabel}>CONTRASEÑA:</Text>
-                              <Text style={styles.credValue}>
-                                {isPasswordRevealed ? password : '••••••••••••'}
-                              </Text>
-                              <TouchableOpacity
-                                onPress={() => togglePasswordVisibility(route.id)}
-                                style={styles.eyeBtnSmall}
-                              >
-                                {isPasswordRevealed ? (
-                                  <EyeOff size={14} color={COLORS.textSecondary} />
-                                ) : (
-                                  <Eye size={14} color={COLORS.textSecondary} />
-                                )}
-                              </TouchableOpacity>
-                            </View>
+                            <Text style={styles.credValue}>
+                              {isPasswordRevealed ? password : '••••••'}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => togglePasswordVisibility(route.id)}
+                              style={styles.eyeBtnSmall}
+                            >
+                              {isPasswordRevealed ? (
+                                <EyeOff size={14} color={COLORS.textSecondary} />
+                              ) : (
+                                <Eye size={14} color={COLORS.textSecondary} />
+                              )}
+                            </TouchableOpacity>
                           </View>
-
-                          <Text style={styles.routeItemFooterHint}>
-                            El cobrador debe ingresar este usuario y clave en su teléfono móvil.
-                          </Text>
-                        </>
+                        </View>
                       )}
                     </View>
                   );
@@ -1402,7 +1361,7 @@ const styles = StyleSheet.create({
   newRouteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primary,
+    backgroundColor: '#0D9488',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
@@ -1413,39 +1372,39 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   newRouteCard: {
-    backgroundColor: COLORS.bgSecondary,
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    padding: 14,
+    padding: 13,
     borderWidth: 1,
-    borderColor: COLORS.primaryBorder,
-    gap: 10,
+    borderColor: '#CCFBF1',
+    gap: 8,
     marginBottom: 8,
   },
   newRouteCardTitle: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
-    color: COLORS.primary,
+    color: '#0F766E',
   },
   createRouteSubmitBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primary,
+    backgroundColor: '#0D9488',
     borderRadius: 10,
-    paddingVertical: 10,
-    marginTop: 4,
+    paddingVertical: 9,
+    marginTop: 2,
   },
   createRouteSubmitText: {
     color: '#FFFFFF',
-    fontSize: 12.5,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
   },
   routeItemCard: {
-    backgroundColor: COLORS.bgSecondary,
+    backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
-    borderColor: COLORS.microBorder,
+    borderColor: '#E2E8F0',
     gap: 8,
     marginBottom: 4,
   },
@@ -1455,18 +1414,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   routeBadge: {
-    backgroundColor: COLORS.primaryLight,
+    backgroundColor: '#E6F7F5',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
   routeBadgeText: {
-    color: COLORS.primary,
+    color: '#0D9488',
     fontSize: 10,
     fontWeight: '800',
   },
   routeItemTitle: {
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: '800',
     color: COLORS.textPrimary,
     flex: 1,
@@ -1487,27 +1446,27 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   credentialsBox: {
-    backgroundColor: COLORS.surfaceSoft,
+    backgroundColor: '#F8FAFC',
     borderRadius: 10,
-    padding: 10,
-    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: COLORS.microBorder,
+    borderColor: '#E2E8F0',
   },
   credentialRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   credLabel: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
-    color: COLORS.textMuted,
-    width: 90,
+    color: '#64748B',
+    width: 58,
   },
   credValue: {
     fontSize: 12,
     fontWeight: '800',
-    color: COLORS.primary,
+    color: '#0F766E',
     fontFamily: 'monospace',
     flex: 1,
   },
@@ -1549,7 +1508,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.dockBg,
+    backgroundColor: '#0D9488',
     paddingVertical: 12,
     borderRadius: 14,
   },

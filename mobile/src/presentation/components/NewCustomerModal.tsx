@@ -44,8 +44,11 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
   const availableRoutes = localStore.getRoutes();
 
-  // Datos del Préstamo Inmediato
+  // Datos del Préstamo Inmediato o Migración de Cartulina Física
   const [withLoan, setWithLoan] = useState(true);
+  const [isCardMigration, setIsCardMigration] = useState(false);
+  const [paidInstallmentNums, setPaidInstallmentNums] = useState<number[]>([]);
+  const [quickPaidCountStr, setQuickPaidCountStr] = useState('');
   const [principalStr, setPrincipalStr] = useState('300000');
   const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
   const [installmentCountStr, setInstallmentCountStr] = useState('30');
@@ -55,6 +58,23 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const principal = parseInt(principalStr.replace(/\D/g, ''), 10) || 0;
   const installmentCount = parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 30;
   const interestRate = (parseFloat(interestPercentStr) || 20) / 100;
+
+  const togglePaidInstallment = (num: number) => {
+    setPaidInstallmentNums((prev) =>
+      prev.includes(num) ? prev.filter((n) => n !== num) : [...prev, num].sort((a, b) => a - b)
+    );
+  };
+
+  const applyQuickPaidCount = (rawCount: string) => {
+    setQuickPaidCountStr(rawCount);
+    const n = parseInt(rawCount.replace(/\D/g, ''), 10) || 0;
+    const clamped = Math.max(0, Math.min(installmentCount, n));
+    const arr: number[] = [];
+    for (let i = 1; i <= clamped; i++) {
+      arr.push(i);
+    }
+    setPaidInstallmentNums(arr);
+  };
 
   const summary =
     principal > 0 && installmentCount > 0
@@ -91,6 +111,9 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setFrequency('DAILY');
     setInstallmentCountStr('30');
     setWithLoan(true);
+    setIsCardMigration(false);
+    setPaidInstallmentNums([]);
+    setQuickPaidCountStr('');
   };
 
   const handleSaveCustomerAndLoan = async () => {
@@ -133,7 +156,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
         todayStr,
       });
 
-      // 2. Si tiene préstamo inmediato, originarlo y desembolsarlo en la misma operación
+      // 2. Si tiene préstamo inmediato o cartulina física a digital, originarlo en la misma operación
       if (withLoan && principal > 0) {
         const loanRes = await localStore.createLoan({
           customerId: newCustomer.id,
@@ -144,17 +167,31 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
           routeId: selectedRouteId,
           collectorId: newCustomer.assignedCollectorId,
           todayStr,
+          isCardMigration,
+          paidInstallmentNumbers: isCardMigration ? paidInstallmentNums : undefined,
         });
 
-        Alert.alert(
-          '¡Cliente y Crédito Registrados!',
-          `Se registró a ${fullName} y se generó el crédito ${loanRes.loan.loanNumber}.\n\n` +
-          `• Modalidad: ${frequency}\n` +
-          `• Capital: ${formatCOP(principal)}\n` +
-          `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
-          `• Efectivo neto entregado: ${formatCOP(netCashToDeliver)}\n` +
-          `• Cuota: ${formatCOP(loanRes.loan.installmentAmount)}`
-        );
+        if (isCardMigration) {
+          const paidTotal = loanRes.loan.installmentAmount * paidInstallmentNums.length;
+          const pendingTotal = Math.max(0, loanRes.loan.totalAgreed - paidTotal);
+          Alert.alert(
+            '¡Cliente y Cartulina Digitalizados!',
+            `Se registró a ${fullName} y se pasó su cartulina al crédito digital ${loanRes.loan.loanNumber}.\n\n` +
+            `• Pagado en cartulina: ${paidInstallmentNums.length}/${installmentCount} cuotas (${formatCOP(paidTotal)})\n` +
+            `• Saldo pendiente digital: ${formatCOP(pendingTotal)}\n` +
+            `• Impacto en caja hoy: $0 (Caja protegida)`
+          );
+        } else {
+          Alert.alert(
+            '¡Cliente y Crédito Registrados!',
+            `Se registró a ${fullName} y se generó el crédito ${loanRes.loan.loanNumber}.\n\n` +
+            `• Modalidad: ${frequency}\n` +
+            `• Capital: ${formatCOP(principal)}\n` +
+            `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
+            `• Efectivo neto entregado: ${formatCOP(netCashToDeliver)}\n` +
+            `• Cuota: ${formatCOP(loanRes.loan.installmentAmount)}`
+          );
+        }
       } else {
         Alert.alert('Cliente Creado', `${fullName} fue agregado con éxito.`);
       }
@@ -382,10 +419,61 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
               </View>
             </TouchableOpacity>
 
-            {/* FORMULARIO DE ORIGINACIÓN DEL PRÉSTAMO */}
+            {/* FORMULARIO DE ORIGINACIÓN DEL PRÉSTAMO O MIGRACIÓN DE CARTULINA FÍSICA */}
             {withLoan && (
               <View style={styles.loanSection}>
-                <Text style={styles.sectionHeader}>2. PARÁMETROS DEL PRIMER PRÉSTAMO</Text>
+                <Text style={styles.sectionHeader}>2. MODALIDAD DE INGRESO DEL CRÉDITO</Text>
+
+                {/* Selector: Nuevo Préstamo vs Pasar Cartulina Física a Digital */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      paddingHorizontal: 8,
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: !isCardMigration ? '#0D9488' : '#E2E8F0',
+                      backgroundColor: !isCardMigration ? '#E6F7F5' : '#F8FAFC',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setIsCardMigration(false)}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: '800',
+                        color: !isCardMigration ? '#0F766E' : '#64748B',
+                      }}
+                    >
+                      💵 Préstamo Nuevo
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{
+                      flex: 1.2,
+                      paddingVertical: 10,
+                      paddingHorizontal: 8,
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: isCardMigration ? '#0D9488' : '#E2E8F0',
+                      backgroundColor: isCardMigration ? '#E6F7F5' : '#F8FAFC',
+                      alignItems: 'center',
+                    }}
+                    onPress={() => setIsCardMigration(true)}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11.5,
+                        fontWeight: '800',
+                        color: isCardMigration ? '#0F766E' : '#64748B',
+                      }}
+                    >
+                      📋 Cartulina Física a Digital
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
                 {/* Capital y Botones Rápidos */}
                 <View style={styles.filledInputBlock}>
@@ -472,6 +560,129 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                   </View>
                 </View>
 
+                {/* Cartulina Física Interactiva cuando se pasa de papel a digital */}
+                {isCardMigration && summary && (
+                  <View
+                    style={{
+                      backgroundColor: '#F8FAFC',
+                      borderRadius: 14,
+                      padding: 12,
+                      borderWidth: 1,
+                      borderColor: '#99F6E4',
+                      marginBottom: 12,
+                      gap: 8,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F766E' }}>
+                        📋 Marca las cuotas ya pagadas en la cartulina
+                      </Text>
+                      <View
+                        style={{
+                          backgroundColor: '#DCFCE7',
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          borderRadius: 6,
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: '#166534' }}>
+                          🛡️ Caja hoy: $0
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 11.5, fontWeight: '600', color: '#475569' }}>
+                        Cuotas ya pagadas:
+                      </Text>
+                      <TextInput
+                        style={{
+                          width: 64,
+                          height: 34,
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: '#CBD5E1',
+                          textAlign: 'center',
+                          fontSize: 13,
+                          fontWeight: '800',
+                          color: '#0F172A',
+                        }}
+                        keyboardType="numeric"
+                        value={quickPaidCountStr}
+                        onChangeText={applyQuickPaidCount}
+                        placeholder="Ej. 10"
+                        placeholderTextColor="#94A3B8"
+                      />
+                      <TouchableOpacity
+                        onPress={() => applyQuickPaidCount('0')}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 8,
+                          backgroundColor: '#E2E8F0',
+                        }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
+                          Limpiar
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {Array.from({ length: installmentCount }, (_, i) => i + 1).map((num) => {
+                        const isPaid = paidInstallmentNums.includes(num);
+                        return (
+                          <TouchableOpacity
+                            key={num}
+                            onPress={() => togglePaidInstallment(num)}
+                            style={{
+                              minWidth: 40,
+                              height: 30,
+                              borderRadius: 7,
+                              borderWidth: 1,
+                              borderColor: isPaid ? '#10B981' : '#CBD5E1',
+                              backgroundColor: isPaid ? '#DCFCE7' : '#FFFFFF',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              paddingHorizontal: 6,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                fontWeight: '800',
+                                color: isPaid ? '#065F46' : '#64748B',
+                              }}
+                            >
+                              {num}
+                              {isPaid ? ' ✓' : ''}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <View
+                      style={{
+                        backgroundColor: '#ECFDF5',
+                        borderRadius: 10,
+                        padding: 9,
+                        borderWidth: 1,
+                        borderColor: '#A7F3D0',
+                      }}
+                    >
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#065F46' }}>
+                        Pagado en cartulina: {formatCOP(summary.installmentAmount * paidInstallmentNums.length)} ({paidInstallmentNums.length}/{installmentCount})
+                      </Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F766E', marginTop: 2 }}>
+                        Saldo pendiente digital:{' '}
+                        {formatCOP(Math.max(0, summary.totalAgreed - summary.installmentAmount * paidInstallmentNums.length))}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
                 {/* Resumen Financiero en Vivo */}
                 {summary && (
                   <View style={styles.summaryCard}>
@@ -532,7 +743,9 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
               {isSubmitting
                 ? 'Procesando...'
                 : withLoan
-                ? 'Registrar Cliente y Desembolsar'
+                ? isCardMigration
+                  ? 'Pasar Cartulina Física a Digital'
+                  : 'Registrar Cliente y Desembolsar'
                 : 'Guardar Solo Cliente'}
             </Text>
           </TouchableOpacity>

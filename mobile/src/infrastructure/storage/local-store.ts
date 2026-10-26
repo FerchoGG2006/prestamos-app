@@ -50,11 +50,11 @@ import {
 } from '../../core/domain/calculator';
 
 export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
-  companyName: 'Inversiones & Cobranzas La Excelencia',
-  taxId: '901.458.789-1',
+  companyName: '',
+  taxId: '',
   city: 'Barranquilla',
-  address: 'Calle 72 # 48-25, Of. 302',
-  supportPhone: '+57 300 123 4567',
+  address: '',
+  supportPhone: '',
   receiptFooterMessage: 'Gracias por su puntualidad • Conserve este comprobante',
   defaultInterestRate: 0.20,
   defaultInstallmentsCount: 30,
@@ -70,6 +70,7 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   allowRouteReorder: false,
   allowPartialPayments: true,
   officeServerUrl: 'http://192.168.1.10:8765',
+  isSetupCompleted: false,
 };
 
 const STORAGE_KEYS = {
@@ -267,7 +268,57 @@ class LocalStore {
         if (savedCash) this.cashMovements = JSON.parse(savedCash);
         if (savedNonPayments) this.nonPaymentVisits = JSON.parse(savedNonPayments);
         if (savedAudit) this.auditLogs = JSON.parse(savedAudit);
-        if (savedOfficeConfig) this.officeConfig = JSON.parse(savedOfficeConfig);
+        if (savedOfficeConfig) {
+          this.officeConfig = JSON.parse(savedOfficeConfig);
+          // Si aún tenía el nombre demo pre-cargado sin haber registrado oficina, limpiarlo
+          if (
+            !this.officeConfig.isSetupCompleted &&
+            this.officeConfig.companyName === 'Inversiones & Cobranzas La Excelencia'
+          ) {
+            this.officeConfig.companyName = '';
+            safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
+          }
+        }
+
+        // Garantizar que cada ruta activa tenga su propio usuario cobrador único (auto-sanación de sesiones previas)
+        const usedCollectorIds = new Set<string>();
+        let usersOrRoutesHealed = false;
+        this.routes = this.routes.map((rt, idx) => {
+          const isSharedOrMissing =
+            !rt.collectorId ||
+            usedCollectorIds.has(rt.collectorId) ||
+            !this.users.some((u) => u.id === rt.collectorId);
+
+          if (!isSharedOrMissing) {
+            usedCollectorIds.add(rt.collectorId);
+            return rt;
+          }
+
+          usersOrRoutesHealed = true;
+          const dedicatedId = `usr-col-${idx + 1}`;
+          usedCollectorIds.add(dedicatedId);
+          const defaultUsername = idx === 0 ? 'cobrador' : `ruta${idx + 1}`;
+          if (!this.users.some((u) => u.id === dedicatedId)) {
+            this.users.push({
+              id: dedicatedId,
+              name: rt.collectorName || rt.name || `Ruta ${idx + 1}`,
+              username: defaultUsername,
+              password: '123',
+              email: `${defaultUsername}@oficina.com`,
+              role: 'COBRADOR',
+              assignedRouteIds: [rt.id],
+              routeId: rt.id,
+              isActive: true,
+              createdAt: getLocalTodayStr(),
+            });
+          }
+          return { ...rt, collectorId: dedicatedId };
+        });
+
+        if (usersOrRoutesHealed) {
+          safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
+          safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
+        }
       }
 
       this.alignScenarioDatesIfNeeded();
@@ -688,16 +739,23 @@ class LocalStore {
     }
 
     const currentRoute = this.routes[routeIdx];
+    const isCollectorShared = this.routes.some(
+      (r) => r.id !== params.routeId && r.collectorId === currentRoute.collectorId
+    );
+    const collectorId =
+      !currentRoute.collectorId || isCollectorShared
+        ? `usr-col-${Date.now()}`
+        : currentRoute.collectorId;
+
     const duplicateUser = this.users.find(
       (u) =>
-        u.id !== currentRoute.collectorId &&
+        u.id !== collectorId &&
         (u.username || '').toLowerCase() === cleanUsername
     );
     if (duplicateUser) {
       throw new Error(`El usuario "${cleanUsername}" ya está siendo usado por otro miembro de la oficina.`);
     }
 
-    const collectorId = currentRoute.collectorId || `usr-col-${Date.now()}`;
     const userIdx = this.users.findIndex((u) => u.id === collectorId);
     const updatedCollector: User =
       userIdx >= 0
@@ -1289,6 +1347,9 @@ class LocalStore {
     collectorId?: string;
     routeId?: string;
     todayStr: string;
+    isCardMigration?: boolean;
+    paidInstallmentNumbers?: number[];
+    startDate?: string;
   }): Promise<{ loan: Loan; installments: Installment[]; paperworkFee: number }> {
     const customer = this.customers.find((c) => c.id === params.customerId);
     if (!customer) throw new Error('Cliente no encontrado');
@@ -1302,6 +1363,9 @@ class LocalStore {
       );
     }
 
+    const isMigration = Boolean(params.isCardMigration);
+    const paidSet = new Set<number>(params.paidInstallmentNumbers || []);
+
     const isFixedDate = params.frequency === 'FIXED_DATE';
     const effectiveInstallmentCount = isFixedDate ? 1 : (params.installmentCount ?? 30);
 
@@ -1311,34 +1375,59 @@ class LocalStore {
       effectiveInstallmentCount
     );
     const isPaperworkEnabled = this.officeConfig.paperworkFeeEnabled ?? true;
-    const paperworkFee = isPaperworkEnabled
-      ? calculatePaperworkFee(params.principal, {
-          rate: this.officeConfig.paperworkRate || 5000,
-          base: 100000,
-          calculationMode: 'PROPORTIONAL',
-        })
-      : 0;
-    const netDisbursed = Math.max(0, summary.principal - paperworkFee);
+    const paperworkFee =
+      isMigration || !isPaperworkEnabled
+        ? 0
+        : calculatePaperworkFee(params.principal, {
+            rate: this.officeConfig.paperworkRate || 5000,
+            base: 100000,
+            calculationMode: 'PROPORTIONAL',
+          });
+    const netDisbursed = isMigration ? 0 : Math.max(0, summary.principal - paperworkFee);
 
     const loanId = `loan-${Date.now()}`;
     const loanNumber = `#00${101 + this.loans.length}`;
     const collectorId = params.collectorId || customer.assignedCollectorId || 'usr-col-1';
     const routeId = params.routeId || customer.routeId || 'route-norte';
 
-    const generatedInstallments = generateInstallments(
+    // Si es migración de cartulina física y no enviaron fecha de inicio explícita,
+    // calculamos el inicio hacia atrás según las cuotas ya pagadas para que la próxima cuota caiga hoy
+    const effectiveStartDate =
+      params.startDate ||
+      (isMigration && paidSet.size > 0
+        ? addDaysToDate(params.todayStr, -(paidSet.size + 1))
+        : params.todayStr);
+
+    const rawInstallments = generateInstallments(
       loanId,
       summary,
-      params.todayStr,
+      effectiveStartDate,
       params.frequency || 'DAILY',
       undefined,
       params.fixedDueDate
     );
+
+    const generatedInstallments: Installment[] = rawInstallments.map((inst) => {
+      if (isMigration && paidSet.has(inst.installmentNumber)) {
+        return {
+          ...inst,
+          paidAmount: inst.expectedAmount,
+          pendingAmount: 0,
+          status: 'PAGADA',
+          lastPaymentDate: inst.dueDate,
+        };
+      }
+      return inst;
+    });
+
     const endDate =
       isFixedDate && params.fixedDueDate
         ? params.fixedDueDate
         : generatedInstallments.length > 0
         ? generatedInstallments[generatedInstallments.length - 1].dueDate
         : params.todayStr;
+
+    const allPaidInCard = isMigration && paidSet.size >= summary.installmentCount;
 
     const newLoan: Loan = {
       id: loanId,
@@ -1355,24 +1444,14 @@ class LocalStore {
       installmentAmount: summary.installmentAmount,
       frequency: params.frequency || 'DAILY',
       fixedDueDate: params.fixedDueDate,
-      startDate: params.todayStr,
+      startDate: effectiveStartDate,
       endDate,
-      status: 'ACTIVE',
+      status: allPaidInCard ? 'PAID' : 'ACTIVE',
+      notes: isMigration
+        ? `Migrado de cartulina física a digital (${paidSet.size}/${summary.installmentCount} cuotas pagadas en papel)`
+        : undefined,
       createdAt: params.todayStr,
       updatedAt: params.todayStr,
-    };
-
-    const cashMov: CashMovement = {
-      id: `cm-${Date.now()}`,
-      routeId,
-      collectorId,
-      sessionId: this.activeSession?.id,
-      type: 'EXPENSE',
-      category: 'LOAN_DISBURSEMENT',
-      amount: netDisbursed,
-      referenceId: newLoan.id,
-      description: `Desembolso nuevo crédito ${newLoan.loanNumber} a ${customer.fullName} (Capital: $${summary.principal}, Papelería: $${paperworkFee})`,
-      createdAt: `${params.todayStr} ${new Date().toLocaleTimeString('es-CO', { hour12: false })}`,
     };
 
     const audit: AuditLog = {
@@ -1383,11 +1462,31 @@ class LocalStore {
       entityId: newLoan.id,
       action: 'CREATE',
       newValue: JSON.stringify(newLoan),
+      reason: isMigration
+        ? `Migración de cartulina física a digital (${paidSet.size} cuotas previas pagadas)`
+        : undefined,
     };
 
     this.loans.unshift(newLoan);
     this.installments.push(...generatedInstallments);
-    this.cashMovements.unshift(cashMov);
+
+    // En migración de cartulina física NO se descuenta efectivo de la caja del día de hoy
+    if (!isMigration) {
+      const cashMov: CashMovement = {
+        id: `cm-${Date.now()}`,
+        routeId,
+        collectorId,
+        sessionId: this.activeSession?.id,
+        type: 'EXPENSE',
+        category: 'LOAN_DISBURSEMENT',
+        amount: netDisbursed,
+        referenceId: newLoan.id,
+        description: `Desembolso nuevo crédito ${newLoan.loanNumber} a ${customer.fullName} (Capital: $${summary.principal}, Papelería: $${paperworkFee})`,
+        createdAt: `${params.todayStr} ${new Date().toLocaleTimeString('es-CO', { hour12: false })}`,
+      };
+      this.cashMovements.unshift(cashMov);
+    }
+
     this.auditLogs.unshift(audit);
 
     if (this.activeSession && this.activeSession.status === 'OPEN') {

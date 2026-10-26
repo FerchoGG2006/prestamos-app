@@ -5,6 +5,7 @@ import com.cartera.infrastructure.persistence.entity.RouteEntity;
 import com.cartera.infrastructure.security.AuthService;
 import com.cartera.infrastructure.security.AuthService.RouteSetupItem;
 import com.cartera.infrastructure.security.UserSession;
+import com.cartera.infrastructure.security.UserSessionContext;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -14,26 +15,26 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
- * Pantalla de inicio de sesión nativa JavaFX con selector de rol/ruta y Asistente Integrado
- * para que la oficina cree sus credenciales de Administrador y configure cuántas rutas tendrá a su gusto.
+ * Pantalla de inicio de sesión con Identidad Propia de la Aplicación (Kredia).
+ * Solo solicita Usuario y Contraseña, identificando automáticamente rol y ruta asignada.
  */
 public class LoginView extends StackPane {
 
     private static class RouteRowFields {
         final String existingRouteId;
         final TextField txtRouteName;
-        final TextField txtCollectorName;
         final TextField txtUsername;
         final TextField txtPassword;
 
-        RouteRowFields(String existingRouteId, String rName, String cName, String user, String pass) {
+        RouteRowFields(String existingRouteId, String rName, String user, String pass) {
             this.existingRouteId = existingRouteId;
             this.txtRouteName = new TextField(rName);
-            this.txtCollectorName = new TextField(cName);
             this.txtUsername = new TextField(user);
             this.txtPassword = new TextField(pass);
         }
@@ -42,508 +43,374 @@ public class LoginView extends StackPane {
     private final AuthService authService;
     private final Consumer<UserSession> onLoginSuccess;
 
-    private final Label lblBrandTitle = new Label("SISTEMA CARTERA");
+    private final Label lblActiveOfficeBadge = new Label();
     private final TextField txtUsername = new TextField();
     private final PasswordField txtPassword = new PasswordField();
-    private final TextField txtPasswordVisible = new TextField();
-    private final CheckBox chkShowPassword = new CheckBox("Mostrar contraseña");
     private final Label lblError = new Label();
-    private final Button btnLogin = new Button("Ingresar al Sistema");
-    private final FlowPane routeChipsPane = new FlowPane(8, 8);
-    private final VBox routeSelectorSection = new VBox(6);
-
-    private String selectedMode = "ADMIN";
-    private Button btnTabAdmin;
-    private Button btnTabCollector;
+    private final Label lblSuccess = new Label();
+    private final Button btnLogin = new Button("Ingresar");
+    private final Button btnSetup = new Button("Registrar mi oficina y crear credenciales");
 
     public LoginView(AuthService authService, Consumer<UserSession> onLoginSuccess) {
         this.authService = authService;
         this.onLoginSuccess = onLoginSuccess;
 
-        setStyle("-fx-background-color: #0f172a;");
+        setStyle("-fx-background-color: #f3f7fa;");
         setAlignment(Pos.CENTER);
         setPadding(new Insets(24));
-
-        // Sincronizar campo oculto y visible de contraseña
-        txtPasswordVisible.setManaged(false);
-        txtPasswordVisible.setVisible(false);
-        txtPassword.textProperty().bindBidirectional(txtPasswordVisible.textProperty());
 
         buildUI();
         refreshDynamicData();
     }
 
     private void buildUI() {
-        VBox card = new VBox(16);
-        card.setAlignment(Pos.CENTER);
-        card.setMaxWidth(480);
-        card.setPadding(new Insets(30, 32, 28, 32));
-        card.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 18; -fx-border-color: #cbd5e1; -fx-border-radius: 18; -fx-border-width: 1; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.22), 28, 0, 0, 10);");
+        VBox wrapper = new VBox(14);
+        wrapper.setAlignment(Pos.CENTER);
+        wrapper.setMaxWidth(360);
 
-        // 1. Logo e Isotipo
-        HBox brandHeader = new HBox(12);
-        brandHeader.setAlignment(Pos.CENTER);
+        // Identidad Propia de la Aplicación: Kredia
+        VBox header = new VBox(4);
+        header.setAlignment(Pos.CENTER);
 
-        Label logo = new Label("\uD83C\uDFE2");
-        logo.setStyle("-fx-background-color: #0284c7; -fx-text-fill: white; -fx-font-size: 22px; -fx-padding: 10 12; -fx-background-radius: 12;");
+        Label emblem = new Label("K");
+        emblem.setAlignment(Pos.CENTER);
+        emblem.setPrefSize(50, 50);
+        emblem.setStyle("-fx-background-color: #0d9488; -fx-text-fill: #ffffff; -fx-font-size: 24px; -fx-font-weight: 900; -fx-background-radius: 15;");
 
-        VBox brandTitles = new VBox(2);
-        brandTitles.setAlignment(Pos.CENTER_LEFT);
-        lblBrandTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 17px; -fx-font-weight: bold; -fx-letter-spacing: 0.4px;");
-        Label subtitle = new Label("Acceso de Oficina Central y Rutas de Cobro");
-        subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11.5px;");
-        brandTitles.getChildren().addAll(lblBrandTitle, subtitle);
+        Label appTitle = new Label("Kredia");
+        appTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 23px; -fx-font-weight: 900;");
+        Label subtitle = new Label("Sistema de Gestión de Cartera y Rutas");
+        subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px; -fx-font-weight: bold;");
 
-        brandHeader.getChildren().addAll(logo, brandTitles);
+        lblActiveOfficeBadge.setVisible(false);
+        lblActiveOfficeBadge.setManaged(false);
+        lblActiveOfficeBadge.setStyle("-fx-background-color: #e6f7f5; -fx-text-fill: #0f766e; -fx-border-color: #99f6e4; -fx-border-radius: 12; -fx-background-radius: 12; -fx-padding: 3 10; -fx-font-size: 11px; -fx-font-weight: bold;");
 
-        // 2. Botón Destacado: Configurar Oficina, Credenciales de Admin y Rutas
-        Button btnSetupWizard = new Button("\u2699 Configurar Oficina, Admin y Rutas (Crear Credenciales)");
-        btnSetupWizard.setMaxWidth(Double.MAX_VALUE);
-        btnSetupWizard.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #0369a1; -fx-border-color: #7dd3fc; -fx-border-width: 1.5; -fx-border-radius: 10; -fx-background-radius: 10; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 10 14; -fx-cursor: hand;");
-        btnSetupWizard.setOnAction(e -> openOfficeSetupWizardDialog());
+        header.getChildren().addAll(emblem, appTitle, subtitle, lblActiveOfficeBadge);
 
-        // 3. Selector de Perfil (Administrador de Oficina vs Ruta / Cobrador)
-        HBox roleTabs = new HBox(10);
-        roleTabs.setAlignment(Pos.CENTER);
+        // Tarjeta Blanca: solo Usuario y Contraseña
+        VBox card = new VBox(12);
+        card.setAlignment(Pos.CENTER_LEFT);
+        card.setPadding(new Insets(22));
+        card.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 20; -fx-border-color: #e2e8f0; -fx-border-radius: 20; -fx-border-width: 1;");
 
-        btnTabAdmin = new Button("\uD83D\uDC51 Oficina / Admin");
-        btnTabAdmin.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(btnTabAdmin, Priority.ALWAYS);
-        btnTabAdmin.setOnAction(e -> switchRoleMode("ADMIN"));
-
-        btnTabCollector = new Button("\uD83D\uDEF5 Ruta / Cobrador");
-        btnTabCollector.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(btnTabCollector, Priority.ALWAYS);
-        btnTabCollector.setOnAction(e -> switchRoleMode("COBRADOR"));
-
-        roleTabs.getChildren().addAll(btnTabAdmin, btnTabCollector);
-
-        // 4. Selector rápido de rutas activas (visible cuando elige Ruta / Cobrador)
-        Label lblPickRoute = new Label("Selecciona tu Ruta Activa:");
-        lblPickRoute.setStyle("-fx-text-fill: #475569; -fx-font-size: 11px; -fx-font-weight: bold;");
-        routeSelectorSection.getChildren().addAll(lblPickRoute, routeChipsPane);
-        routeSelectorSection.setVisible(false);
-        routeSelectorSection.setManaged(false);
-
-        // 5. Formulario de Credenciales
-        VBox form = new VBox(10);
-        form.setAlignment(Pos.CENTER_LEFT);
-
-        Label lblUser = new Label("Usuario Asignado");
-        lblUser.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px; -fx-font-weight: bold;");
-        txtUsername.setPromptText("Ingresa tu usuario de administrador o de ruta");
-        txtUsername.getStyleClass().add("search-field");
-        txtUsername.setMaxWidth(Double.MAX_VALUE);
-        txtUsername.setStyle("-fx-padding: 10 14; -fx-font-size: 13px;");
-
-        Label lblPass = new Label("Contraseña de Acceso");
-        lblPass.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px; -fx-font-weight: bold;");
-        txtPassword.setPromptText("••••••••");
-        txtPassword.getStyleClass().add("search-field");
-        txtPassword.setMaxWidth(Double.MAX_VALUE);
-        txtPassword.setStyle("-fx-padding: 10 14; -fx-font-size: 13px;");
-
-        txtPasswordVisible.setPromptText("Escribe tu contraseña");
-        txtPasswordVisible.getStyleClass().add("search-field");
-        txtPasswordVisible.setMaxWidth(Double.MAX_VALUE);
-        txtPasswordVisible.setStyle("-fx-padding: 10 14; -fx-font-size: 13px;");
-
-        chkShowPassword.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11.5px;");
-        chkShowPassword.setOnAction(e -> {
-            boolean show = chkShowPassword.isSelected();
-            txtPasswordVisible.setManaged(show);
-            txtPasswordVisible.setVisible(show);
-            txtPassword.setManaged(!show);
-            txtPassword.setVisible(!show);
-        });
-
-        txtUsername.setOnAction(e -> {
-            if (chkShowPassword.isSelected()) txtPasswordVisible.requestFocus();
-            else txtPassword.requestFocus();
-        });
-        txtPassword.setOnAction(e -> doLogin());
-        txtPasswordVisible.setOnAction(e -> doLogin());
+        lblSuccess.setVisible(false);
+        lblSuccess.setManaged(false);
+        lblSuccess.setWrapText(true);
+        lblSuccess.setMaxWidth(Double.MAX_VALUE);
+        lblSuccess.setStyle("-fx-text-fill: #065f46; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 10; -fx-padding: 8 10; -fx-background-radius: 10; -fx-font-size: 11.5px; -fx-font-weight: bold;");
 
         lblError.setVisible(false);
         lblError.setManaged(false);
         lblError.setWrapText(true);
         lblError.setMaxWidth(Double.MAX_VALUE);
-        lblError.setStyle("-fx-text-fill: #dc2626; -fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 8; -fx-padding: 8 12; -fx-background-radius: 8; -fx-font-size: 12px;");
+        lblError.setStyle("-fx-text-fill: #dc2626; -fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 10; -fx-padding: 8 10; -fx-background-radius: 10; -fx-font-size: 12px; -fx-font-weight: bold;");
 
-        btnLogin.getStyleClass().add("btn-primary");
+        Label lblUser = new Label("Usuario");
+        lblUser.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px; -fx-font-weight: bold;");
+        txtUsername.setPromptText("Ingresa tu usuario");
+        txtUsername.setMaxWidth(Double.MAX_VALUE);
+        txtUsername.setStyle("-fx-background-color: #f8fafc; -fx-text-fill: #0f172a; -fx-prompt-text-fill: #94a3b8; -fx-border-color: #cbd5e1; -fx-border-radius: 12; -fx-background-radius: 12; -fx-padding: 10 12; -fx-font-size: 13.5px;");
+
+        Label lblPass = new Label("Contraseña");
+        lblPass.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px; -fx-font-weight: bold;");
+        txtPassword.setPromptText("Ingresa tu contraseña");
+        txtPassword.setMaxWidth(Double.MAX_VALUE);
+        txtPassword.setStyle("-fx-background-color: #f8fafc; -fx-text-fill: #0f172a; -fx-prompt-text-fill: #94a3b8; -fx-border-color: #cbd5e1; -fx-border-radius: 12; -fx-background-radius: 12; -fx-padding: 10 12; -fx-font-size: 13.5px;");
+
+        txtUsername.setOnAction(e -> txtPassword.requestFocus());
+        txtPassword.setOnAction(e -> doLogin());
+
         btnLogin.setMaxWidth(Double.MAX_VALUE);
-        btnLogin.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 11 20; -fx-background-radius: 10;");
+        btnLogin.setStyle("-fx-background-color: #0d9488; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 12; -fx-cursor: hand;");
         btnLogin.setOnAction(e -> doLogin());
 
-        form.getChildren().addAll(
-                lblUser,
-                txtUsername,
-                lblPass,
-                txtPassword,
-                txtPasswordVisible,
-                chkShowPassword,
-                lblError,
-                btnLogin
-        );
+        card.getChildren().addAll(lblSuccess, lblError, lblUser, txtUsername, lblPass, txtPassword, btnLogin);
 
-        card.getChildren().addAll(brandHeader, btnSetupWizard, roleTabs, routeSelectorSection, form);
-        getChildren().add(card);
+        btnSetup.setStyle("-fx-background-color: #ffffff; -fx-border-color: #e2e8f0; -fx-border-radius: 20; -fx-background-radius: 20; -fx-text-fill: #475569; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 7 16; -fx-cursor: hand;");
+        btnSetup.setOnAction(e -> openOfficeSetupDialog());
 
-        switchRoleMode("ADMIN");
-    }
-
-    private void switchRoleMode(String mode) {
-        this.selectedMode = mode;
-        boolean isAdmin = "ADMIN".equals(mode);
-
-        String activeStyle = "-fx-background-color: #0284c7; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 9 14; -fx-background-radius: 10; -fx-cursor: hand;";
-        String inactiveStyle = "-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-border-color: #cbd5e1; -fx-border-radius: 10; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 9 14; -fx-cursor: hand;";
-
-        btnTabAdmin.setStyle(isAdmin ? activeStyle : inactiveStyle);
-        btnTabCollector.setStyle(!isAdmin ? activeStyle : inactiveStyle);
-
-        routeSelectorSection.setVisible(!isAdmin);
-        routeSelectorSection.setManaged(!isAdmin);
-
-        List<AppUserEntity> users = authService.getActiveUsers();
-        if (isAdmin) {
-            AppUserEntity admin = users.stream()
-                    .filter(u -> u.getId().startsWith("usr-admin") || "admin".equalsIgnoreCase(u.getUsername()))
-                    .findFirst()
-                    .orElse(null);
-            if (admin != null) {
-                txtUsername.setText(admin.getUsername());
-            }
-            btnLogin.setText("Ingresar al Panel de Oficina");
-        } else {
-            List<RouteEntity> routes = authService.getActiveRoutes();
-            if (!routes.isEmpty()) {
-                selectRouteChip(routes.get(0), users);
-            }
-            btnLogin.setText("Ingresar a Mi Ruta");
-        }
-        lblError.setVisible(false);
-        lblError.setManaged(false);
+        wrapper.getChildren().addAll(header, card, btnSetup);
+        getChildren().add(wrapper);
     }
 
     private void refreshDynamicData() {
-        lblBrandTitle.setText(authService.getCompanyName().toUpperCase());
-        routeChipsPane.getChildren().clear();
-
-        List<RouteEntity> routes = authService.getActiveRoutes();
-        List<AppUserEntity> users = authService.getActiveUsers();
-
-        for (RouteEntity r : routes) {
-            AppUserEntity col = users.stream()
-                    .filter(u -> u.getId().equals(r.getCollectorId()))
-                    .findFirst()
-                    .orElse(null);
-            String label = r.getName() + (col != null ? " (" + col.getUsername() + ")" : "");
-            Button chip = new Button(label);
-            chip.setStyle("-fx-background-color: #f8fafc; -fx-text-fill: #0f172a; -fx-border-color: #94a3b8; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 10; -fx-cursor: hand;");
-            chip.setOnAction(e -> selectRouteChip(r, users));
-            routeChipsPane.getChildren().add(chip);
+        String comp = authService.getCompanyName();
+        boolean isConfigured = authService.isOfficeConfigured()
+                && comp != null
+                && !comp.trim().isEmpty()
+                && !"Inversiones & Cobranzas La Excelencia".equalsIgnoreCase(comp.trim())
+                && !"Mi Oficina de Crédito".equalsIgnoreCase(comp.trim());
+        if (isConfigured) {
+            lblActiveOfficeBadge.setText("Oficina: " + comp.trim());
+            lblActiveOfficeBadge.setVisible(true);
+            lblActiveOfficeBadge.setManaged(true);
+            btnSetup.setText("Configurar oficina y credenciales");
+        } else {
+            lblActiveOfficeBadge.setVisible(false);
+            lblActiveOfficeBadge.setManaged(false);
+            btnSetup.setText("Registrar mi oficina y crear credenciales");
         }
     }
 
-    private void selectRouteChip(RouteEntity route, List<AppUserEntity> users) {
-        users.stream()
-                .filter(u -> u.getId().equals(route.getCollectorId()))
-                .findFirst()
-                .ifPresent(u -> txtUsername.setText(u.getUsername()));
-        txtPassword.requestFocus();
-    }
-
-    /**
-     * Asistente Modal para que la oficina cree sus credenciales de Administrador,
-     * elija cuántas rutas va a tener la oficina y configure cada ruta a su gusto.
-     */
-    private void openOfficeSetupWizardDialog() {
+    private void openOfficeSetupDialog() {
         Stage dialog = new Stage();
         dialog.initModality(Modality.APPLICATION_MODAL);
         if (getScene() != null && getScene().getWindow() != null) {
             dialog.initOwner(getScene().getWindow());
         }
-        dialog.setTitle("Configurar Oficina, Credenciales de Administrador y Rutas");
+        dialog.setTitle("Configurar Oficina y Rutas");
 
-        VBox root = new VBox(14);
-        root.setPadding(new Insets(22));
-        root.setStyle("-fx-background-color: #f8fafc;");
-        root.setPrefWidth(680);
-        root.setPrefHeight(640);
+        VBox root = new VBox(12);
+        root.setPadding(new Insets(18));
+        root.setStyle("-fx-background-color: #ffffff;");
+        root.setPrefWidth(480);
+        root.setPrefHeight(520);
 
-        Label headerTitle = new Label("\uD83C\uDFE2 Configurar Credenciales de Oficina y Rutas a tu Gusto");
-        headerTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 17px; -fx-font-weight: bold;");
-        Label headerSub = new Label("Define el usuario y clave del Administrador, indica cuántas rutas tendrá tu oficina y configura las credenciales de cada ruta.");
-        headerSub.setStyle("-fx-text-fill: #475569; -fx-font-size: 12px;");
-        headerSub.setWrapText(true);
+        Label headerTitle = new Label("Configurar Oficina y Rutas");
+        headerTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
 
-        // Sección 1: Datos de Oficina y Credenciales de Administrador
-        VBox adminCard = new VBox(10);
-        adminCard.setStyle("-fx-background-color: #ffffff; -fx-padding: 16; -fx-background-radius: 12; -fx-border-color: #cbd5e1; -fx-border-radius: 12;");
-
-        Label sec1Title = new Label("1. Datos de la Oficina y Credenciales del Administrador");
-        sec1Title.setStyle("-fx-text-fill: #0284c7; -fx-font-size: 13.5px; -fx-font-weight: bold;");
-
+        boolean isAlreadyConfigured = authService.isOfficeConfigured();
         List<AppUserEntity> currentUsers = authService.getActiveUsers();
         AppUserEntity existingAdmin = currentUsers.stream()
                 .filter(u -> u.getId().startsWith("usr-admin") || "admin".equalsIgnoreCase(u.getUsername()))
                 .findFirst()
                 .orElse(null);
 
-        TextField txtCompany = new TextField(authService.getCompanyName());
-        txtCompany.setPromptText("Ej. Inversiones & Créditos El Dorado");
-        TextField txtCity = new TextField("Barranquilla");
-        TextField txtPhone = new TextField("300 123 4567");
+        VBox adminCard = new VBox(8);
+        adminCard.setStyle("-fx-background-color: #f8fafc; -fx-padding: 12; -fx-background-radius: 14; -fx-border-color: #e2e8f0; -fx-border-radius: 14;");
+        Label lblAdmTitle = new Label("1. DATOS DE TU OFICINA Y ADMIN");
+        lblAdmTitle.setStyle("-fx-text-fill: #4f46e5; -fx-font-size: 10px; -fx-font-weight: bold;");
 
-        HBox rowOffice = new HBox(10,
-                createLabeledField("Nombre de la Oficina *", txtCompany, 260),
-                createLabeledField("Ciudad", txtCity, 170),
-                createLabeledField("Teléfono", txtPhone, 170)
+        TextField txtCompany = new TextField(isAlreadyConfigured ? authService.getCompanyName() : "");
+        txtCompany.setPromptText("Escribe el nombre de tu oficina");
+        String adminUserStr = isAlreadyConfigured && existingAdmin != null ? existingAdmin.getUsername() : "";
+        TextField txtAdminUser = new TextField(adminUserStr);
+        txtAdminUser.setPromptText("Crea tu usuario admin");
+        TextField txtAdminPass = new TextField("");
+        txtAdminPass.setPromptText("Crea tu clave");
+
+        HBox rowAdmin = new HBox(8,
+                createLightField("Usuario Administrador", txtAdminUser, 205),
+                createLightField("Clave Administrador", txtAdminPass, 205)
         );
-
-        TextField txtAdminName = new TextField(existingAdmin != null ? existingAdmin.getFullName() : "Administrador General");
-        TextField txtAdminUser = new TextField(existingAdmin != null ? existingAdmin.getUsername() : "admin");
-        TextField txtAdminPass = new TextField();
-        txtAdminPass.setPromptText("Escribe la nueva clave de Admin");
-
-        HBox rowAdmin = new HBox(10,
-                createLabeledField("Nombre del Administrador *", txtAdminName, 220),
-                createLabeledField("Usuario Administrador *", txtAdminUser, 180),
-                createLabeledField("Contraseña Administrador *", txtAdminPass, 200)
-        );
-
-        adminCard.getChildren().addAll(sec1Title, rowOffice, rowAdmin);
-
-        // Sección 2: ¿Cuántas rutas tendrá la oficina? + Reglas
-        VBox countAndRulesCard = new VBox(10);
-        countAndRulesCard.setStyle("-fx-background-color: #ffffff; -fx-padding: 16; -fx-background-radius: 12; -fx-border-color: #cbd5e1; -fx-border-radius: 12;");
-
-        Label sec2Title = new Label("2. ¿Cuántas rutas va a tener esta oficina? y Políticas");
-        sec2Title.setStyle("-fx-text-fill: #0284c7; -fx-font-size: 13.5px; -fx-font-weight: bold;");
+        adminCard.getChildren().addAll(lblAdmTitle, createLightField("Nombre de la Oficina", txtCompany, 420), rowAdmin);
 
         List<RouteEntity> currentRoutes = authService.getActiveRoutes();
-        int initialRouteCount = Math.max(1, currentRoutes.size());
+        int initialCount = isAlreadyConfigured ? Math.max(1, currentRoutes.size()) : 1;
+        Spinner<Integer> spnCount = new Spinner<>(1, 15, initialCount);
+        spnCount.setPrefWidth(80);
 
-        Spinner<Integer> spnRouteCount = new Spinner<>(1, 20, initialRouteCount);
-        spnRouteCount.setEditable(true);
-        spnRouteCount.setPrefWidth(90);
+        HBox countBox = new HBox(12);
+        countBox.setAlignment(Pos.CENTER_LEFT);
+        countBox.setStyle("-fx-background-color: #f0fdfa; -fx-padding: 8 12; -fx-background-radius: 12; -fx-border-color: #ccfbf1; -fx-border-radius: 12;");
+        Label lblCount = new Label("2. ¿Cuántas rutas tendrá la oficina?");
+        lblCount.setStyle("-fx-text-fill: #0f766e; -fx-font-size: 12px; -fx-font-weight: bold;");
+        Region sp = new Region();
+        HBox.setHgrow(sp, Priority.ALWAYS);
+        countBox.getChildren().addAll(lblCount, sp, spnCount);
 
-        HBox quickCountBtns = new HBox(6);
-        quickCountBtns.setAlignment(Pos.CENTER_LEFT);
-        Label lblQty = new Label("Cantidad de Rutas:");
-        lblQty.setStyle("-fx-font-weight: bold; -fx-text-fill: #1e293b; -fx-font-size: 12px;");
-        quickCountBtns.getChildren().addAll(lblQty, spnRouteCount);
-
-        for (int n : new int[]{1, 2, 3, 4, 5, 6}) {
-            Button b = new Button(n + (n == 1 ? " Ruta" : " Rutas"));
-            b.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #0f172a; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-cursor: hand;");
-            b.setOnAction(ev -> spnRouteCount.getValueFactory().setValue(n));
-            quickCountBtns.getChildren().add(b);
+        VBox routesContainer = new VBox(8);
+        List<RouteRowFields> routeRows = new ArrayList<>();
+        Set<String> seenUsers = new HashSet<>();
+        if (!adminUserStr.isEmpty()) {
+            seenUsers.add(adminUserStr.toLowerCase());
         }
 
-        TextField txtInterest = new TextField("20");
-        TextField txtPaperworkFee = new TextField("5000");
-        CheckBox chkPaperwork = new CheckBox("Cobrar Papelería");
-        chkPaperwork.setSelected(true);
-        CheckBox chkNoSundays = new CheckBox("Excluir Domingos");
-        chkNoSundays.setSelected(true);
-        CheckBox chkAllowNewLoans = new CheckBox("Permitir préstamos en calle");
-        chkAllowNewLoans.setSelected(true);
-        CheckBox chkAllowExpenses = new CheckBox("Permitir gastos en ruta");
-        chkAllowExpenses.setSelected(true);
-
-        HBox policiesRow = new HBox(12,
-                createLabeledField("Interés (%)", txtInterest, 90),
-                createLabeledField("Papelería ($)", txtPaperworkFee, 110),
-                chkPaperwork,
-                chkNoSundays,
-                chkAllowNewLoans
-        );
-        policiesRow.setAlignment(Pos.CENTER_LEFT);
-
-        countAndRulesCard.getChildren().addAll(sec2Title, quickCountBtns, policiesRow);
-
-        // Sección 3: Lista dinámica de las N rutas configurables a su gusto
-        VBox routesContainer = new VBox(10);
-        List<RouteRowFields> routeRows = new ArrayList<>();
-
-        Runnable rebuildRouteRows = () -> {
-            int targetCount = spnRouteCount.getValue();
-            while (routeRows.size() < targetCount) {
+        Runnable rebuildRows = () -> {
+            int target = spnCount.getValue();
+            while (routeRows.size() < target) {
                 int idx = routeRows.size();
-                RouteEntity existingRoute = idx < currentRoutes.size() ? currentRoutes.get(idx) : null;
-                AppUserEntity existingCol = existingRoute != null
-                        ? currentUsers.stream().filter(u -> u.getId().equals(existingRoute.getCollectorId())).findFirst().orElse(null)
+                RouteEntity r = isAlreadyConfigured && idx < currentRoutes.size() ? currentRoutes.get(idx) : null;
+                AppUserEntity col = r != null
+                        ? currentUsers.stream().filter(u -> u.getId().equals(r.getCollectorId())).findFirst().orElse(null)
                         : null;
+                String candidateUser = col != null && col.getUsername() != null
+                        ? col.getUsername().toLowerCase()
+                        : "";
+                if (!candidateUser.isEmpty() && seenUsers.contains(candidateUser)) {
+                    candidateUser = "";
+                }
+                if (!candidateUser.isEmpty()) {
+                    seenUsers.add(candidateUser);
+                }
+
                 routeRows.add(new RouteRowFields(
-                        existingRoute != null ? existingRoute.getId() : null,
-                        existingRoute != null ? existingRoute.getName() : "Ruta " + (idx + 1),
-                        existingCol != null ? existingCol.getFullName() : "Cobrador Ruta " + (idx + 1),
-                        existingCol != null ? existingCol.getUsername() : "ruta" + (idx + 1),
-                        "ruta" + (idx + 1) + "123"
+                        r != null ? r.getId() : null,
+                        r != null ? r.getName() : "",
+                        candidateUser,
+                        ""
                 ));
             }
-            while (routeRows.size() > targetCount) {
+            while (routeRows.size() > target) {
                 routeRows.remove(routeRows.size() - 1);
             }
-
             routesContainer.getChildren().clear();
+
             for (int i = 0; i < routeRows.size(); i++) {
                 RouteRowFields rf = routeRows.get(i);
-                VBox rCard = new VBox(8);
-                rCard.setStyle("-fx-background-color: #ffffff; -fx-padding: 12; -fx-background-radius: 10; -fx-border-color: #93c5fd; -fx-border-radius: 10;");
+                rf.txtRouteName.setPromptText("Nombre Ruta " + (i + 1) + " (opcional)");
+                rf.txtUsername.setPromptText("Crea usuario ruta " + (i + 1));
+                rf.txtPassword.setPromptText("Crea su clave");
 
-                Label rTitle = new Label("\uD83D\uDEF5 RUTA #" + (i + 1) + " — Configura nombre y credenciales de acceso");
-                rTitle.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 12px; -fx-font-weight: bold;");
+                VBox rCard = new VBox(6);
+                rCard.setStyle("-fx-background-color: #f8fafc; -fx-padding: 10; -fx-background-radius: 12; -fx-border-color: #e2e8f0; -fx-border-radius: 12;");
 
-                HBox rRow = new HBox(8,
-                        createLabeledField("Nombre de la Ruta *", rf.txtRouteName, 165),
-                        createLabeledField("Nombre del Cobrador *", rf.txtCollectorName, 165),
-                        createLabeledField("Usuario de Ruta *", rf.txtUsername, 130),
-                        createLabeledField("Contraseña de Ruta *", rf.txtPassword, 145)
+                HBox topRow = new HBox(8);
+                topRow.setAlignment(Pos.CENTER_LEFT);
+                Label rBadge = new Label("RUTA " + (i + 1));
+                rBadge.setStyle("-fx-background-color: #e6f7f5; -fx-text-fill: #0d9488; -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-padding: 6 10; -fx-background-radius: 8;");
+                styleCompactCell(rf.txtRouteName, 340);
+                HBox.setHgrow(rf.txtRouteName, Priority.ALWAYS);
+                topRow.getChildren().addAll(rBadge, rf.txtRouteName);
+
+                HBox bottomRow = new HBox(8,
+                        createLightField("Usuario Cobrador", rf.txtUsername, 205),
+                        createLightField("Clave de Acceso", rf.txtPassword, 205)
                 );
-                rCard.getChildren().addAll(rTitle, rRow);
+
+                rCard.getChildren().addAll(topRow, bottomRow);
                 routesContainer.getChildren().add(rCard);
             }
         };
 
-        spnRouteCount.valueProperty().addListener((obs, oldV, newV) -> rebuildRouteRows.run());
-        rebuildRouteRows.run();
+        spnCount.valueProperty().addListener((o, oldV, newV) -> rebuildRows.run());
+        rebuildRows.run();
 
-        VBox scrollContent = new VBox(12, adminCard, countAndRulesCard, routesContainer);
-        ScrollPane scrollPane = new ScrollPane(scrollContent);
+        VBox scrollBody = new VBox(10, adminCard, countBox, routesContainer);
+        ScrollPane scrollPane = new ScrollPane(scrollBody);
         scrollPane.setFitToWidth(true);
-        scrollPane.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
+        scrollPane.setStyle("-fx-background: #ffffff; -fx-background-color: transparent;");
         VBox.setVgrow(scrollPane, Priority.ALWAYS);
 
-        Label lblWizError = new Label();
-        lblWizError.setVisible(false);
-        lblWizError.setManaged(false);
-        lblWizError.setStyle("-fx-text-fill: #dc2626; -fx-font-weight: bold; -fx-font-size: 12px;");
+        Label lblWizErr = new Label();
+        lblWizErr.setVisible(false);
+        lblWizErr.setManaged(false);
+        lblWizErr.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 12px; -fx-font-weight: bold;");
 
-        HBox footer = new HBox(12);
-        footer.setAlignment(Pos.CENTER_RIGHT);
+        Button btnSaveOnly = new Button("Guardar credenciales");
+        btnSaveOnly.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(btnSaveOnly, Priority.ALWAYS);
+        btnSaveOnly.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 10; -fx-background-radius: 10; -fx-text-fill: #334155; -fx-font-weight: bold; -fx-padding: 9 14; -fx-cursor: hand;");
 
-        Button btnCancel = new Button("Cancelar");
-        btnCancel.getStyleClass().add("btn-secondary");
-        btnCancel.setOnAction(e -> dialog.close());
+        Button btnSaveAndEnter = new Button("Guardar y Entrar");
+        btnSaveAndEnter.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(btnSaveAndEnter, Priority.ALWAYS);
+        btnSaveAndEnter.setStyle("-fx-background-color: #0d9488; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 9 14; -fx-background-radius: 10; -fx-cursor: hand;");
 
-        Button btnSaveAndLogin = new Button("\u2714 Guardar Credenciales, Configurar Rutas e Ingresar");
-        btnSaveAndLogin.getStyleClass().add("btn-primary");
-        btnSaveAndLogin.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 10 18; -fx-background-radius: 8;");
-        btnSaveAndLogin.setOnAction(e -> {
+        Consumer<Boolean> saveAction = enterDirectly -> {
             try {
-                if (txtAdminPass.getText() == null || txtAdminPass.getText().trim().isEmpty()) {
-                    lblWizError.setText("Por favor ingresa la contraseña que tendrá el Administrador de la oficina.");
-                    lblWizError.setVisible(true);
-                    lblWizError.setManaged(true);
-                    return;
-                }
-
                 List<RouteSetupItem> items = new ArrayList<>();
                 for (int i = 0; i < routeRows.size(); i++) {
                     RouteRowFields rf = routeRows.get(i);
+                    String rName = rf.txtRouteName.getText() != null && !rf.txtRouteName.getText().trim().isEmpty()
+                            ? rf.txtRouteName.getText().trim()
+                            : "Ruta " + (i + 1);
                     items.add(new RouteSetupItem(
                             rf.existingRouteId,
-                            rf.txtRouteName.getText(),
-                            rf.txtCollectorName.getText(),
+                            rName,
+                            rName,
                             rf.txtUsername.getText(),
                             rf.txtPassword.getText()
                     ));
                 }
-
                 UserSession session = authService.setupOfficeAndRoutes(
                         txtCompany.getText(),
-                        txtCity.getText(),
-                        txtPhone.getText(),
-                        txtAdminName.getText(),
+                        "Barranquilla",
+                        "",
+                        "Administración General",
                         txtAdminUser.getText(),
                         txtAdminPass.getText(),
-                        txtInterest.getText(),
-                        chkPaperwork.isSelected(),
-                        txtPaperworkFee.getText(),
-                        chkNoSundays.isSelected(),
-                        chkAllowNewLoans.isSelected(),
-                        chkAllowExpenses.isSelected(),
+                        "20",
+                        true,
+                        "5000",
+                        true,
+                        true,
+                        true,
                         items
                 );
-
                 refreshDynamicData();
                 dialog.close();
-                if (onLoginSuccess != null) {
+                if (enterDirectly && onLoginSuccess != null) {
                     onLoginSuccess.accept(session);
+                } else {
+                    lblSuccess.setText("Oficina y " + items.size() + " ruta(s) configuradas.");
+                    lblSuccess.setVisible(true);
+                    lblSuccess.setManaged(true);
                 }
             } catch (Exception ex) {
-                lblWizError.setText(ex.getMessage());
-                lblWizError.setVisible(true);
-                lblWizError.setManaged(true);
+                lblWizErr.setText(ex.getMessage());
+                lblWizErr.setVisible(true);
+                lblWizErr.setManaged(true);
             }
-        });
+        };
 
-        footer.getChildren().addAll(btnCancel, btnSaveAndLogin);
+        btnSaveOnly.setOnAction(e -> saveAction.accept(false));
+        btnSaveAndEnter.setOnAction(e -> saveAction.accept(true));
 
-        root.getChildren().addAll(headerTitle, headerSub, scrollPane, lblWizError, footer);
-
-        Scene scene = new Scene(root);
-        try {
-            scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
-        } catch (Exception ignored) {}
-        dialog.setScene(scene);
+        HBox footerBtns = new HBox(8, btnSaveOnly, btnSaveAndEnter);
+        root.getChildren().addAll(headerTitle, scrollPane, lblWizErr, footerBtns);
+        dialog.setScene(new Scene(root));
         dialog.showAndWait();
     }
 
-    private VBox createLabeledField(String label, TextField field, double prefWidth) {
+    private VBox createLightField(String label, TextField field, double width) {
         VBox box = new VBox(3);
         Label lbl = new Label(label);
         lbl.setStyle("-fx-text-fill: #475569; -fx-font-size: 11px; -fx-font-weight: bold;");
-        field.getStyleClass().add("search-field");
-        field.setPrefWidth(prefWidth);
+        field.setPrefWidth(width);
+        field.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #0f172a; -fx-border-color: #cbd5e1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-padding: 6 10; -fx-font-size: 12.5px;");
         box.getChildren().addAll(lbl, field);
         return box;
+    }
+
+    private void styleCompactCell(TextField field, double width) {
+        field.setPrefWidth(width);
+        field.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #0f172a; -fx-border-color: #cbd5e1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-padding: 6 10; -fx-font-size: 12.5px;");
     }
 
     private void doLogin() {
         String username = txtUsername.getText();
         String password = txtPassword.getText();
 
-        if (username == null || username.trim().isEmpty()) {
-            showError("Por favor ingresa tu nombre de usuario.");
-            txtUsername.requestFocus();
-            return;
-        }
-
-        if (password == null || password.isEmpty()) {
-            showError("Por favor ingresa tu contraseña.");
-            txtPassword.requestFocus();
+        if (username == null || username.trim().isEmpty() || password == null || password.isEmpty()) {
+            showError("Ingresa tu usuario y contraseña.");
             return;
         }
 
         btnLogin.setDisable(true);
-        btnLogin.setText("Verificando credenciales...");
-
         try {
             var optSession = authService.authenticate(username, password);
             if (optSession.isPresent()) {
+                UserSession session = optSession.get();
+                if (session.isCollector()) {
+                    authService.getActiveRoutes().stream()
+                            .filter(r -> session.userId().equals(r.getCollectorId()))
+                            .findFirst()
+                            .ifPresent(r -> UserSessionContext.setSelectedRouteId(r.getId()));
+                } else {
+                    UserSessionContext.setSelectedRouteId("ALL");
+                }
                 lblError.setVisible(false);
                 lblError.setManaged(false);
                 if (onLoginSuccess != null) {
-                    onLoginSuccess.accept(optSession.get());
+                    onLoginSuccess.accept(session);
                 }
             } else {
-                showError("Usuario o contraseña incorrectos. Verifica tus credenciales o configúralas en el botón superior.");
+                showError("Credenciales incorrectas. Verifica tu usuario y clave.");
                 txtPassword.clear();
                 txtPassword.requestFocus();
             }
         } catch (Exception ex) {
-            showError("Error al iniciar sesión: " + ex.getMessage());
+            showError("Error: " + ex.getMessage());
         } finally {
             btnLogin.setDisable(false);
-            btnLogin.setText("ADMIN".equals(selectedMode) ? "Ingresar al Panel de Oficina" : "Ingresar a Mi Ruta");
         }
     }
 
     private void showError(String message) {
+        lblSuccess.setVisible(false);
+        lblSuccess.setManaged(false);
         lblError.setText(message);
         lblError.setVisible(true);
         lblError.setManaged(true);
@@ -551,9 +418,12 @@ public class LoginView extends StackPane {
 
     public void reset() {
         refreshDynamicData();
+        txtUsername.clear();
         txtPassword.clear();
         lblError.setVisible(false);
         lblError.setManaged(false);
+        lblSuccess.setVisible(false);
+        lblSuccess.setManaged(false);
         txtUsername.requestFocus();
     }
 }
