@@ -68,6 +68,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [wizRoutesDraft, setWizRoutesDraft] = useState<EditableRouteDraft[]>([
     { name: '', username: '', password: '' },
   ]);
+  const [wizCleanPortfolio, setWizCleanPortfolio] = useState<boolean>(false);
   const [wizError, setWizError] = useState('');
 
   const handleLogin = () => {
@@ -215,6 +216,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         adminName: 'Administración General',
         adminUsername: wizAdminUsername.trim().toLowerCase(),
         adminPassword: wizAdminPassword.trim(),
+        cleanCustomersData: wizCleanPortfolio,
         routesConfig: wizRoutesDraft.map((d, i) => {
           const cleanName = d.name.trim() || `Ruta ${i + 1}`;
           return {
@@ -524,6 +526,52 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </View>
                 </View>
               ))}
+
+              {/* Opción para iniciar la cartera en $0 sin datos de prueba */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setWizCleanPortfolio(!wizCleanPortfolio)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: wizCleanPortfolio ? '#ECFDF5' : '#F8FAFC',
+                  borderColor: wizCleanPortfolio ? '#A7F3D0' : '#E2E8F0',
+                  borderWidth: 1,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
+                    Iniciar oficina limpia (sin clientes de prueba)
+                  </Text>
+                  <Text style={{ fontSize: 10.5, color: '#64748B', marginTop: 1 }}>
+                    {wizCleanPortfolio
+                      ? 'Activado: La cartera iniciará en $0 lista para registrar tus clientes y cartulinas.'
+                      : 'Desactivado: Se conservarán los clientes actuales de demostración.'}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    paddingHorizontal: 9,
+                    paddingVertical: 4,
+                    borderRadius: 8,
+                    backgroundColor: wizCleanPortfolio ? '#0D9488' : '#E2E8F0',
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: '800',
+                      color: wizCleanPortfolio ? '#FFFFFF' : '#475569',
+                    }}
+                  >
+                    {wizCleanPortfolio ? 'SÍ' : 'NO'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
             </ScrollView>
 
             {/* Pie del Modal con Doble Acción Clara */}

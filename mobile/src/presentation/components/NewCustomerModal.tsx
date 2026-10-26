@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import { UserPlus, X, Zap } from 'lucide-react-native';
 interface NewCustomerModalProps {
   visible: boolean;
   todayStr: string;
+  defaultRouteId?: string;
+  isCollector?: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -26,6 +28,8 @@ interface NewCustomerModalProps {
 export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   visible,
   todayStr,
+  defaultRouteId,
+  isCollector = false,
   onClose,
   onSuccess,
 }) => {
@@ -39,10 +43,23 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const [businessName, setBusinessName] = useState('');
   const [referenceName, setReferenceName] = useState('');
   const [referencePhone, setReferencePhone] = useState('');
-  const [selectedRouteId, setSelectedRouteId] = useState('route-norte');
+  const availableRoutes = localStore.getRoutes();
+  const initialRoute =
+    defaultRouteId && defaultRouteId !== 'ALL'
+      ? defaultRouteId
+      : availableRoutes[0]?.id || 'route-norte';
+  const [selectedRouteId, setSelectedRouteId] = useState(initialRoute);
   const [routeOrderStr, setRouteOrderStr] = useState('');
 
-  const availableRoutes = localStore.getRoutes();
+  useEffect(() => {
+    if (visible) {
+      const targetRoute =
+        defaultRouteId && defaultRouteId !== 'ALL'
+          ? defaultRouteId
+          : localStore.getRoutes()[0]?.id || 'route-norte';
+      setSelectedRouteId(targetRoute);
+    }
+  }, [visible, defaultRouteId]);
 
   // Datos del Préstamo Inmediato o Migración de Cartulina Física
   const [withLoan, setWithLoan] = useState(true);
@@ -327,34 +344,38 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
             {/* ÍTEM 3: ASIGNACIÓN DE RUTA Y ORDEN EN LA RUTA */}
             <View style={{ marginBottom: 10 }}>
-              <Text style={[styles.floatingLabel, { marginBottom: 6 }]}>
-                RUTA ASIGNADA Y POSICIÓN DE VISITA
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                {availableRoutes.map((rt) => {
-                  const isSel = selectedRouteId === rt.id;
-                  return (
-                    <TouchableOpacity
-                      key={rt.id}
-                      style={[
-                        styles.quickPill,
-                        isSel && styles.quickPillActive,
-                        { paddingHorizontal: 12, paddingVertical: 7 },
-                      ]}
-                      onPress={() => setSelectedRouteId(rt.id)}
-                    >
-                      <Text
-                        style={[
-                          styles.quickPillText,
-                          isSel && styles.quickPillTextActive,
-                        ]}
-                      >
-                        🗺️ {rt.name} ({rt.code})
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              {!isCollector && (
+                <>
+                  <Text style={[styles.floatingLabel, { marginBottom: 6 }]}>
+                    RUTA ASIGNADA Y POSICIÓN DE VISITA
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {availableRoutes.map((rt) => {
+                      const isSel = selectedRouteId === rt.id;
+                      return (
+                        <TouchableOpacity
+                          key={rt.id}
+                          style={[
+                            styles.quickPill,
+                            isSel && styles.quickPillActive,
+                            { paddingHorizontal: 12, paddingVertical: 7 },
+                          ]}
+                          onPress={() => setSelectedRouteId(rt.id)}
+                        >
+                          <Text
+                            style={[
+                              styles.quickPillText,
+                              isSel && styles.quickPillTextActive,
+                            ]}
+                          >
+                            🗺️ {rt.name} ({rt.code})
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
               <View style={styles.filledInputBlock}>
                 <Text style={styles.floatingLabel}>
                   ORDEN EN LA RUTA (# DE PARADA OPCIONAL)

@@ -597,8 +597,8 @@ function MainApp() {
           />
         ) : collectorTab === 'HISTORIAL' ? (
           <CreditHistoryView
-            customers={customers}
-            loans={loans}
+            customers={routeScopedCustomers}
+            loans={routeScopedLoans}
             installments={installments}
             payments={payments}
             todayStr={todayStr}
@@ -1244,14 +1244,16 @@ function MainApp() {
       <NewCustomerModal
         visible={newCustomerModalVisible}
         todayStr={todayStr}
+        defaultRouteId={effectiveRouteFilter}
+        isCollector={userRole === 'COBRADOR'}
         onClose={() => setNewCustomerModalVisible(false)}
         onSuccess={syncFromStore}
       />
 
       <NewLoanModal
         visible={newLoanModalVisible}
-        customers={customers}
-        loans={loans}
+        customers={routeScopedCustomers}
+        loans={routeScopedLoans}
         todayStr={todayStr}
         baseAvailable={routeMetrics.cashAvailableInHand}
         preselectedCustomerId={preselectedLoanCustomerId}
