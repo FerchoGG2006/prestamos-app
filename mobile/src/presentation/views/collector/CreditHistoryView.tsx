@@ -18,6 +18,7 @@ import {
 } from '../../../core/domain/credit-history';
 import { formatCOP, getFrequencyLabel, getInitials } from '../../../core/config/business-rules';
 import { COLORS, FONT_FAMILY } from '../../theme/colors';
+import { localStore } from '../../../infrastructure/storage/local-store';
 import {
   Search,
   UserCheck,
@@ -114,7 +115,8 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
   const handleWhatsApp = (customer: Customer) => {
     const clean = customer.phone.replace(/\D/g, '');
     const phone = clean.startsWith('57') ? clean : `57${clean}`;
-    const msg = `Hola ${customer.fullName}, te contactamos de Cartera Móvil sobre el estado de tu cuenta.`;
+    const officeLabel = localStore.getOfficeConfig().companyName || 'Kredia';
+    const msg = `Hola ${customer.fullName}, te contactamos de ${officeLabel} sobre el estado de tu cuenta.`;
     Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`).catch(() => {
       Alert.alert('WhatsApp', msg);
     });

@@ -154,7 +154,7 @@ export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
                   <Text style={styles.collectorName}>Cobrador: {collector?.name || s.collectorId}</Text>
                 </View>
                 <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{s.status}</Text>
+                  <Text style={styles.statusText}>{s.status === 'SETTLED' ? 'LIQUIDADA' : s.status}</Text>
                 </View>
               </View>
 

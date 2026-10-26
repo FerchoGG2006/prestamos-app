@@ -1153,6 +1153,43 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                     {isRestoring ? 'Restaurando...' : 'Restaurar Copia de Seguridad'}
                   </Text>
                 </TouchableOpacity>
+
+                <View style={styles.backupDivider} />
+
+                {/* Zona de Datos de Prueba (movida desde el Header para mantener la barra superior limpia) */}
+                <Text style={styles.restoreSectionTitle}>Entorno de Pruebas (Demo)</Text>
+                <Text style={styles.restoreSectionSub}>
+                  Si deseas cargar nuevamente los clientes y préstamos de demostración para practicar cobros y liquidaciones:
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#F1F5F9',
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    paddingVertical: 10,
+                    paddingHorizontal: 14,
+                    borderRadius: 12,
+                    marginBottom: 12,
+                  }}
+                  activeOpacity={0.8}
+                  onPress={async () => {
+                    await localStore.resetToDemoSeed();
+                    onSuccess();
+                    onClose();
+                    Alert.alert(
+                      'Datos Demo Restaurados',
+                      'Se han cargado nuevamente los clientes, préstamos y saldos de prueba.'
+                    );
+                  }}
+                >
+                  <RotateCcw size={14} color={COLORS.textSecondary} style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.textSecondary }}>
+                    Cargar Cartera de Prueba (Reset Demo)
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </ScrollView>
@@ -1293,6 +1330,7 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     gap: 4,
+    minWidth: 0,
   },
   inputRow: {
     flexDirection: 'row',
@@ -1318,6 +1356,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textPrimary,
     fontWeight: '600',
+    minWidth: 0,
   },
   highlightSwitchCard: {
     flexDirection: 'row',

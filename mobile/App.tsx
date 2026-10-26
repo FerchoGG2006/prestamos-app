@@ -440,10 +440,10 @@ function MainApp() {
     <View style={[styles.safeArea, { paddingTop: safeTop }]}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" translucent={Platform.OS === 'android'} />
 
-      {/* Top Bar Móvil Limpio (Fintech Punto de Venta UI) */}
+      {/* Top Bar Móvil Limpio (Kredia Light Fintech UI) */}
       <View style={styles.topBar}>
         <TouchableOpacity
-          style={styles.brandRow}
+          style={[styles.brandRow, { flex: 1, marginRight: 8 }]}
           activeOpacity={userRole === 'ADMIN' ? 0.7 : 1}
           onPress={() => {
             if (userRole === 'ADMIN') {
@@ -452,36 +452,33 @@ function MainApp() {
           }}
         >
           <View style={styles.brandBadgeIcon}>
-            <Store size={16} color="#FFFFFF" />
+            <Store size={15} color="#FFFFFF" />
           </View>
-          <View>
+          <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-              <Text style={styles.brandTitle}>{activeRouteLabel}</Text>
-              {userRole === 'ADMIN' && <ChevronDown size={13} color={COLORS.textPrimary} />}
+              <Text style={styles.brandTitle} numberOfLines={1}>
+                {activeRouteLabel}
+              </Text>
+              {userRole === 'ADMIN' && <ChevronDown size={13} color={COLORS.primary} />}
             </View>
-            <Text style={styles.brandSub}>
+            <Text style={styles.brandSub} numberOfLines={1}>
               {localStore.getOfficeConfig().companyName || 'Kredia'} •{' '}
               {userRole === 'ADMIN'
-                ? 'Administrador • Cambiar Ruta'
-                : `Usuario: ${currentUser?.username || 'cobrador'}`}
+                ? 'Admin'
+                : currentUser?.username || 'Ruta'}
             </Text>
           </View>
         </TouchableOpacity>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.rightTopActions}
-          style={{ flexShrink: 1, marginLeft: 8 }}
-        >
-          {/* Campana: Centro Inteligente de Notificaciones de Cartera (Moras, Promesas, Oportunidades) */}
+        <View style={styles.rightTopActions}>
+          {/* Campana: Centro Inteligente de Notificaciones */}
           <TouchableOpacity
             style={styles.topActionIconBtn}
             activeOpacity={0.7}
             onPress={() => setNotificationsModalVisible(true)}
           >
             <Bell
-              size={17}
+              size={16}
               color={
                 totalNotificationsCount > 0
                   ? overdueAlertsCount > 0
@@ -511,57 +508,20 @@ function MainApp() {
             activeOpacity={0.7}
             onPress={() => setRecaudoModalVisible(true)}
           >
-            <Landmark size={11} color="#0284c7" style={{ marginRight: 3 }} />
+            <Landmark size={11} color="#0D9488" style={{ marginRight: 3 }} />
             <Text style={styles.simulateDayText}>Recaudo</Text>
           </TouchableOpacity>
 
           {userRole === 'ADMIN' && (
-            <>
-              <TouchableOpacity
-                style={styles.officeConfigBtn}
-                onPress={() => setOfficeConfigVisible(true)}
-              >
-                <Settings size={11} color={COLORS.primary} style={{ marginRight: 3 }} />
-                <Text style={styles.officeConfigText}>Oficina</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.simulateDayBtn}
-                activeOpacity={0.7}
-                onPress={() => setSettlementModalVisible(true)}
-              >
-                <Landmark size={11} color="#0284c7" style={{ marginRight: 3 }} />
-                <Text style={styles.simulateDayText}>Caja Admin</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.demoResetBtn}
-                onPress={async () => {
-                  await localStore.resetToDemoSeed();
-                  syncFromStore();
-                  Alert.alert('Datos Demo Restaurados', 'Se han restablecido los clientes, préstamos y saldos iniciales.');
-                }}
-              >
-                <RotateCcw size={11} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
-                <Text style={styles.demoResetText}>Reset Demo</Text>
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity
+              style={styles.officeConfigBtn}
+              activeOpacity={0.7}
+              onPress={() => setOfficeConfigVisible(true)}
+            >
+              <Settings size={11} color="#4F46E5" style={{ marginRight: 3 }} />
+              <Text style={styles.officeConfigText}>Oficina</Text>
+            </TouchableOpacity>
           )}
-
-          <TouchableOpacity
-            style={styles.logoutTopBtn}
-            activeOpacity={0.7}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            onPress={handleLogout}
-          >
-            <LogOut size={12} color="#DC2626" style={{ marginRight: 3 }} />
-            <Text style={styles.logoutTopBtnText}>Salir</Text>
-          </TouchableOpacity>
-
-          <View style={styles.offlineBadge}>
-            <Wifi size={12} color={COLORS.success} style={{ marginRight: 4 }} />
-            <Text style={styles.offlineText}>Offline</Text>
-          </View>
 
           {isWideViewport && (
             <TouchableOpacity
@@ -569,11 +529,21 @@ function MainApp() {
               onPress={() => setPhoneFrameEnabled(!phoneFrameEnabled)}
             >
               <Text style={styles.frameToggleText}>
-                {phoneFrameEnabled ? '📱 iPhone' : '🖥️ Full'}
+                {phoneFrameEnabled ? '📱' : '🖥️'}
               </Text>
             </TouchableOpacity>
           )}
-        </ScrollView>
+
+          <TouchableOpacity
+            style={styles.logoutTopBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            onPress={handleLogout}
+          >
+            <LogOut size={12} color="#DC2626" style={{ marginRight: 3 }} />
+            <Text style={styles.logoutTopBtnText}>Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
 
@@ -856,7 +826,7 @@ function MainApp() {
                   </View>
                 ) : (
                   filteredCustomers.map((c) => {
-                    const activeLoan = loans.find(
+                    const activeLoan = routeScopedLoans.find(
                       (l) => l.customerId === c.id && l.status === 'ACTIVE'
                     );
                     const isOverdue =
@@ -875,126 +845,137 @@ function MainApp() {
                       .map((w) => w[0].toUpperCase())
                       .join('');
 
+                    const officeLabel =
+                      localStore.getOfficeConfig().companyName || 'Kredia';
+
                     return (
                       <View key={c.id} style={styles.customerCardWrapper}>
-                        <TouchableOpacity
-                          style={styles.customerCardMainTouch}
-                          activeOpacity={0.7}
-                          onPress={() => setDetailCustomer(c)}
-                        >
-                          <View
-                            style={[
-                              styles.customerAvatarCircle,
-                              activeLoan
-                                ? isOverdue
-                                  ? { backgroundColor: '#ef4444' }
-                                  : { backgroundColor: '#2563eb' }
-                                : { backgroundColor: '#64748b' },
-                            ]}
+                        <View style={styles.customerCardMainTouch}>
+                          <TouchableOpacity
+                            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                            activeOpacity={0.7}
+                            onPress={() => setDetailCustomer(c)}
                           >
-                            <Text style={styles.customerAvatarText}>{initials}</Text>
-                          </View>
-
-                          <View style={{ flex: 1, marginLeft: 12, marginRight: 6 }}>
-                            <Text style={styles.customerItemName} numberOfLines={1}>
-                              {c.fullName}
-                            </Text>
-                            <Text style={styles.customerItemSub}>
-                              CC: {c.documentNumber || 'Sin doc'} • Tel: {c.phone}
-                            </Text>
-                            <Text style={styles.customerItemAddress} numberOfLines={1}>
-                              {c.businessName || c.occupation || 'Comercio'} • {c.neighborhood}
-                            </Text>
-                          </View>
-
-                          <View
-                            style={[
-                              styles.semanticLoanPill,
-                              activeLoan
-                                ? isOverdue
-                                  ? {
-                                      backgroundColor: '#fef2f2',
-                                      borderColor: '#fecaca',
-                                    }
-                                  : {
-                                      backgroundColor: COLORS.infoLight,
-                                      borderColor: COLORS.infoBorder,
-                                    }
-                                : {
-                                    backgroundColor: COLORS.surfaceSoft,
-                                    borderColor: COLORS.microBorder,
-                                  },
-                            ]}
-                          >
-                            <Text
+                            <View
                               style={[
-                                styles.loanTagText,
-                                {
-                                  color: activeLoan
-                                    ? isOverdue
-                                      ? '#dc2626'
-                                      : COLORS.primary
-                                    : COLORS.textMuted,
-                                },
+                                styles.customerAvatarCircle,
+                                activeLoan
+                                  ? isOverdue
+                                    ? { backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA' }
+                                    : { backgroundColor: '#F0FDFA', borderWidth: 1, borderColor: '#99F6E4' }
+                                  : { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
                               ]}
                             >
-                              {activeLoan
-                                ? isOverdue
-                                  ? `Mora • ${activeLoan.loanNumber}`
-                                  : `Al Día • ${activeLoan.loanNumber}`
-                                : 'Sin crédito'}
-                            </Text>
+                              <Text
+                                style={[
+                                  styles.customerAvatarText,
+                                  {
+                                    color: activeLoan
+                                      ? isOverdue
+                                        ? '#DC2626'
+                                        : '#0D9488'
+                                      : '#64748B',
+                                  },
+                                ]}
+                              >
+                                {initials}
+                              </Text>
+                            </View>
+
+                            <View style={{ flex: 1, marginLeft: 10, marginRight: 8 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={styles.customerItemName} numberOfLines={1}>
+                                  {c.fullName}
+                                </Text>
+                                <View
+                                  style={[
+                                    styles.semanticLoanPill,
+                                    activeLoan
+                                      ? isOverdue
+                                        ? {
+                                            backgroundColor: '#FEF2F2',
+                                            borderColor: '#FECACA',
+                                          }
+                                        : {
+                                            backgroundColor: '#F0FDFA',
+                                            borderColor: '#99F6E4',
+                                          }
+                                      : {
+                                          backgroundColor: '#F8FAFC',
+                                          borderColor: '#E2E8F0',
+                                        },
+                                  ]}
+                                >
+                                  <Text
+                                    style={[
+                                      styles.loanTagText,
+                                      {
+                                        color: activeLoan
+                                          ? isOverdue
+                                            ? '#DC2626'
+                                            : '#0D9488'
+                                          : '#64748B',
+                                      },
+                                    ]}
+                                  >
+                                    {activeLoan
+                                      ? isOverdue
+                                        ? `Mora • ${activeLoan.loanNumber}`
+                                        : `Al Día • ${activeLoan.loanNumber}`
+                                      : 'Libre'}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <Text style={styles.customerItemSub} numberOfLines={1}>
+                                CC {c.documentNumber || 'S/D'} • {c.neighborhood}
+                                {c.businessName ? ` • ${c.businessName}` : ''}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+
+                          {/* Acciones Ejecutivas Compactas en la misma fila */}
+                          <View style={styles.customerInlineActions}>
+                            <TouchableOpacity
+                              style={[styles.inlineIconBtn, { backgroundColor: '#F0FDFA', borderColor: '#CCFBF1' }]}
+                              activeOpacity={0.7}
+                              onPress={() => {
+                                const clean = c.phone.replace(/[^\d+]/g, '');
+                                Linking.openURL(`tel:${clean}`).catch(() => {});
+                              }}
+                            >
+                              <Phone size={13} color="#0D9488" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[styles.inlineIconBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}
+                              activeOpacity={0.7}
+                              onPress={() => {
+                                let digits = c.phone.replace(/\D/g, '');
+                                if (digits.length === 10) digits = `57${digits}`;
+                                const msg = encodeURIComponent(
+                                  `Hola ${c.fullName}, te contactamos de ${officeLabel}.`
+                                );
+                                Linking.openURL(`https://wa.me/${digits}?text=${msg}`).catch(() => {});
+                              }}
+                            >
+                              <MessageCircle size={13} color="#059669" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[styles.inlineIconBtn, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}
+                              activeOpacity={0.7}
+                              onPress={() =>
+                                setCustomerOptionsModalData({
+                                  visible: true,
+                                  customer: c,
+                                  activeLoan: activeLoan || null,
+                                })
+                              }
+                            >
+                              <MoreVertical size={14} color="#475569" />
+                            </TouchableOpacity>
                           </View>
-                        </TouchableOpacity>
-
-                        {/* Barra de Acciones / Varias Opciones */}
-                        <View style={styles.customerCardActionRow}>
-                          <TouchableOpacity
-                            style={styles.cardQuickActionBtn}
-                            activeOpacity={0.7}
-                            onPress={() => {
-                              const clean = c.phone.replace(/[^\d+]/g, '');
-                              Linking.openURL(`tel:${clean}`).catch(() => {});
-                            }}
-                          >
-                            <Phone size={13} color="#059669" style={{ marginRight: 4 }} />
-                            <Text style={[styles.cardQuickActionText, { color: '#059669' }]}>
-                              Llamar
-                            </Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.cardQuickActionBtn}
-                            activeOpacity={0.7}
-                            onPress={() => {
-                              let digits = c.phone.replace(/\D/g, '');
-                              if (digits.length === 10) digits = `57${digits}`;
-                              const msg = encodeURIComponent(
-                                `Hola ${c.fullName}, te contactamos de la administración de préstamos.`
-                              );
-                              Linking.openURL(`https://wa.me/${digits}?text=${msg}`).catch(() => {});
-                            }}
-                          >
-                            <MessageCircle size={13} color="#16a34a" style={{ marginRight: 4 }} />
-                            <Text style={[styles.cardQuickActionText, { color: '#16a34a' }]}>
-                              WhatsApp
-                            </Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.cardMoreOptionsBtn}
-                            activeOpacity={0.7}
-                            onPress={() =>
-                              setCustomerOptionsModalData({
-                                visible: true,
-                                customer: c,
-                                activeLoan: activeLoan || null,
-                              })
-                            }
-                          >
-                            <MoreVertical size={14} color="#4338ca" style={{ marginRight: 2 }} />
-                            <Text style={styles.cardMoreOptionsText}>Opciones</Text>
-                          </TouchableOpacity>
                         </View>
                       </View>
                     );
@@ -1013,8 +994,7 @@ function MainApp() {
         )}
       </View>
 
-      {/* PATRÓN #3 DE GEMINI SHARE: FLOATING BOTTOM DOCK CON FAB CENTRAL SOBRESALIENTE
-          Píldora flotante en índigo/púrpura oscuro (#1E1B4B) despegada de los bordes con botón central (+) */}
+      {/* FLOATING BOTTOM DOCK KREDIA */}
       {!detailCustomer && (
         <View
           style={[
@@ -1030,7 +1010,7 @@ function MainApp() {
               onPress={() => openRoute()}
             >
               <MapPin
-                size={20}
+                size={19}
                 color={
                   collectorTab === 'RUTA' ? COLORS.dockActive : COLORS.dockInactive
                 }
@@ -1052,7 +1032,7 @@ function MainApp() {
                 onPress={() => setCollectorTab('CLIENTES')}
               >
                 <Users
-                  size={20}
+                  size={19}
                   color={
                     collectorTab === 'CLIENTES' ? COLORS.dockActive : COLORS.dockInactive
                   }
@@ -1072,7 +1052,7 @@ function MainApp() {
                 onPress={() => setCollectorTab('LIQUIDAR')}
               >
                 <Landmark
-                  size={20}
+                  size={19}
                   color={
                     collectorTab === 'LIQUIDAR' ? COLORS.dockActive : COLORS.dockInactive
                   }
@@ -1089,7 +1069,7 @@ function MainApp() {
               </TouchableOpacity>
             )}
 
-            {/* Botón Central con Logo de la Oficina: Dashboard principal (cuadros, acciones, cierre) */}
+            {/* Botón Central con Emblema de la Oficina / Kredia: Dashboard Principal */}
             <View style={styles.fabCenterSlot}>
               <View style={styles.centralFabHalo}>
                 <TouchableOpacity
@@ -1109,6 +1089,7 @@ function MainApp() {
                         .map((w) => w[0].toUpperCase())
                         .join('') || 'KR'}
                     </Text>
+                    <Text style={styles.centralLogoSub}>INICIO</Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -1121,7 +1102,7 @@ function MainApp() {
                 onPress={() => setCollectorTab('CLIENTES')}
               >
                 <Users
-                  size={20}
+                  size={19}
                   color={
                     collectorTab === 'CLIENTES' ? COLORS.dockActive : COLORS.dockInactive
                   }
@@ -1145,7 +1126,7 @@ function MainApp() {
               >
                 <View style={{ position: 'relative' }}>
                   <Receipt
-                    size={20}
+                    size={19}
                     color={
                       collectorTab === 'HISTORIAL' ? COLORS.dockActive : COLORS.dockInactive
                     }
@@ -1167,17 +1148,15 @@ function MainApp() {
               </TouchableOpacity>
             )}
 
-            {/* Tab 4:
-                - Cobrador: + Gasto Ruta (pinchazo, gasolina, datos)
-                - Admin: Historial Crediticio */}
+            {/* Tab 4: Cobrador -> Gasto Ruta | Admin -> Historial Crediticio */}
             {userRole === 'COBRADOR' ? (
               <TouchableOpacity
                 style={styles.dockNavBtn}
                 onPress={() => setExpenseModalVisible(true)}
               >
-                <Fuel size={20} color="#fb923c" />
-                <Text style={[styles.dockNavText, { color: '#fb923c' }]}>
-                  + Gasto Ruta
+                <Fuel size={19} color={COLORS.dockInactive} />
+                <Text style={styles.dockNavText}>
+                  Gastos
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -1189,7 +1168,7 @@ function MainApp() {
                 }}
               >
                 <ClipboardList
-                  size={20}
+                  size={19}
                   color={
                     collectorTab === 'HISTORIAL' ? COLORS.dockActive : COLORS.dockInactive
                   }
@@ -1521,10 +1500,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   brandBadgeIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: COLORS.dockBg,
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: '#0D9488',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1533,7 +1512,7 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontSize: 14,
     fontWeight: '900',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   brandSub: {
     fontFamily: FONT_FAMILY,
@@ -1550,87 +1529,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF2F2',
-    borderWidth: 1.5,
+    borderWidth: 1,
     borderColor: '#FECACA',
     paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingVertical: 6,
+    borderRadius: 9,
   },
   logoutTopBtnText: {
     fontSize: 11,
     color: '#DC2626',
     fontWeight: '800',
   },
-  offlineBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.successLight,
-    borderWidth: 1,
-    borderColor: COLORS.successBorder,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 9999,
-  },
-  offlineText: {
-    color: COLORS.success,
-    fontSize: 10,
-    fontWeight: '800',
-  },
   officeConfigBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primaryLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 9999,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 9,
     borderWidth: 1,
-    borderColor: COLORS.primaryBorder,
+    borderColor: '#C7D2FE',
   },
   officeConfigText: {
-    color: COLORS.primary,
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  demoResetBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 9999,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
-  },
-  demoResetText: {
-    color: COLORS.textSecondary,
-    fontSize: 10,
+    color: '#4F46E5',
+    fontSize: 10.5,
     fontWeight: '800',
   },
   simulateDayBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#eff6ff',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 9999,
+    backgroundColor: '#F0FDFA',
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 9,
     borderWidth: 1,
-    borderColor: '#bfdbfe',
+    borderColor: '#99F6E4',
   },
   simulateDayText: {
-    color: '#0284c7',
-    fontSize: 10,
+    color: '#0D9488',
+    fontSize: 10.5,
     fontWeight: '800',
   },
   frameToggleBtn: {
     backgroundColor: COLORS.surfaceSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 9999,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.microBorder,
   },
   frameToggleText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     color: COLORS.textSecondary,
   },
@@ -1641,7 +1590,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   sectionHeaderTitle: {
     color: COLORS.textPrimary,
@@ -1652,10 +1601,10 @@ const styles = StyleSheet.create({
   addCustomerHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.dockBg,
+    backgroundColor: '#0D9488',
     paddingHorizontal: 13,
     paddingVertical: 7,
-    borderRadius: 9999,
+    borderRadius: 10,
   },
   addCustomerHeaderText: {
     color: '#ffffff',
@@ -1663,13 +1612,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   semanticLoanPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 9999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
     borderWidth: 1,
   },
   loanTagText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
   },
   directorySubheader: {
@@ -1703,14 +1652,14 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 20,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: '#ffffff',
     marginRight: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
   filterChipActive: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6',
+    backgroundColor: '#F0FDFA',
+    borderColor: '#0D9488',
   },
   filterChipText: {
     fontFamily: FONT_FAMILY,
@@ -1720,96 +1669,66 @@ const styles = StyleSheet.create({
   },
   filterChipTextActive: {
     fontFamily: FONT_FAMILY,
-    color: '#1d4ed8',
-    fontWeight: '700',
+    color: '#0F766E',
+    fontWeight: '800',
   },
   customerCardWrapper: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    marginBottom: 12,
+    marginBottom: 8,
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.03,
     shadowRadius: 3,
-    elevation: 2,
-    overflow: 'hidden',
+    elevation: 1,
   },
   customerCardMainTouch: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   customerAvatarCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   customerAvatarText: {
     fontFamily: FONT_FAMILY,
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: 13,
+    fontWeight: '800',
   },
   customerItemName: {
     fontFamily: FONT_FAMILY,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: '#0f172a',
+    flexShrink: 1,
   },
   customerItemSub: {
     fontFamily: FONT_FAMILY,
-    fontSize: 12,
+    fontSize: 11.5,
     color: '#64748b',
     marginTop: 2,
+    fontWeight: '500',
   },
-  customerItemAddress: {
-    fontFamily: FONT_FAMILY,
-    fontSize: 11,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  customerCardActionRow: {
+  customerInlineActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 6,
   },
-  cardQuickActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    backgroundColor: '#ffffff',
+  inlineIconBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 9,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  cardQuickActionText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  cardMoreOptionsBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    backgroundColor: '#e0e7ff',
-    borderWidth: 1,
-    borderColor: '#c7d2fe',
-  },
-  cardMoreOptionsText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#4338ca',
+    justifyContent: 'center',
   },
   emptyResultsBox: {
     alignItems: 'center',
@@ -1891,10 +1810,10 @@ const styles = StyleSheet.create({
     width: 66,
     height: 66,
     borderRadius: 33,
-    backgroundColor: 'rgba(37, 99, 235, 0.16)',
+    backgroundColor: 'rgba(13, 148, 136, 0.18)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -30,
+    marginTop: -28,
   },
   centralFabButton: {
     width: 54,
@@ -1903,17 +1822,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#0F172A',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
+    borderWidth: 2.5,
     borderColor: '#FFFFFF',
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.38,
+    shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 8,
   },
   centralFabButtonActive: {
-    borderColor: '#38BDF8',
-    backgroundColor: '#1E293B',
+    borderColor: '#2DD4BF',
+    backgroundColor: '#0D9488',
   },
   centralLogoBadge: {
     alignItems: 'center',
@@ -1921,9 +1840,17 @@ const styles = StyleSheet.create({
   },
   centralLogoText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '900',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
+    lineHeight: 15,
+  },
+  centralLogoSub: {
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 7.5,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginTop: 1,
   },
   topActionIconBtn: {
     width: 34,

@@ -1030,41 +1030,43 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]}
       showsVerticalScrollIndicator={false}
     >
-      {/* ENCABEZADO DE RUTA */}
-      <View style={styles.routeHeaderBar}>
-        <View style={{ flex: 1, marginRight: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={styles.routeHeaderTitle}>Hoja de Ruta</Text>
-            {isAdminMode && onOpenRouteSelector && (
-              <TouchableOpacity
-                style={styles.adminRouteBadge}
-                activeOpacity={0.75}
-                onPress={onOpenRouteSelector}
-              >
-                <MapPin size={11} color="#1D4ED8" />
-                <Text style={styles.adminRouteBadgeText} numberOfLines={1}>
-                  {activeRouteLabel || 'Cambiar Ruta'}
-                </Text>
-                <ChevronDown size={11} color="#1D4ED8" />
-              </TouchableOpacity>
-            )}
+      {/* ENCABEZADO COMPACTO DE HOJA DE RUTA */}
+      <View style={[styles.routeHeaderBar, { paddingVertical: 8 }]}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={[styles.routeHeaderTitle, { fontSize: 16 }]}>Hoja de Ruta</Text>
+          <View style={styles.routeHeaderBadgePill}>
+            <Text style={styles.routeHeaderBadgeText}>
+              {counts.COBRAR_HOY} pendientes • {counts.PAGADOS} listos
+            </Text>
           </View>
-          <Text style={styles.routeHeaderSub}>
-            {customerCardsData.length} clientes • {counts.COBRAR_HOY} pendientes hoy
-          </Text>
         </View>
-        <View style={styles.routeHeaderBadgePill}>
-          <Text style={styles.routeHeaderBadgeText}>{todayStr}</Text>
-        </View>
+
+        <TouchableOpacity
+          style={[styles.editRouteToggleBtn, isEditingRoute && styles.editRouteToggleBtnActive]}
+          activeOpacity={0.7}
+          onPress={isEditingRoute ? handleSaveRoute : handleStartEditRoute}
+        >
+          {isEditingRoute ? (
+            <>
+              <CheckCircle size={12} color="#FFFFFF" style={{ marginRight: 4 }} />
+              <Text style={styles.saveRouteToggleText}>✓ Guardar</Text>
+            </>
+          ) : (
+            <>
+              <ListOrdered size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={styles.editRouteToggleText}>⚡ Ordenar</Text>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
 
-      {/* 1. BUSCADOR INTEGRADO CON SELECTOR DE ORDEN */}
-      <View style={styles.searchAndSortRow}>
+      {/* 1. BUSCADOR COMPACTO */}
+      <View style={[styles.searchAndSortRow, { marginTop: 2, marginBottom: 8 }]}>
         <View style={styles.cleanSearchBox}>
           <Search size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
           <TextInput
             style={styles.cleanSearchInput}
-            placeholder="Buscar por cliente, cédula o barrio..."
+            placeholder="Buscar cliente, cédula, negocio o barrio..."
             placeholderTextColor={COLORS.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -1075,24 +1077,6 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             </TouchableOpacity>
           )}
         </View>
-
-        <TouchableOpacity
-          style={[styles.editRouteToggleBtn, isEditingRoute && styles.editRouteToggleBtnActive]}
-          activeOpacity={0.7}
-          onPress={isEditingRoute ? handleSaveRoute : handleStartEditRoute}
-        >
-          {isEditingRoute ? (
-            <>
-              <CheckCircle size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
-              <Text style={styles.saveRouteToggleText}>✓ Guardar</Text>
-            </>
-          ) : (
-            <>
-              <ListOrdered size={13} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.editRouteToggleText}>⚡ Ordenar Ruta</Text>
-            </>
-          )}
-        </TouchableOpacity>
       </View>
 
       {/* Banner Informativo cuando está en Modo Editar Ruta */}
