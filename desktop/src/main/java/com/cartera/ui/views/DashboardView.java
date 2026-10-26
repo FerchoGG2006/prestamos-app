@@ -196,6 +196,7 @@ public class DashboardView extends VBox {
         getChildren().add(scrollPane);
     }
 
+    @SuppressWarnings("unchecked")
     private VBox buildMultiRouteSection() {
         VBox card = new VBox(12);
         card.getStyleClass().add("table-card");
