@@ -20,6 +20,8 @@ interface RecaudoModalProps {
   visible: boolean;
   baseDisponible: number;
   todayStr: string;
+  routeId?: string;
+  authorizedBy?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -28,6 +30,8 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
   visible,
   baseDisponible,
   todayStr,
+  routeId,
+  authorizedBy,
   onClose,
   onSuccess,
 }) => {
@@ -78,6 +82,8 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
       await localStore.recordRecaudoWithdrawal({
         amount: numericAmount,
         destinationOrReason: fullReason,
+        routeId,
+        authorizedBy,
         todayStr,
       });
 

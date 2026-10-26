@@ -87,13 +87,21 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   };
   const firstDueDateStr = getFirstDueDate();
 
+  const officeConfig = localStore.getOfficeConfig();
+  const defaultInterestRate = officeConfig.defaultInterestRate || 0.2;
   const summary =
     principal > 0 && installmentCount > 0
-      ? calculateLoanSummary(principal, 0.2, installmentCount)
+      ? calculateLoanSummary(principal, defaultInterestRate, installmentCount)
       : null;
-  const officeConfig = localStore.getOfficeConfig();
   const isPaperworkEnabled = officeConfig.paperworkFeeEnabled ?? true;
-  const paperwork = principal > 0 && isPaperworkEnabled ? calculatePaperworkFee(principal) : 0;
+  const paperwork =
+    principal > 0 && isPaperworkEnabled
+      ? calculatePaperworkFee(principal, {
+          rate: officeConfig.paperworkRate || 5000,
+          base: 100000,
+          calculationMode: 'PROPORTIONAL',
+        })
+      : 0;
   const netCashToDeliver = Math.max(0, principal - paperwork);
 
   const quickPrincipals = [100000, 150000, 200000, 300000, 500000];
@@ -142,7 +150,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       const res = await localStore.createLoan({
         customerId: selectedCustomerId,
         principal,
-        interestRate: 0.2,
+        interestRate: defaultInterestRate,
         installmentCount,
         frequency,
         fixedDueDate: isFixedDate ? fixedDueDateStr : undefined,

@@ -16,6 +16,8 @@ import { Fuel, X } from 'lucide-react-native';
 interface ExpenseModalProps {
   visible: boolean;
   todayStr: string;
+  routeId?: string;
+  collectorId?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -23,6 +25,8 @@ interface ExpenseModalProps {
 export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   visible,
   todayStr,
+  routeId,
+  collectorId,
   onClose,
   onSuccess,
 }) => {
@@ -61,6 +65,8 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
         category,
         description: description.trim() || category,
         todayStr,
+        routeId,
+        collectorId,
       });
 
       Alert.alert(

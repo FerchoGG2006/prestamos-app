@@ -926,9 +926,15 @@ class LocalStore {
 
     const disbursedToday = Math.max(0, disbursedRawToday - cancelledLoansRefundToday);
 
-    // Desglose de Salidas / Salientes (Préstamos Paridos & Renovaciones)
+    // Desglose de Salidas / Salientes (Préstamos Paridos & Renovaciones, excluyendo migraciones de cartulina física)
+    const isMigratedCardLoan = (l: Loan) =>
+      Boolean(l.notes?.startsWith('Migrado de cartulina física'));
     const todayNewLoans = scopedLoans.filter(
-      (l) => l.createdAt.startsWith(todayStr) && !l.previousLoanId && l.status !== 'CANCELLED'
+      (l) =>
+        l.createdAt.startsWith(todayStr) &&
+        !l.previousLoanId &&
+        l.status !== 'CANCELLED' &&
+        !isMigratedCardLoan(l)
     );
     const todayRenewals = this.renewals.filter(
       (r) => r.createdAt.startsWith(todayStr) && (!filterByRoute || scopedLoanIds.has(r.newLoanId))
@@ -970,9 +976,16 @@ class LocalStore {
       .reduce((sum, cm) => sum + cm.amount, 0);
 
     // Base inicial de caja + efectivo cobrado - desembolsos en efectivo - gastos operativos de ruta - recaudo retirado
-    const initialCashBase = scopedCashMovements
-      .filter((cm) => cm.type === 'INCOME' && cm.category === 'ADJUSTMENT')
-      .reduce((sum, cm) => sum + cm.amount, 0);
+    const adjustmentMovements = scopedCashMovements.filter(
+      (cm) => cm.type === 'INCOME' && cm.category === 'ADJUSTMENT'
+    );
+    const initialCashBase =
+      adjustmentMovements.length > 0
+        ? adjustmentMovements.reduce((sum, cm) => sum + cm.amount, 0)
+        : (filterByRoute
+            ? this.routes.filter((r) => r.id === routeIdFilter)
+            : this.routes
+          ).reduce((sum, r) => sum + (r.initialCashBase || 0), 0);
 
     const cashAvailableInHand = Math.max(
       0,
@@ -1709,7 +1722,9 @@ class LocalStore {
     }
 
     const dateStamp = params.todayStr || this.activeSession?.date || getLocalTodayStr();
-    const metrics = this.getDailyRouteMetrics(dateStamp);
+    const effectiveRouteId =
+      params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined;
+    const metrics = this.getDailyRouteMetrics(dateStamp, effectiveRouteId);
 
     if (params.amount > metrics.cashAvailableInHand) {
       throw new Error(
@@ -1720,9 +1735,10 @@ class LocalStore {
     }
 
     const session = this.activeSession;
+    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || 'route-norte';
     const movement: CashMovement = {
       id: `csm-rec-${Date.now()}`,
-      routeId: params.routeId || session?.routeId || 'route-1',
+      routeId: targetRouteId,
       collectorId: params.authorizedBy || session?.collectorId || 'usr-admin-1',
       sessionId: session?.id,
       type: 'EXPENSE',
@@ -1747,51 +1763,29 @@ class LocalStore {
     auditedBy?: string;
     payrollDeductionAmount?: number;
     payrollDeductionReason?: string;
+    routeId?: string;
+    collectorId?: string;
   }): Promise<DailySettlement> {
     if (!this.activeSession) throw new Error('No hay jornada activa para cerrar');
 
     const session = this.activeSession;
-    const sessionPayments = this.payments.filter(
-      (p) => p.sessionId === session.id && p.status === 'COMPLETED'
-    );
-    const collectedCash = sessionPayments
-      .filter((p) => p.paymentMethod === 'CASH')
-      .reduce((sum, p) => sum + p.amountReceived, 0);
-    const collectedTransfers = sessionPayments
-      .filter((p) => p.paymentMethod === 'NEQUI' || p.paymentMethod === 'TRANSFER' || p.paymentMethod === 'OTHER')
-      .reduce((sum, p) => sum + p.amountReceived, 0);
-    const actualCollection = collectedCash + collectedTransfers;
-    const pendingCollection = Math.max(0, session.expectedCollection - actualCollection);
+    const effectiveRouteFilter =
+      params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined;
+    const targetRouteId = effectiveRouteFilter || session.routeId || this.routes[0]?.id || 'route-norte';
+    const targetRouteObj = this.routes.find((r) => r.id === targetRouteId);
+    const targetCollectorId =
+      params.collectorId || targetRouteObj?.collectorId || session.collectorId || 'usr-col-1';
 
-    // Gastos operativos de la ruta que se descuentan del efectivo que la ruta rinde a la caja
-    const sessionExpenses = this.cashMovements
-      .filter(
-        (cm) =>
-          cm.type === 'EXPENSE' &&
-          cm.category === 'EXPENSE' &&
-          cm.createdAt.startsWith(session.date)
-      )
-      .reduce((sum, cm) => sum + cm.amount, 0);
+    const metrics = this.getDailyRouteMetrics(session.date, effectiveRouteFilter);
+    const collectedCash = metrics.collectedCashToday;
+    const collectedTransfers = metrics.collectedDigitalToday;
+    const actualCollection = metrics.collectedToday;
+    const expectedCollection = metrics.expectedDailyGoal;
+    const pendingCollection = Math.max(0, expectedCollection - actualCollection);
 
-    // Desembolsos en efectivo de hoy (préstamos nuevos + renovaciones netas)
-    const disbursedToday = this.cashMovements
-      .filter(
-        (cm) =>
-          cm.type === 'EXPENSE' &&
-          (cm.category === 'LOAN_DISBURSEMENT' || cm.category === 'RENEWAL_DISBURSEMENT') &&
-          cm.createdAt.startsWith(session.date)
-      )
-      .reduce((sum, cm) => sum + cm.amount, 0);
-
-    // Avances / retiros de recaudo entregados a oficina durante el día
-    const recaudoRetiradoToday = this.cashMovements
-      .filter(
-        (cm) =>
-          cm.type === 'EXPENSE' &&
-          cm.category === 'RECAUDO_OFICINA' &&
-          cm.createdAt.startsWith(session.date)
-      )
-      .reduce((sum, cm) => sum + cm.amount, 0);
+    const sessionExpenses = metrics.expensesToday || 0;
+    const disbursedToday = metrics.disbursedToday || 0;
+    const recaudoRetiradoToday = metrics.recaudoRetiradoToday || 0;
 
     const netCashExpected = Math.max(
       0,
@@ -1802,10 +1796,25 @@ class LocalStore {
       throw new Error('Es obligatoria una justificación cuando existe diferencia en el arqueo de caja');
     }
 
-    const todayNewLoans = this.loans.filter(
-      (l) => l.createdAt.startsWith(session.date) && !l.previousLoanId
+    const isMigratedCardLoan = (l: Loan) =>
+      Boolean(l.notes?.startsWith('Migrado de cartulina física'));
+    const scopedLoans = effectiveRouteFilter
+      ? this.loans.filter((l) => (l.routeId || 'route-norte') === effectiveRouteFilter)
+      : this.loans;
+    const scopedLoanIds = new Set(scopedLoans.map((l) => l.id));
+
+    const todayNewLoans = scopedLoans.filter(
+      (l) =>
+        l.createdAt.startsWith(session.date) &&
+        !l.previousLoanId &&
+        l.status !== 'CANCELLED' &&
+        !isMigratedCardLoan(l)
     );
-    const todayRenewals = this.renewals.filter((r) => r.createdAt.startsWith(session.date));
+    const todayRenewals = this.renewals.filter(
+      (r) =>
+        r.createdAt.startsWith(session.date) &&
+        (!effectiveRouteFilter || scopedLoanIds.has(r.newLoanId))
+    );
 
     const salidasCount = todayNewLoans.length + todayRenewals.length;
     const salidasCapitalPlaced =
@@ -1842,8 +1851,8 @@ class LocalStore {
       // Registrar movimiento de ajuste para nómina
       const payrollMov: CashMovement = {
         id: `csm-nom-${Date.now()}`,
-        routeId: session.routeId,
-        collectorId: session.collectorId,
+        routeId: targetRouteId,
+        collectorId: targetCollectorId,
         sessionId: session.id,
         type: 'EXPENSE',
         category: 'ADJUSTMENT',
@@ -1858,10 +1867,10 @@ class LocalStore {
       id: `set-${Date.now()}`,
       sessionId: session.id,
       date: session.date,
-      routeId: session.routeId,
-      collectorId: session.collectorId,
+      routeId: targetRouteId,
+      collectorId: targetCollectorId,
       plenoCollection: actualCollection,
-      expectedCollection: session.expectedCollection,
+      expectedCollection,
       actualCollection,
       pendingCollection,
       salidasCount,
@@ -1889,7 +1898,7 @@ class LocalStore {
 
     const audit: AuditLog = {
       id: `audit-${Date.now()}`,
-      userId: session.collectorId,
+      userId: targetCollectorId,
       timestamp: new Date().toISOString(),
       entity: 'SETTLEMENT',
       entityId: settlement.id,
@@ -1940,9 +1949,17 @@ class LocalStore {
     category: string;
     description: string;
     todayStr: string;
+    routeId?: string;
+    collectorId?: string;
   }): Promise<CashMovement> {
-    const routeId = this.activeSession?.routeId || 'route-norte';
-    const collectorId = this.activeSession?.collectorId || 'usr-col-1';
+    const routeId =
+      (params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined) ||
+      this.activeSession?.routeId ||
+      this.routes[0]?.id ||
+      'route-norte';
+    const routeObj = this.routes.find((r) => r.id === routeId);
+    const collectorId =
+      params.collectorId || routeObj?.collectorId || this.activeSession?.collectorId || 'usr-col-1';
 
     const movement: CashMovement = {
       id: `csm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,

@@ -336,13 +336,30 @@ function MainApp() {
             (l.routeId || 'route-norte') === effectiveRouteFilter ||
             routeScopedCustomerIds.has(l.customerId)
         );
+  const routeScopedLoanIds = new Set(routeScopedLoans.map((l) => l.id));
+
+  const routeScopedPayments =
+    effectiveRouteFilter === 'ALL'
+      ? payments
+      : payments.filter(
+          (p) =>
+            routeScopedLoanIds.has(p.loanId) || routeScopedCustomerIds.has(p.customerId)
+        );
+
+  const routeScopedPromises =
+    effectiveRouteFilter === 'ALL'
+      ? promises
+      : promises.filter(
+          (pr) =>
+            routeScopedLoanIds.has(pr.loanId) || routeScopedCustomerIds.has(pr.customerId)
+        );
 
   const routeMetrics: DailyRouteMetrics = localStore.getDailyRouteMetrics(
     todayStr,
     effectiveRouteFilter === 'ALL' ? undefined : effectiveRouteFilter
   );
-  const todayPaymentsCount = payments.filter((p) => p.status === 'COMPLETED').length;
-  const pendingPromisesCount = promises.filter((p) => p.status === 'PENDIENTE').length;
+  const todayPaymentsCount = routeScopedPayments.filter((p) => p.status === 'COMPLETED').length;
+  const pendingPromisesCount = routeScopedPromises.filter((p) => p.status === 'PENDIENTE').length;
 
   // Alertas de cartera: Moras activas y promesas de pago para hoy o vencidas
   const overdueAlertsCount = useMemo(() => {
@@ -360,8 +377,8 @@ function MainApp() {
   }, [routeScopedCustomers, routeScopedLoans, installments, todayStr]);
 
   const pendingPromisesTodayCount = useMemo(() => {
-    return promises.filter((p) => p.status === 'PENDIENTE' && p.promisedDate <= todayStr).length;
-  }, [promises, todayStr]);
+    return routeScopedPromises.filter((p) => p.status === 'PENDIENTE' && p.promisedDate <= todayStr).length;
+  }, [routeScopedPromises, todayStr]);
 
   const totalNotificationsCount = overdueAlertsCount + pendingPromisesTodayCount;
 
@@ -395,8 +412,8 @@ function MainApp() {
     customers: routeScopedCustomers,
     loans: routeScopedLoans,
     installments,
-    promises,
-    payments,
+    promises: routeScopedPromises,
+    payments: routeScopedPayments,
     metrics: routeMetrics,
     todayStr,
     isAdminMode: userRole === 'ADMIN',
@@ -600,7 +617,7 @@ function MainApp() {
             customers={routeScopedCustomers}
             loans={routeScopedLoans}
             installments={installments}
-            payments={payments}
+            payments={routeScopedPayments}
             todayStr={todayStr}
             initialDocumentNumber={historyInitialDoc}
             onOpenNewLoan={(c) => {
@@ -626,7 +643,7 @@ function MainApp() {
           />
         ) : collectorTab === 'CLIENTES' ? (() => {
           const q = customerSearchQuery.trim().toLowerCase();
-          const filteredCustomers = customers.filter((c) => {
+          const filteredCustomers = routeScopedCustomers.filter((c) => {
             if (q) {
               const matchName = c.fullName?.toLowerCase().includes(q);
               const matchDoc = c.documentNumber?.toLowerCase().includes(q);
@@ -640,7 +657,7 @@ function MainApp() {
               }
             }
 
-            const activeLoan = loans.find(
+            const activeLoan = routeScopedLoans.find(
               (l) => l.customerId === c.id && l.status === 'ACTIVE'
             );
             if (customerFilterTab === 'ACTIVE') return !!activeLoan;
@@ -662,13 +679,13 @@ function MainApp() {
             return true;
           });
 
-          const totalCount = customers.length;
-          const activeLoanCount = customers.filter((c) =>
-            loans.some((l) => l.customerId === c.id && l.status === 'ACTIVE')
+          const totalCount = routeScopedCustomers.length;
+          const activeLoanCount = routeScopedCustomers.filter((c) =>
+            routeScopedLoans.some((l) => l.customerId === c.id && l.status === 'ACTIVE')
           ).length;
           const noLoanCount = totalCount - activeLoanCount;
-          const overdueCount = customers.filter((c) => {
-            const al = loans.find((l) => l.customerId === c.id && l.status === 'ACTIVE');
+          const overdueCount = routeScopedCustomers.filter((c) => {
+            const al = routeScopedLoans.find((l) => l.customerId === c.id && l.status === 'ACTIVE');
             if (!al) return false;
             return installments.some(
               (i) => i.loanId === al.id && i.pendingAmount > 0 && i.dueDate < todayStr
@@ -1084,7 +1101,14 @@ function MainApp() {
                   onPress={handleCentralLogoPress}
                 >
                   <View style={styles.centralLogoBadge}>
-                    <Text style={styles.centralLogoText}>CP</Text>
+                    <Text style={styles.centralLogoText}>
+                      {(localStore.getOfficeConfig().companyName || 'Kredia')
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((w) => w[0].toUpperCase())
+                        .join('') || 'KR'}
+                    </Text>
                   </View>
                 </TouchableOpacity>
               </View>
@@ -1223,9 +1247,11 @@ function MainApp() {
       <CollectorCuadreModal
         visible={collectorCuadreModalVisible}
         session={session}
-        payments={payments}
+        payments={routeScopedPayments}
         metrics={routeMetrics}
         todayStr={todayStr}
+        routeId={effectiveRouteFilter}
+        collectorId={currentUser?.id}
         onClose={() => setCollectorCuadreModalVisible(false)}
         onSuccess={syncFromStore}
         onOpenRecaudo={() => setRecaudoModalVisible(true)}
@@ -1234,9 +1260,11 @@ function MainApp() {
       <SettlementModal
         visible={settlementModalVisible}
         session={session}
-        payments={payments}
+        payments={routeScopedPayments}
         metrics={routeMetrics}
         todayStr={todayStr}
+        routeId={effectiveRouteFilter}
+        collectorId={currentUser?.id}
         onClose={() => setSettlementModalVisible(false)}
         onSuccess={syncFromStore}
       />
@@ -1311,6 +1339,8 @@ function MainApp() {
       <ExpenseModal
         visible={expenseModalVisible}
         todayStr={todayStr}
+        routeId={effectiveRouteFilter}
+        collectorId={currentUser?.id}
         onClose={() => setExpenseModalVisible(false)}
         onSuccess={syncFromStore}
       />
@@ -1319,6 +1349,8 @@ function MainApp() {
         visible={recaudoModalVisible}
         baseDisponible={routeMetrics.cashAvailableInHand}
         todayStr={todayStr}
+        routeId={effectiveRouteFilter}
+        authorizedBy={currentUser?.id}
         onClose={() => setRecaudoModalVisible(false)}
         onSuccess={syncFromStore}
       />
@@ -1345,7 +1377,7 @@ function MainApp() {
         customers={routeScopedCustomers}
         loans={routeScopedLoans}
         installments={installments}
-        promises={promises}
+        promises={routeScopedPromises}
         nonPaymentVisits={nonPaymentVisits}
         todayStr={todayStr}
         onSelectCustomerToPay={(cust, loan) => {
@@ -1368,13 +1400,13 @@ function MainApp() {
         style={[
           styles.safeArea,
           {
-            backgroundColor: '#0F172A',
+            backgroundColor: '#F3F7FA',
             paddingTop: safeTop,
             paddingBottom: safeBottom,
           },
         ]}
       >
-        <StatusBar barStyle="light-content" backgroundColor="#0F172A" translucent={Platform.OS === 'android'} />
+        <StatusBar barStyle="dark-content" backgroundColor="#F3F7FA" translucent={Platform.OS === 'android'} />
         <LoginView
           users={localStore.getUsers()}
           routes={routes}

@@ -47,6 +47,8 @@ interface SettlementModalProps {
   payments: Payment[];
   metrics: DailyRouteMetrics;
   todayStr: string;
+  routeId?: string;
+  collectorId?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -57,6 +59,8 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   payments,
   metrics,
   todayStr,
+  routeId,
+  collectorId,
   onClose,
   onSuccess,
 }) => {
@@ -151,6 +155,8 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
         differenceJustification: justification.trim() || undefined,
         payrollDeductionAmount: payrollNum,
         payrollDeductionReason: deductPayroll ? payrollReason : undefined,
+        routeId,
+        collectorId,
       });
 
       // Métrica cerrada y sellada con éxito.

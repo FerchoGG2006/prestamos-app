@@ -41,6 +41,8 @@ interface CollectorCuadreModalProps {
   payments: Payment[];
   metrics: DailyRouteMetrics;
   todayStr: string;
+  routeId?: string;
+  collectorId?: string;
   onClose: () => void;
   onSuccess: () => void;
   onOpenRecaudo?: () => void;
@@ -52,6 +54,8 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   payments,
   metrics,
   todayStr,
+  routeId,
+  collectorId,
   onClose,
   onSuccess,
   onOpenRecaudo,
@@ -105,6 +109,8 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
       const settlement = await localStore.closeDailySettlement({
         cashHandedOver,
         differenceJustification: undefined,
+        routeId,
+        collectorId,
       });
 
       // Métrica cerrada y sellada con éxito.
