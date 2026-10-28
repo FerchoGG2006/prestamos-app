@@ -189,10 +189,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   };
 
   const amountPills = [
-    { label: 'Cuota exacta', amount: exactInstallmentAmount },
+    { label: '1 Cuota', amount: exactInstallmentAmount },
     { label: '2 Cuotas', amount: twoInstallmentsAmount },
     { label: 'Ponerse al día', amount: catchUpAmount },
-    { label: 'Liquidar saldo', amount: fullPayoffAmount },
+    { label: 'Saldo total', amount: fullPayoffAmount },
   ];
 
   const paymentMethods: Array<{ key: PaymentMethod; label: string }> = [

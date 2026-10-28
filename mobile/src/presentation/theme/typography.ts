@@ -1,4 +1,4 @@
-import { Platform, TextStyle } from 'react-native';
+import { TextStyle } from 'react-native';
 
 /**
  * SISTEMA TIPOGRÁFICO UNIFICADO (FINTECH DESIGN SYSTEM)
@@ -17,19 +17,10 @@ import { Platform, TextStyle } from 'react-native';
  *   7. Cifras y Montos Financieros (currency)
  */
 
-export const FONT_FAMILY = Platform.select({
-  ios: 'System',
-  android: 'Roboto',
-  web: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
-  default: 'sans-serif',
-});
+// Cargada desde assets por expo-font en App.tsx; variable para pesos 400–900 reales.
+export const FONT_FAMILY = 'Manrope';
 
-export const FONT_FAMILY_MONO = Platform.select({
-  ios: 'Menlo',
-  android: 'monospace',
-  web: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
-  default: 'monospace',
-});
+export const FONT_FAMILY_MONO = 'monospace';
 
 export const TYPOGRAPHY = {
   // Familia base consistente

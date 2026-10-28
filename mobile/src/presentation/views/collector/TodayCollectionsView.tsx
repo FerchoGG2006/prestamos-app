@@ -525,10 +525,6 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   ];
 
   if (viewMode === 'DASHBOARD') {
-    const priorityItems = customerCardsData
-      .filter((c) => !c.isHandledToday && (c.isDueToday || c.isOverdue))
-      .slice(0, 5);
-
     return (
       <ScrollView
         style={styles.container}
@@ -627,45 +623,43 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           )}
         </View>
 
-        {/* 1.1 PILARES FINANCIEROS (ADMIN) */}
-        {isAdminMode && (
-          <View style={styles.financialTrioCard}>
-            <View style={styles.financialTrioItem}>
-              <Text style={styles.financialTrioLabel}>DINERO RUTA</Text>
-              <Text style={styles.financialTrioValue} numberOfLines={1}>
-                {maskIfPrivate(metrics.totalAdministrativeCapital || (metrics.activeCapitalInStreet + metrics.cashAvailableInHand))}
-              </Text>
-              <Text style={styles.financialTrioHint}>
-                {metrics.routeTargetCustomers ? `${customers.length}/${metrics.routeTargetCustomers} clientes` : 'Total asignado'}
-              </Text>
+        {/* 2. La siguiente decisión se muestra antes que los indicadores secundarios. */}
+        {firstPendingItem && (
+          <TouchableOpacity
+            style={styles.nextCollectionCard}
+            activeOpacity={0.82}
+            onPress={handleQuickPayFirstPending}
+          >
+            <View style={styles.nextCollectionTopRow}>
+              <Text style={styles.nextCollectionEyebrow}>SIGUIENTE COBRO</Text>
+              <Text style={styles.nextCollectionOrder}>PARADA #{firstPendingItem.customer.orderIndex || 1}</Text>
             </View>
-
-            <View style={styles.financialTrioDivider} />
-
-            <View style={styles.financialTrioItem}>
-              <Text style={styles.financialTrioLabel}>CARTERA (DEUDA)</Text>
-              <Text style={styles.financialTrioValue} numberOfLines={1}>
-                {maskIfPrivate(metrics.activeCapitalInStreet)}
-              </Text>
-              <Text style={styles.financialTrioHint}>En la calle</Text>
+            <View style={styles.nextCollectionBody}>
+              <View style={styles.nextCollectionAvatar}>
+                <Text style={styles.nextCollectionAvatarText}>{getInitials(firstPendingItem.customer.fullName)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.nextCollectionName} numberOfLines={1}>{firstPendingItem.customer.fullName}</Text>
+                <Text style={styles.nextCollectionMeta} numberOfLines={1}>
+                  {firstPendingItem.customer.neighborhood} · {firstPendingItem.dueDateDisplay}
+                </Text>
+              </View>
+              <View style={styles.nextCollectionAction}>
+                <Text style={styles.nextCollectionActionText}>Cobrar</Text>
+                <ChevronRight size={15} color="#FFFFFF" />
+              </View>
             </View>
-
-            <View style={styles.financialTrioDivider} />
-
-            <View style={styles.financialTrioItem}>
-              <Text style={styles.financialTrioLabel}>BASE DISPONIBLE</Text>
-              <Text style={[styles.financialTrioValue, { color: '#0284c7' }]} numberOfLines={1}>
-                {maskIfPrivate(metrics.cashAvailableInHand)}
-              </Text>
-              <Text style={styles.financialTrioHint}>Para prestar</Text>
-            </View>
-          </View>
+          </TouchableOpacity>
         )}
 
-        {/* 2. ACCIONES RÁPIDAS (FAVORITOS DE RUTA) */}
+        {/* 3. Atajos de operación: módulos amplios, no una fila de iconos comprimidos. */}
         <View style={styles.quickActionsSection}>
-          <Text style={styles.fintechSectionTitle}>Acciones Rápidas</Text>
-          <View style={styles.quickActionsGrid}>
+          <Text style={styles.fintechSectionTitle}>Favoritos</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickActionsGrid}
+          >
             <TouchableOpacity
               style={styles.quickActionCard}
               activeOpacity={0.8}
@@ -674,7 +668,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               <View style={[styles.quickActionIconWrap, { backgroundColor: '#EFF6FF' }]}>
                 <Zap size={18} color="#2563EB" />
               </View>
-              <Text style={styles.quickActionTitle}>Siguiente</Text>
+              <Text style={styles.quickActionTitle}>Cobro rápido</Text>
               <Text style={styles.quickActionSub} numberOfLines={1}>
                 {firstPendingItem ? `#${firstPendingItem.customer.orderIndex || 1} ${firstPendingItem.customer.fullName.split(' ')[0]}` : 'Al día'}
               </Text>
@@ -688,7 +682,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               <View style={[styles.quickActionIconWrap, { backgroundColor: '#ECFDF5' }]}>
                 <FilePlus2 size={18} color="#059669" />
               </View>
-              <Text style={styles.quickActionTitle}>Nuevo Crédito</Text>
+              <Text style={styles.quickActionTitle}>Nuevo crédito</Text>
               <Text style={styles.quickActionSub} numberOfLines={1}>Desembolsar</Text>
             </TouchableOpacity>
 
@@ -705,7 +699,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                   </View>
                 )}
               </View>
-              <Text style={styles.quickActionTitle}>Promesas</Text>
+              <Text style={styles.quickActionTitle}>Pendientes</Text>
               <Text style={styles.quickActionSub} numberOfLines={1}>
                 {counts.PROMESAS > 0 ? `${counts.PROMESAS} hoy` : 'Sin tareas'}
               </Text>
@@ -720,59 +714,31 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 <View style={[styles.quickActionIconWrap, { backgroundColor: '#E0F2FE' }]}>
                   <Landmark size={18} color="#0284C7" />
                 </View>
-                <Text style={styles.quickActionTitle}>Recaudo</Text>
+                <Text style={styles.quickActionTitle}>Avance</Text>
                 <Text style={styles.quickActionSub} numberOfLines={1}>
                   Avance oficina
                 </Text>
               </TouchableOpacity>
             )}
-          </View>
+          </ScrollView>
         </View>
 
-        {/* 2.1 BENTO GRID DE RENDIMIENTO */}
-        <View style={styles.bentoSection}>
-          <View style={styles.bentoHeaderRow}>
-            <Text style={styles.fintechSectionTitle}>Rendimiento de Ruta</Text>
-            <Text style={styles.bentoHeaderDate}>{formatDateLabel(todayStr)}</Text>
+        {/* 4. Solo dos señales operativas; el detalle vive en la hoja de ruta. */}
+        <View style={styles.routeSignalsRow}>
+          <View style={styles.routeSignal}>
+            <Text style={styles.routeSignalLabel}>AVANCE</Text>
+            <Text style={styles.routeSignalValue}>{metrics.visitedCustomersCount}/{metrics.expectedCustomersCount}</Text>
+            <Text style={styles.routeSignalHint}>clientes gestionados</Text>
           </View>
-          <View style={styles.bentoGrid}>
-            <View style={styles.bentoCard}>
-              <Text style={styles.bentoLabel}>Cobrado hoy (Pleno)</Text>
-              <Text style={styles.bentoValue}>{maskIfPrivate(metrics.collectedToday)}</Text>
-              <Text style={styles.bentoSub}>
-                {metrics.visitedCustomersCount}/{metrics.expectedCustomersCount} cobrados
-              </Text>
-            </View>
-
-            <View style={styles.bentoCard}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={styles.bentoLabel}>Meta del día</Text>
-                <TrendingUp size={11} color="#059669" />
-              </View>
-              <Text style={styles.bentoValue}>{maskIfPrivate(metrics.expectedDailyGoal)}</Text>
-              <Text style={styles.bentoSub}>{metrics.progressPercentage}% alcanzado</Text>
-            </View>
-
-            <View style={styles.bentoCard}>
-              <Text style={styles.bentoLabel}>Cartera en calle</Text>
-              <Text style={styles.bentoValue}>{maskIfPrivate(metrics.activeCapitalInStreet)}</Text>
-              <Text style={styles.bentoSub}>Capital activo</Text>
-            </View>
-
-            <View style={styles.bentoCard}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={styles.bentoLabel}>En mora</Text>
-                {metrics.overdueCustomersCount > 0 && <AlertCircle size={11} color="#DC2626" />}
-              </View>
-              <Text style={[styles.bentoValue, metrics.overdueCustomersCount > 0 && { color: '#DC2626' }]}>
-                {metrics.overdueCustomersCount} clientes
-              </Text>
-              <Text style={styles.bentoSub}>
-                {metrics.overdueCustomersCount > 0
-                  ? `${maskIfPrivate(metrics.overdueTotalAmount)} vencido`
-                  : 'Ruta al día'}
-              </Text>
-            </View>
+          <View style={styles.routeSignalDivider} />
+          <View style={styles.routeSignal}>
+            <Text style={styles.routeSignalLabel}>MORA ACTIVA</Text>
+            <Text style={[styles.routeSignalValue, metrics.overdueCustomersCount > 0 && { color: COLORS.danger }]}>
+              {metrics.overdueCustomersCount}
+            </Text>
+            <Text style={styles.routeSignalHint}>
+              {metrics.overdueCustomersCount > 0 ? 'clientes por priorizar' : 'ruta al día'}
+            </Text>
           </View>
         </View>
 
@@ -798,59 +764,6 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           </TouchableOpacity>
         )}
 
-        {/* 4. VISTA PREVIA: SIGUIENTES COBROS PRIORITARIOS */}
-        {priorityItems.length > 0 && (
-          <View style={styles.dashboardPrioritySection}>
-            <View style={styles.bentoHeaderRow}>
-              <Text style={styles.fintechSectionTitle}>Cobros Prioritarios de Hoy</Text>
-              {onNavigateToRoute && (
-                <TouchableOpacity onPress={onNavigateToRoute}>
-                  <Text style={{ fontSize: 12, color: COLORS.primary, fontWeight: '700' }}>Ver todos ({customerCardsData.length})</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {priorityItems.map((item) => (
-              <TouchableOpacity
-                key={item.customer.id}
-                style={styles.chatListItem}
-                activeOpacity={0.7}
-                onPress={() => onSelectCustomerToPay(item.customer, item.activeLoan)}
-              >
-                <View style={styles.avatarWrapper}>
-                  <View style={styles.avatarCircle}>
-                    <Text style={styles.avatarText}>
-                      {item.customer.fullName.substring(0, 2).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={styles.routeOrderBadge}>
-                    <Text style={styles.routeOrderBadgeText}>
-                      #{item.customer.orderIndex ?? '•'}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.chatInfoCol}>
-                  <View style={styles.chatInfoTop}>
-                    <Text style={styles.chatName} numberOfLines={1}>
-                      {item.customer.fullName}
-                    </Text>
-                    <Text style={styles.chatTime}>
-                      {item.dueDateDisplay}
-                    </Text>
-                  </View>
-                  <View style={styles.chatInfoBottom}>
-                    <Text style={styles.chatSnippet} numberOfLines={1}>
-                      {item.customer.neighborhood} • Cuota: {formatCOP(item.activeLoan.installmentAmount)}
-                    </Text>
-                    <View style={styles.quickPayPill}>
-                      <Text style={styles.quickPayPillText}>Cobrar</Text>
-                    </View>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
       </ScrollView>
     );
   }
@@ -1496,13 +1409,14 @@ const styles = StyleSheet.create({
   },
   // 1. HERO FINTECH LIMPIO: COBRO PLENO (.cleanHeroCard)
   cleanHeroCard: {
-    marginHorizontal: 16,
-    marginTop: 6,
-    marginBottom: 8,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 8,
-    borderRadius: 16,
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 24,
+    minHeight: 158,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 14,
+    borderRadius: 24,
     backgroundColor: COLORS.dockBg,
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 3 },
@@ -1518,7 +1432,7 @@ const styles = StyleSheet.create({
   },
   cleanHeroLabel: {
     color: '#94A3B8',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
@@ -1531,8 +1445,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    paddingHorizontal: 7,
-    paddingVertical: 2.5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 9999,
   },
   cleanPercentText: {
@@ -1548,17 +1462,17 @@ const styles = StyleSheet.create({
   },
   cleanMainAmount: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 34,
     fontWeight: '900',
     letterSpacing: -0.5,
   },
   cleanGoalText: {
     color: '#94A3B8',
-    fontSize: 10.5,
+    fontSize: 12,
     fontWeight: '600',
   },
   cleanProgressTrack: {
-    height: 3,
+    height: 4,
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
     borderRadius: 9999,
     overflow: 'hidden',
@@ -1602,6 +1516,81 @@ const styles = StyleSheet.create({
     color: '#FDBA74',
     fontSize: 10,
     fontWeight: '700',
+  },
+
+  nextCollectionCard: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: COLORS.bgSecondary,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  nextCollectionTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  nextCollectionEyebrow: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: COLORS.textMuted,
+    letterSpacing: 0.7,
+  },
+  nextCollectionOrder: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  nextCollectionBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  nextCollectionAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextCollectionAvatarText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: COLORS.primary,
+  },
+  nextCollectionName: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+  },
+  nextCollectionMeta: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  nextCollectionAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: COLORS.dockBg,
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  nextCollectionActionText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 
   // 1.1 PILARES FINANCIEROS DE LA RUTA (Audio 3)
@@ -1658,43 +1647,42 @@ const styles = StyleSheet.create({
 
   // ACCIONES RÁPIDAS (FAVORITOS)
   quickActionsSection: {
-    paddingHorizontal: 16,
-    marginBottom: 14,
+    paddingLeft: 20,
+    marginBottom: 28,
   },
   fintechSectionTitle: {
     fontFamily: FONT_FAMILY,
-    fontSize: 14,
-    fontWeight: '900',
+    fontSize: 23,
+    fontWeight: '800',
     color: COLORS.textPrimary,
-    letterSpacing: -0.2,
-    marginBottom: 8,
+    letterSpacing: -0.65,
+    marginBottom: 14,
   },
   quickActionsGrid: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
+    paddingRight: 20,
   },
   quickActionCard: {
-    flex: 1,
+    width: 112,
+    minHeight: 126,
     backgroundColor: COLORS.bgSecondary,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.microBorder,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 5,
-    elevation: 1,
   },
   quickActionIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 6,
+    marginBottom: 7,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     position: 'relative',
   },
   quickActionBadge: {
@@ -1727,6 +1715,45 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     textAlign: 'center',
     marginTop: 2,
+  },
+
+  routeSignalsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 24,
+    gap: 12,
+    backgroundColor: 'transparent',
+  },
+  routeSignal: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    minHeight: 98,
+    borderRadius: 20,
+    backgroundColor: COLORS.bgSecondary,
+    borderWidth: 1,
+    borderColor: COLORS.microBorder,
+  },
+  routeSignalDivider: {
+    display: 'none',
+  },
+  routeSignalLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    color: COLORS.textMuted,
+  },
+  routeSignalValue: {
+    fontSize: 25,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+    marginTop: 2,
+  },
+  routeSignalHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 1,
   },
 
   // BENTO GRID DE RENDIMIENTO

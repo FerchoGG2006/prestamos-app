@@ -117,6 +117,10 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
   );
 
   const delinquency = calculateDelinquencyMetrics(activeInstallments, todayStr);
+  // Solo presentación: el valor financiero ya fue determinado al originar/migrar el crédito.
+  const paperworkIsZero =
+    !(localStore.getOfficeConfig().paperworkFeeEnabled ?? true) ||
+    Boolean(activeLoan?.notes?.startsWith('Migrado de cartulina física'));
 
   const customerPayments = payments
     .filter((p) => p.customerId === customer.id)
@@ -619,6 +623,18 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                     : 'Al día'}
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.paperworkNote}>
+              <Text style={styles.paperworkNoteLabel}>PAPELERÍA / CARTULINA</Text>
+              <Text style={styles.paperworkNoteValue}>
+                {paperworkIsZero ? '$0' : 'Configurada por oficina'}
+              </Text>
+              <Text style={styles.paperworkNoteHint}>
+                {paperworkIsZero
+                  ? 'No descuenta efectivo: desactivada o migración física.'
+                  : 'El movimiento original conserva su trazabilidad.'}
+              </Text>
             </View>
 
             {/* Acciones de Estado de Cuenta por WhatsApp y Anulación Auditada (EXCLUSIVO ADMIN/SUPERVISOR) */}
@@ -1262,11 +1278,13 @@ const styles = StyleSheet.create({
   },
   quickContactRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: 12,
   },
   contactPillBtn: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '46%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1476,6 +1494,32 @@ const styles = StyleSheet.create({
     height: 24,
     backgroundColor: COLORS.border,
     marginHorizontal: 8,
+  },
+  paperworkNote: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: COLORS.primaryLight,
+    borderWidth: 1,
+    borderColor: COLORS.primaryBorder,
+  },
+  paperworkNoteLabel: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.primary,
+    letterSpacing: 0.5,
+  },
+  paperworkNoteValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.textPrimary,
+    marginTop: 2,
+  },
+  paperworkNoteHint: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginTop: 2,
   },
   dashedDivider: {
     height: 1,
