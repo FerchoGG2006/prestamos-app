@@ -75,7 +75,6 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [allowRouteReorder, setAllowRouteReorder] = useState(false);
   const [allowPartialPayments, setAllowPartialPayments] = useState(true);
   const [maxNewLoanLimitStr, setMaxNewLoanLimitStr] = useState('500000');
-  const [routeInitialCashBaseStr, setRouteInitialCashBaseStr] = useState('200000');
 
   // 4. Gestión de Rutas y Credenciales (Audio 1: solo visible para el Administrador)
   const [routesList, setRoutesList] = useState<Route[]>([]);
@@ -87,7 +86,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newTargetAdminStr, setNewTargetAdminStr] = useState('20000000');
-  const [newInitialCashBaseStr, setNewInitialCashBaseStr] = useState('0');
+  const [newExpectedCustomersStr, setNewExpectedCustomersStr] = useState('40');
 
   // Credenciales de Administrador editables
   const [adminNameEdit, setAdminNameEdit] = useState('Administración General');
@@ -102,7 +101,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editTargetAdminStr, setEditTargetAdminStr] = useState('20000000');
-  const [editInitialCashBaseStr, setEditInitialCashBaseStr] = useState('0');
+  const [editExpectedCustomersStr, setEditExpectedCustomersStr] = useState('40');
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -129,7 +128,6 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setAllowRouteReorder(cfg.allowRouteReorder ?? false);
       setAllowPartialPayments(cfg.allowPartialPayments ?? true);
       setMaxNewLoanLimitStr((cfg.maxNewLoanLimit || 500000).toString());
-      setRouteInitialCashBaseStr((cfg.routeInitialCashBase || 200000).toString());
 
       const loadedRoutes = [...localStore.getRoutes()];
       const loadedUsers = [...localStore.getUsers()];
@@ -171,14 +169,14 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
     setEditUsername(collector?.username || '');
     setEditPassword(collector?.password || '');
     setEditTargetAdminStr(String(route.targetAdministrative || 20000000));
-    setEditInitialCashBaseStr(String(route.initialCashBase || 0));
+    setEditExpectedCustomersStr(String(route.expectedCustomersCount || 40));
   };
 
   const handleSaveEditedRoute = async () => {
     if (!editingRouteId) return;
     try {
       const parsedAdmin = parseInt(editTargetAdminStr.replace(/\D/g, ''), 10) || 0;
-      const parsedBase = parseInt(editInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
+      const parsedCustomers = parseInt(editExpectedCustomersStr.replace(/\D/g, ''), 10) || 0;
       await localStore.updateRouteWithCredentials({
         routeId: editingRouteId,
         routeName: editRouteName,
@@ -186,7 +184,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         username: editUsername,
         password: editPassword,
         targetAdministrative: parsedAdmin,
-        initialCashBase: parsedBase,
+        expectedCustomersCount: parsedCustomers,
       });
       setRoutesList([...localStore.getRoutes()]);
       setUsersList([...localStore.getUsers()]);
@@ -248,7 +246,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       const collectorId = `usr-col-${Date.now()}`;
       const colDisplayName = newCollectorName.trim() || newRouteName.trim();
       const parsedNewAdmin = parseInt(newTargetAdminStr.replace(/\D/g, ''), 10) || 20000000;
-      const parsedNewBase = parseInt(newInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
+      const parsedNewCustomers = parseInt(newExpectedCustomersStr.replace(/\D/g, ''), 10) || 40;
 
       const newCollector: User = {
         id: collectorId,
@@ -272,7 +270,8 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         isActive: true,
         description: `Ruta asignada a ${colDisplayName}`,
         targetAdministrative: parsedNewAdmin,
-        initialCashBase: parsedNewBase,
+        expectedCustomersCount: parsedNewCustomers,
+        initialCashBase: 0,
         createdAt: new Date().toISOString(),
       };
 
@@ -289,7 +288,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setNewUsername('');
       setNewPassword('');
       setNewTargetAdminStr('20000000');
-      setNewInitialCashBaseStr('0');
+      setNewExpectedCustomersStr('40');
 
       Alert.alert(
         '¡Ruta Creada Exitosamente!',
@@ -328,7 +327,6 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
             setAllowRouteReorder(false);
             setAllowPartialPayments(true);
             setMaxNewLoanLimitStr('500000');
-            setRouteInitialCashBaseStr('200000');
           },
         },
       ]
@@ -362,7 +360,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         allowRouteReorder,
         allowPartialPayments,
         maxNewLoanLimit: parseInt(maxNewLoanLimitStr.replace(/\D/g, ''), 10) || 500000,
-        routeInitialCashBase: parseInt(routeInitialCashBaseStr.replace(/\D/g, ''), 10) || 200000,
+        routeInitialCashBase: 0,
         officeServerUrl: officeServerUrl.trim() || 'http://192.168.1.10:8765',
       };
 
@@ -817,21 +815,6 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                     Tope que un cobrador puede desembolsar sin autorización previa de gerencia.
                   </Text>
                 </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Base de Efectivo Sugerida en Ruta ($)</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={routeInitialCashBaseStr}
-                    onChangeText={setRouteInitialCashBaseStr}
-                    keyboardType="numeric"
-                    placeholder="200000"
-                    placeholderTextColor={COLORS.textMuted}
-                  />
-                  <Text style={styles.inputHelp}>
-                    Monto asignado al cobrador en la mañana para vueltos y préstamos.
-                  </Text>
-                </View>
               </View>
             )}
 
@@ -966,18 +949,18 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                         />
                       </View>
                       <View style={[styles.inputGroup, { flex: 1 }]}>
-                        <Text style={styles.inputLabel}>Base Inicial en Efectivo ($ COP)</Text>
+                        <Text style={styles.inputLabel}>Cant. Clientes de la Ruta</Text>
                         <TextInput
                           style={styles.textInput}
-                          value={newInitialCashBaseStr}
-                          onChangeText={(t) => setNewInitialCashBaseStr(t.replace(/\D/g, ''))}
-                          placeholder="0"
+                          value={newExpectedCustomersStr}
+                          onChangeText={(t) => setNewExpectedCustomersStr(t.replace(/\D/g, ''))}
+                          placeholder="40"
                           keyboardType="numeric"
                         />
                       </View>
                     </View>
                     <Text style={{ fontSize: 10.5, color: '#0F766E', marginBottom: 8, fontStyle: 'italic' }}>
-                      💡 La base se calcula automáticamente: Administrativo - Cartera en calle de los clientes que vayas ingresando uno a uno.
+                      💡 La base disponible se calcula automáticamente: Administrativo - Cartera en calle de los clientes que vayas ingresando uno a uno.
                     </Text>
 
                     <TouchableOpacity
@@ -1083,11 +1066,11 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                               />
                             </View>
                             <View style={[styles.inputGroup, { flex: 1 }]}>
-                              <Text style={styles.inputLabel}>Base Inicial en Efectivo ($ COP)</Text>
+                              <Text style={styles.inputLabel}>Cant. Clientes de la Ruta</Text>
                               <TextInput
                                 style={styles.textInput}
-                                value={editInitialCashBaseStr}
-                                onChangeText={(t) => setEditInitialCashBaseStr(t.replace(/\D/g, ''))}
+                                value={editExpectedCustomersStr}
+                                onChangeText={(t) => setEditExpectedCustomersStr(t.replace(/\D/g, ''))}
                                 keyboardType="numeric"
                               />
                             </View>

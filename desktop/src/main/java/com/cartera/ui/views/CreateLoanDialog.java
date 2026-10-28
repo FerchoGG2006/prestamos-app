@@ -637,11 +637,19 @@ public class CreateLoanDialog extends Stage {
                 lblSummaryNet.setText(CURRENCY.format(pendingBalance));
             } else {
                 // Modo Normal: Desembolso regular con papelería
+                boolean isPaperworkEnabled = settingRepository == null || settingRepository.findById("paperwork_enabled")
+                        .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
+                        .orElse(true);
                 BigDecimal cartulina = computeConfiguredPaperwork(principal);
-                if (cartulina.compareTo(BigDecimal.ZERO) > 0) {
+                if (!isPaperworkEnabled) {
+                    lblSummaryCartulina.setText("$ 0 (Desactivada por admin)");
+                    lblSummaryCartulina.setStyle("-fx-text-fill: #64748b; -fx-font-size: 14px; -fx-font-weight: bold;");
+                } else if (cartulina.compareTo(BigDecimal.ZERO) > 0) {
                     lblSummaryCartulina.setText("- " + CURRENCY.format(cartulina));
+                    lblSummaryCartulina.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 14px; -fx-font-weight: bold;");
                 } else {
                     lblSummaryCartulina.setText("No aplica ($0)");
+                    lblSummaryCartulina.setStyle("-fx-text-fill: #64748b; -fx-font-size: 14px; -fx-font-weight: bold;");
                 }
                 BigDecimal netCash = principal.subtract(cartulina);
                 lblSummaryNet.setText(CURRENCY.format(netCash));

@@ -359,11 +359,23 @@ public class CustomerDialog extends Stage {
             BigDecimal total = principal.add(interest);
             BigDecimal cuota = total.divide(BigDecimal.valueOf(count), 0, RoundingMode.HALF_UP);
 
+            boolean isPaperworkEnabled = settingRepository == null || settingRepository.findById("paperwork_enabled")
+                    .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
+                    .orElse(true);
             BigDecimal cartulina = computeConfiguredPaperwork(principal);
             BigDecimal netDisbursed = principal.subtract(cartulina);
 
             lblSummaryPrincipal.setText(CURRENCY.format(principal));
-            lblSummaryCartulina.setText(cartulina.compareTo(BigDecimal.ZERO) > 0 ? "- " + CURRENCY.format(cartulina) : "$ 0 (No aplica)");
+            if (!isPaperworkEnabled) {
+                lblSummaryCartulina.setText("$ 0 (Desactivada por admin)");
+                lblSummaryCartulina.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px; -fx-font-weight: bold;");
+            } else if (cartulina.compareTo(BigDecimal.ZERO) > 0) {
+                lblSummaryCartulina.setText("- " + CURRENCY.format(cartulina));
+                lblSummaryCartulina.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 12px; -fx-font-weight: bold;");
+            } else {
+                lblSummaryCartulina.setText("$ 0 (No aplica)");
+                lblSummaryCartulina.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px; -fx-font-weight: bold;");
+            }
             lblSummaryNetDisbursed.setText(CURRENCY.format(netDisbursed));
             lblSummaryTotal.setText(CURRENCY.format(total));
             lblSummaryCuota.setText(CURRENCY.format(cuota));

@@ -70,7 +70,7 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   paperworkRate: 5000,
   graceDays: 0,
   maxNewLoanLimit: 500000,
-  routeInitialCashBase: 200000,
+  routeInitialCashBase: 0,
   allowRouteNewLoans: true,
   allowCollectorExpenses: true,
   allowRouteReorder: false,
@@ -554,6 +554,8 @@ class LocalStore {
       username: string;
       password: string;
       description?: string;
+      targetAdministrative?: number;
+      expectedCustomersCount?: number;
       initialCashBase?: number;
     }>;
   }): Promise<{ adminUser: User; createdRoutes: Route[]; createdUsers: User[] }> {
@@ -631,7 +633,8 @@ class LocalStore {
       const rName = rc.name.trim() || `Ruta ${idx + 1}`;
       const rUser = rc.username.trim().toLowerCase();
       const rPass = rc.password.trim();
-      const cashBase = rc.initialCashBase ?? 200000;
+      const targetAdmin = rc.targetAdministrative ?? 0;
+      const expectedCustomers = rc.expectedCustomersCount ?? 0;
 
       newRoutes.push({
         id: routeId,
@@ -641,7 +644,9 @@ class LocalStore {
         collectorName: colName,
         isActive: true,
         description: rc.description?.trim() || `Asignada a ${colName}`,
-        initialCashBase: cashBase,
+        targetAdministrative: targetAdmin,
+        expectedCustomersCount: expectedCustomers,
+        initialCashBase: 0,
         createdAt: todayStr,
       });
 
@@ -692,7 +697,7 @@ class LocalStore {
       allowRouteNewLoans: params.allowRouteNewLoans ?? this.officeConfig.allowRouteNewLoans ?? true,
       allowCollectorExpenses: params.allowCollectorExpenses ?? this.officeConfig.allowCollectorExpenses ?? true,
       allowPartialPayments: params.allowPartialPayments ?? this.officeConfig.allowPartialPayments ?? true,
-      routeInitialCashBase: newRoutes[0]?.initialCashBase ?? 200000,
+      routeInitialCashBase: 0,
       isSetupCompleted: true,
     };
 
@@ -706,18 +711,8 @@ class LocalStore {
       this.settlements = [];
       this.promises = [];
       this.nonPaymentVisits = [];
-      this.cashMovements = newRoutes
-        .filter((r) => (r.initialCashBase || 0) > 0)
-        .map((r, idx) => ({
-          id: `cm-base-${idx + 1}-${Date.now()}`,
-          routeId: r.id,
-          collectorId: r.collectorId,
-          type: 'INCOME' as const,
-          category: 'ADJUSTMENT' as const,
-          amount: r.initialCashBase || 0,
-          description: `Base inicial asignada a ${r.name}`,
-          createdAt: `${todayStr} 07:00:00`,
-        }));
+      // Sin base sugerida artificial: la base real es Dinero Total de la ruta - Cartera colocada en calle
+      this.cashMovements = [];
     }
 
     const audit: AuditLog = {
@@ -826,6 +821,7 @@ class LocalStore {
     description?: string;
     initialCashBase?: number;
     targetAdministrative?: number;
+    expectedCustomersCount?: number;
   }): Promise<void> {
     const routeIdx = this.routes.findIndex((r) => r.id === params.routeId);
     if (routeIdx === -1) throw new Error('Ruta no encontrada.');
@@ -899,6 +895,10 @@ class LocalStore {
         params.targetAdministrative !== undefined
           ? params.targetAdministrative
           : currentRoute.targetAdministrative,
+      expectedCustomersCount:
+        params.expectedCustomersCount !== undefined
+          ? params.expectedCustomersCount
+          : currentRoute.expectedCustomersCount,
     };
 
     await Promise.all([
@@ -1081,26 +1081,31 @@ class LocalStore {
       )
       .reduce((sum, cm) => sum + cm.amount, 0);
 
-    // Base inicial de caja + efectivo cobrado - desembolsos en efectivo - gastos operativos de ruta - recaudo retirado
-    const adjustmentMovements = scopedCashMovements.filter(
-      (cm) => cm.type === 'INCOME' && cm.category === 'ADJUSTMENT'
-    );
+    // Base disponible en caja de la ruta:
+    // Dinero Total fijado a la ruta (Administrativo) - Cartera colocada en calle
+    // + Efectivo cobrado hoy - Desembolsos netos en efectivo hoy - Gastos de ruta hoy - Retiros a oficina
     const matchingRoutes = filterByRoute
       ? this.routes.filter((r) => r.id === routeIdFilter)
       : this.routes;
 
+    const hasTargetAdmin = matchingRoutes.some((r) => (r.targetAdministrative || 0) > 0);
+    const totalTarget = matchingRoutes.reduce((sum, r) => sum + (r.targetAdministrative || 0), 0);
+    const totalTargetCustomers = matchingRoutes.reduce((sum, r) => sum + (r.expectedCustomersCount || 0), 0);
+
     let initialCashBase = 0;
-    if (adjustmentMovements.length > 0) {
-      initialCashBase = adjustmentMovements.reduce((sum, cm) => sum + cm.amount, 0);
+    if (hasTargetAdmin) {
+      // Dinero Total de la ruta fijado por la oficina.
+      // Al pasar o ingresar clientes uno por uno, la base disponible para prestar es:
+      // Dinero Total de la Ruta - Cartera colocada en calle
+      initialCashBase = Math.max(0, totalTarget - activeCapitalInStreet);
     } else {
-      const hasTargetAdmin = matchingRoutes.some((r) => (r.targetAdministrative || 0) > 0);
-      if (hasTargetAdmin) {
-        // La oficina fijó un Administrativo Total (ej. 20M). Al ingresar clientes uno por uno,
-        // la base restante en mano para prestar es: Administrativo - Cartera colocada en calle
-        const totalTarget = matchingRoutes.reduce((sum, r) => sum + (r.targetAdministrative || 0), 0);
-        initialCashBase = Math.max(0, totalTarget - activeCapitalInStreet);
+      const adjustmentMovements = scopedCashMovements.filter(
+        (cm) => cm.type === 'INCOME' && cm.category === 'ADJUSTMENT' && !cm.id.startsWith('cm-base-')
+      );
+      if (adjustmentMovements.length > 0) {
+        initialCashBase = adjustmentMovements.reduce((sum, cm) => sum + cm.amount, 0);
       } else {
-        initialCashBase = matchingRoutes.reduce((sum, r) => sum + (r.initialCashBase || 0), 0);
+        initialCashBase = 0;
       }
     }
 
@@ -1109,12 +1114,10 @@ class LocalStore {
       initialCashBase + collectedCashToday - disbursedToday - expensesToday - recaudoRetiradoToday
     );
 
-    // Administrativo de la Ruta (Audio 3: "El administrativo es toda la plata que tiene la ruta...")
-    // Valor total activo = Cartera activa prestada en calle + Base en efectivo disponible
-    const targetAdminSum = matchingRoutes.reduce((sum, r) => sum + (r.targetAdministrative || 0), 0);
+    // Administrativo de la Ruta (Dinero total asignado a la ruta):
     const totalAdministrativeCapital =
-      targetAdminSum > 0
-        ? targetAdminSum
+      totalTarget > 0
+        ? totalTarget
         : activeCapitalInStreet + cashAvailableInHand;
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
@@ -1137,6 +1140,7 @@ class LocalStore {
       totalAdministrativeCapital,
       visitedCustomersCount: visitedCustomerIds.size,
       expectedCustomersCount: activeLoans.length,
+      routeTargetCustomers: totalTargetCustomers,
 
       // Desglose de Salidas / Salientes
       salidasCount,

@@ -45,6 +45,8 @@ interface EditableRouteDraft {
   name: string;
   username: string;
   password: string;
+  targetAdministrativeStr: string;
+  expectedCustomersCountStr: string;
 }
 
 const FORBIDDEN_DEFAULT_PASSWORDS = new Set([
@@ -86,7 +88,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [wizAdminPassword, setWizAdminPassword] = useState('');
   const [wizRoutesCount, setWizRoutesCount] = useState<number>(1);
   const [wizRoutesDraft, setWizRoutesDraft] = useState<EditableRouteDraft[]>([
-    { name: '', username: '', password: '' },
+    { name: '', username: '', password: '', targetAdministrativeStr: '', expectedCustomersCountStr: '' },
   ]);
   const [wizError, setWizError] = useState('');
 
@@ -170,7 +172,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setWizAdminUsername('');
     setWizAdminPassword('');
     setWizRoutesCount(1);
-    setWizRoutesDraft([{ name: '', username: '', password: '' }]);
+    setWizRoutesDraft([{ name: '', username: '', password: '', targetAdministrativeStr: '', expectedCustomersCountStr: '' }]);
     setWizError('');
   };
 
@@ -226,6 +228,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
         name: r?.name || '',
         username: candidateUser,
         password: '',
+        targetAdministrativeStr: r?.targetAdministrative ? String(r.targetAdministrative) : '',
+        expectedCustomersCountStr: r?.expectedCustomersCount ? String(r.expectedCustomersCount) : '',
       });
     }
 
@@ -248,6 +252,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
           name: '',
           username: '',
           password: '',
+          targetAdministrativeStr: '',
+          expectedCustomersCountStr: '',
         });
       }
       return next.slice(0, clamped);
@@ -320,12 +326,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
         cleanCustomersData: true, // La cartera de la oficina siempre inicia limpia en $0 lista para registrar clientes
         routesConfig: wizRoutesDraft.map((d, i) => {
           const cleanName = d.name.trim() || `Ruta ${i + 1}`;
+          const targetAdmin = parseInt(d.targetAdministrativeStr?.replace(/\D/g, '') || '0', 10);
+          const expectedCust = parseInt(d.expectedCustomersCountStr?.replace(/\D/g, '') || '0', 10);
           return {
             id: d.id,
             name: cleanName,
             collectorName: cleanName,
             username: d.username.trim().toLowerCase(),
             password: d.password.trim(),
+            targetAdministrative: targetAdmin,
+            expectedCustomersCount: expectedCust,
           };
         }),
       });
@@ -750,6 +760,36 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       />
                     </View>
                   </View>
+
+                  <View style={[styles.twoColRow, { marginTop: 6 }]}>
+                    <View style={styles.colItem}>
+                      <Text style={styles.fieldCaption}>Dinero Total de la Ruta ($)</Text>
+                      <TextInput
+                        style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
+                        value={rt.targetAdministrativeStr ? (parseInt(rt.targetAdministrativeStr.replace(/\D/g, ''), 10) || 0).toLocaleString('es-CO') : ''}
+                        onChangeText={(v) => updateRouteDraft(idx, 'targetAdministrativeStr', v.replace(/\D/g, ''))}
+                        placeholder="ej: 20.000.000"
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="numeric"
+                        editable={isFormEditable}
+                      />
+                    </View>
+                    <View style={styles.colItem}>
+                      <Text style={styles.fieldCaption}>Cant. Clientes de la Ruta</Text>
+                      <TextInput
+                        style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
+                        value={rt.expectedCustomersCountStr}
+                        onChangeText={(v) => updateRouteDraft(idx, 'expectedCustomersCountStr', v.replace(/\D/g, ''))}
+                        placeholder="ej: 40"
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="numeric"
+                        editable={isFormEditable}
+                      />
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 10, color: '#0F766E', marginTop: 3, fontStyle: 'italic' }}>
+                    💡 Base disponible = Dinero Total de la ruta - Cartera en calle de los clientes que pases uno a uno.
+                  </Text>
                 </View>
               ))}
 

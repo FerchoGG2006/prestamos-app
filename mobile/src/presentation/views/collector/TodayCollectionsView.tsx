@@ -631,11 +631,13 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         {isAdminMode && (
           <View style={styles.financialTrioCard}>
             <View style={styles.financialTrioItem}>
-              <Text style={styles.financialTrioLabel}>ADMINISTRATIVO</Text>
+              <Text style={styles.financialTrioLabel}>DINERO RUTA</Text>
               <Text style={styles.financialTrioValue} numberOfLines={1}>
                 {maskIfPrivate(metrics.totalAdministrativeCapital || (metrics.activeCapitalInStreet + metrics.cashAvailableInHand))}
               </Text>
-              <Text style={styles.financialTrioHint}>Préstamos + Intereses</Text>
+              <Text style={styles.financialTrioHint}>
+                {metrics.routeTargetCustomers ? `${customers.length}/${metrics.routeTargetCustomers} clientes` : 'Total asignado'}
+              </Text>
             </View>
 
             <View style={styles.financialTrioDivider} />

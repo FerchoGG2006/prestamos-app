@@ -82,6 +82,7 @@ export interface Route {
   description?: string;
   initialCashBase?: number;
   targetAdministrative?: number; // Cupo/Administrativo asignado por la oficina a la ruta (ej. $20.000.000 COP)
+  expectedCustomersCount?: number; // Cantidad total de clientes de la ruta (ej. 40 clientes)
   interestRate?: number;
   maxLoanLimit?: number;
   createdAt: string;
@@ -291,6 +292,7 @@ export interface DailyRouteMetrics {
   totalAdministrativeCapital: number; // Administrativo de la ruta: Cartera en Calle + Base en Caja (Audio 3)
   visitedCustomersCount: number;
   expectedCustomersCount: number;
+  routeTargetCustomers?: number; // Total clientes fijados para la ruta en configuración
 
   // Desglose de Salidas / Salientes (Préstamos Paridos & Renovaciones)
   salidasCount: number;             // Préstamos paridos + renovaciones de hoy

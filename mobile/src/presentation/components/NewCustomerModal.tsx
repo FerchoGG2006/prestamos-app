@@ -105,12 +105,24 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setPaidInstallmentNums(arr);
   };
 
+  const officeConfig = localStore.getOfficeConfig();
+  const isPaperworkEnabled = officeConfig.paperworkFeeEnabled ?? true;
+  const paperworkRate = officeConfig.paperworkRate || 5000;
+  const isMigration = isCardMigration;
+
   const summary =
     principal > 0 && installmentCount > 0
       ? calculateLoanSummary(principal, interestRate, installmentCount)
       : null;
-  const paperwork = principal > 0 ? calculatePaperworkFee(principal) : 0;
-  const netCashToDeliver = Math.max(0, principal - paperwork);
+  const paperwork =
+    principal > 0 && isPaperworkEnabled && !isMigration
+      ? calculatePaperworkFee(principal, {
+          rate: paperworkRate,
+          base: 100000,
+          calculationMode: 'PROPORTIONAL',
+        })
+      : 0;
+  const netCashToDeliver = isMigration ? 0 : Math.max(0, principal - paperwork);
 
   const quickPrincipals = [150000, 200000, 300000, 500000];
 
@@ -225,7 +237,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
             `Se registró a ${fullName} y se generó el crédito ${loanRes.loan.loanNumber}.\n\n` +
             `• Modalidad: ${frequency}\n` +
             `• Capital: ${formatCOP(principal)}\n` +
-            `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
+            `• Cartulina / Papelería: ${isPaperworkEnabled && !isMigration ? formatCOP(paperwork) : '$0 (Desactivada)'}\n` +
             `• Efectivo neto entregado: ${formatCOP(netCashToDeliver)}\n` +
             `• Cuota: ${formatCOP(loanRes.loan.installmentAmount)}`
           );
@@ -762,9 +774,24 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>
-                        Cartulina / Papelería (aprox. $1.000):
+                        {isMigration
+                          ? 'Impacto Caja Hoy:'
+                          : isPaperworkEnabled
+                          ? `Cartulina / Papelería (${formatCOP(paperworkRate)} / $100k):`
+                          : 'Cartulina / Papelería:'}
                       </Text>
-                      <Text style={styles.summaryValueMuted}>- {formatCOP(paperwork)}</Text>
+                      <Text
+                        style={[
+                          styles.summaryValueMuted,
+                          (!isPaperworkEnabled || isMigration) && { color: COLORS.textMuted },
+                        ]}
+                      >
+                        {isMigration
+                          ? '$ 0 (Cartulina física migrada)'
+                          : isPaperworkEnabled && paperwork > 0
+                          ? `- ${formatCOP(paperwork)}`
+                          : '$ 0 (Desactivada por administración)'}
+                      </Text>
                     </View>
 
                     <View style={styles.summaryDivider} />

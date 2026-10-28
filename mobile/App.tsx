@@ -341,20 +341,33 @@ function MainApp({
     if (!currentUser) return;
 
     let inactivityTimer: any;
+    let backgroundTimestamp: number | null = null;
+    // Jornada de trabajo en calle (8 horas): no molestar al cobrador mientras opera
+    const INACTIVITY_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+    // Umbral de segundo plano (4 horas): si sale a WhatsApp, llamadas o calculadora y regresa,
+    // NO se bloquea la sesión. Solo se bloquea si la app queda abandonada por más de 4 horas.
+    const BACKGROUND_LOCK_THRESHOLD_MS = 4 * 60 * 60 * 1000;
+
     const resetTimer = () => {
       if (inactivityTimer) clearTimeout(inactivityTimer);
-      // Auto-bloqueo tras 3 minutos (180.000 ms) sin interactuar
       inactivityTimer = setTimeout(() => {
         setIsSessionLocked(true);
-      }, 180000);
+      }, INACTIVITY_TIMEOUT_MS);
     };
 
     resetTimer();
 
     const handleAppState = (state: AppStateStatus) => {
       if (state === 'background' || state === 'inactive') {
-        setIsSessionLocked(true);
+        backgroundTimestamp = Date.now();
       } else if (state === 'active') {
+        if (backgroundTimestamp) {
+          const elapsed = Date.now() - backgroundTimestamp;
+          if (elapsed > BACKGROUND_LOCK_THRESHOLD_MS) {
+            setIsSessionLocked(true);
+          }
+          backgroundTimestamp = null;
+        }
         resetTimer();
       }
     };

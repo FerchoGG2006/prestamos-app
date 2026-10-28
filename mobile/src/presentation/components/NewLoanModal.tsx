@@ -108,15 +108,16 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       ? calculateLoanSummary(principal, effectiveInterestRate, installmentCount)
       : null;
   const isPaperworkEnabled = officeConfig.paperworkFeeEnabled ?? true;
+  const isMigration = isCardMigration;
   const paperwork =
-    principal > 0 && isPaperworkEnabled
+    principal > 0 && isPaperworkEnabled && !isMigration
       ? calculatePaperworkFee(principal, {
           rate: officeConfig.paperworkRate || 5000,
           base: 100000,
           calculationMode: 'PROPORTIONAL',
         })
       : 0;
-  const netCashToDeliver = Math.max(0, principal - paperwork);
+  const netCashToDeliver = isMigration ? 0 : Math.max(0, principal - paperwork);
 
   const quickPrincipals = [100000, 150000, 200000, 300000, 500000];
 
@@ -226,7 +227,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             <View>
               <Text style={styles.title}>Originación de Crédito</Text>
               <Text style={styles.subtitle}>
-                Tasa pactada ({interestPercentStr || '0'}%) sobre capital • {isPaperworkEnabled ? `Papelería $${(officeConfig.paperworkRate || 5000).toLocaleString('es-CO')} / $100k` : 'Sin descuento de papelería'}
+                Tasa pactada ({interestPercentStr || '0'}%) sobre capital • {isPaperworkEnabled ? `Papelería $${(officeConfig.paperworkRate || 5000).toLocaleString('es-CO')} / $100k` : 'Sin cobro de papelería (Desactivada)'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -700,9 +701,28 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </View>
                 <View style={styles.dashedDivider} />
                 <View style={styles.calcRow}>
-                  <Text style={styles.calcLabel}>Cartulina / Papelería (aprox. $1.000):</Text>
-                  <Text style={[styles.calcVal, { color: COLORS.danger }]}>
-                    - {formatCOP(paperwork)}
+                  <Text style={styles.calcLabel}>
+                    {isMigration
+                      ? 'Impacto Caja Hoy:'
+                      : isPaperworkEnabled
+                      ? `Cartulina / Papelería (${formatCOP(officeConfig.paperworkRate || 5000)} / $100k):`
+                      : 'Cartulina / Papelería:'}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.calcVal,
+                      isMigration
+                        ? { color: COLORS.primary }
+                        : isPaperworkEnabled && paperwork > 0
+                        ? { color: COLORS.danger }
+                        : { color: COLORS.textMuted },
+                    ]}
+                  >
+                    {isMigration
+                      ? '$ 0 (Cartulina física migrada)'
+                      : isPaperworkEnabled && paperwork > 0
+                      ? `- ${formatCOP(paperwork)}`
+                      : '$ 0 (Desactivada por administración)'}
                   </Text>
                 </View>
                 <View style={styles.calcRow}>
