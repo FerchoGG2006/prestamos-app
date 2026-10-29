@@ -423,8 +423,38 @@ public final class CarteraApplication extends Application {
     }
 
     private void reloadGlobalRoutes() {
+        UserSession session = UserSessionContext.getSession().orElse(null);
         String prevSelected = UserSessionContext.getSelectedRouteId();
         cmbGlobalRoute.getItems().clear();
+
+        if (session != null && session.isCollector()) {
+            cmbGlobalRoute.setDisable(true);
+            GlobalRouteOption targetSelection = null;
+            if (routeRepository != null) {
+                List<RouteEntity> routes = routeRepository.findAll();
+                for (RouteEntity r : routes) {
+                    if (r.getActive() != null && r.getActive() == 0) continue;
+                    if (session.userId().equalsIgnoreCase(r.getCollectorId())) {
+                        GlobalRouteOption opt = new GlobalRouteOption(r.getId(), "🛵 Mi Ruta: " + r.getName());
+                        cmbGlobalRoute.getItems().add(opt);
+                        targetSelection = opt;
+                        break;
+                    }
+                }
+                if (targetSelection == null && !routes.isEmpty()) {
+                    RouteEntity first = routes.get(0);
+                    targetSelection = new GlobalRouteOption(first.getId(), "🛵 Mi Ruta: " + first.getName());
+                    cmbGlobalRoute.getItems().add(targetSelection);
+                }
+            }
+            if (targetSelection != null) {
+                cmbGlobalRoute.setValue(targetSelection);
+                UserSessionContext.setSelectedRouteId(targetSelection.id());
+            }
+            return;
+        }
+
+        cmbGlobalRoute.setDisable(false);
         GlobalRouteOption allOption = new GlobalRouteOption("ALL", "Todas las Rutas (Consolidado)");
         cmbGlobalRoute.getItems().add(allOption);
 
@@ -466,6 +496,23 @@ public final class CarteraApplication extends Application {
     }
 
     private void navigateTo(String viewName) {
+        UserSession session = UserSessionContext.getSession().orElse(null);
+        if (session != null && session.isCollector()) {
+            boolean isAllowed = "Cobros y Rutas".equalsIgnoreCase(viewName)
+                    || "Cobros de hoy".equalsIgnoreCase(viewName)
+                    || "Rutas".equalsIgnoreCase(viewName)
+                    || "Mi Ruta de Hoy".equalsIgnoreCase(viewName)
+                    || "Clientes".equalsIgnoreCase(viewName)
+                    || "Mis Clientes".equalsIgnoreCase(viewName)
+                    || "Gestión de Cartera".equalsIgnoreCase(viewName)
+                    || "Historial".equalsIgnoreCase(viewName)
+                    || "Historial Crediticio".equalsIgnoreCase(viewName)
+                    || "Historial de Clientes".equalsIgnoreCase(viewName);
+            if (!isAllowed) {
+                viewName = "Cobros y Rutas";
+            }
+        }
+
         String effectiveTitle = viewName;
         String activeKey = viewName;
 
@@ -481,15 +528,21 @@ public final class CarteraApplication extends Application {
             case "Cobros y Rutas":
             case "Cobros de hoy":
             case "Rutas":
+            case "Mi Ruta de Hoy":
                 activeKey = "Cobros y Rutas";
-                effectiveTitle = "Supervisión de Cobros y Rutas";
+                effectiveTitle = (session != null && session.isCollector())
+                        ? "Mi Ruta de Cobro de Hoy"
+                        : "Supervisión de Cobros y Rutas";
                 todayCollectionsView.refreshData();
                 viewNode = todayCollectionsView;
                 break;
             case "Clientes":
+            case "Mis Clientes":
             case "Gestión de Cartera":
                 activeKey = "Clientes";
-                effectiveTitle = "Clientes de la Red";
+                effectiveTitle = (session != null && session.isCollector())
+                        ? "Mis Clientes Asignados"
+                        : "Clientes de la Red";
                 customersView.refresh();
                 customersView.showSection("customers");
                 viewNode = customersView;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -30,7 +30,7 @@ import {
   RotateCcw,
   AlertTriangle,
 } from 'lucide-react-native';
-import { localStore } from '../../../infrastructure/storage/local-store';
+import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
 import { verifyPassword } from '../../../core/utils/security';
 import { COLORS } from '../../theme/colors';
 
@@ -75,10 +75,24 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberPassword, setRememberPassword] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [savedNotice, setSavedNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    safeStorage.getItem('@prestamos_remembered_credentials').then((raw) => {
+      if (raw) {
+        try {
+          const creds = JSON.parse(raw);
+          if (creds.username) setUsername(creds.username);
+          if (creds.password) setPassword(creds.password);
+          setRememberPassword(true);
+        } catch {}
+      }
+    });
+  }, []);
 
   // Modal de Registro / Configuración de Oficina y Credenciales
   const [setupVisible, setSetupVisible] = useState(false);
@@ -133,8 +147,17 @@ export const LoginView: React.FC<LoginViewProps> = ({
         return;
       }
 
+      if (rememberPassword) {
+        safeStorage.setItem(
+          '@prestamos_remembered_credentials',
+          JSON.stringify({ username: cleanUser, password: cleanPass })
+        );
+      } else {
+        safeStorage.removeItem('@prestamos_remembered_credentials');
+      }
+
       // El sistema identifica automáticamente si es Administrador o a qué Ruta pertenece el cobrador
-      onLoginSuccess(matchedUser, true);
+      onLoginSuccess(matchedUser, rememberPassword);
     }, 120);
   };
 
@@ -242,26 +265,34 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const handleFactoryReset = () => {
     const doReset = async () => {
       await localStore.factoryResetAll();
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.clear();
+        }
+      } catch {}
       if (onDataReset) onDataReset();
       setSavedNotice('Almacenamiento reiniciado correctamente. Ahora puedes registrar tu oficina.');
       setErrorMessage('');
+      resetWizardToBlank();
+      setIsSetupUnlocked(true);
+      setSetupVisible(true);
     };
 
     if (Platform.OS === 'web') {
       const confirmed = typeof window !== 'undefined' && window.confirm(
-        '¿Deseas restablecer el almacenamiento local de este teléfono para aplicar la nueva versión limpia de rutas y base de efectivo?'
+        '¿Deseas restablecer el sistema completo para iniciar una oficina desde cero?'
       );
       if (confirmed) {
         doReset();
       }
     } else {
       Alert.alert(
-        'Actualizar desde Versión 1',
-        '¿Deseas restablecer los datos de la versión anterior en este teléfono para aplicar la nueva versión de rutas y base?',
+        'Iniciar Oficina desde Cero',
+        '¿Deseas restablecer todo el almacenamiento para registrar una nueva oficina y crear credenciales desde cero?',
         [
           { text: 'Cancelar', style: 'cancel' },
           {
-            text: 'Sí, Restablecer',
+            text: 'Sí, Restablecer Todo',
             style: 'destructive',
             onPress: doReset,
           },
@@ -375,11 +406,22 @@ export const LoginView: React.FC<LoginViewProps> = ({
       if (onDataReset) onDataReset();
       setSetupVisible(false);
 
+      // Pre-llenar credenciales del Administrador recién configurado con recordar activo
+      const cleanAdminUser = wizAdminUsername.trim().toLowerCase();
+      const cleanAdminPass = wizAdminPassword.trim();
+      setUsername(cleanAdminUser);
+      setPassword(cleanAdminPass);
+      setRememberPassword(true);
+      await safeStorage.setItem(
+        '@prestamos_remembered_credentials',
+        JSON.stringify({ username: cleanAdminUser, password: cleanAdminPass })
+      );
+
       if (enterDirectlyAsAdmin) {
         onLoginSuccess(result.adminUser, true);
       } else {
         setSavedNotice(
-          `Oficina "${wizCompanyName.trim()}" y ${result.createdRoutes.length} ruta(s) configuradas.`
+          `Oficina "${wizCompanyName.trim()}" y ${result.createdRoutes.length} ruta(s) configuradas exitosamente. Puedes iniciar sesión con las credenciales creadas.`
         );
         setErrorMessage('');
       }
@@ -495,6 +537,18 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </View>
             </View>
 
+            {/* Casilla Recordar Contraseña */}
+            <TouchableOpacity
+              style={styles.rememberRow}
+              activeOpacity={0.7}
+              onPress={() => setRememberPassword(!rememberPassword)}
+            >
+              <View style={[styles.checkbox, rememberPassword && styles.checkboxActive]}>
+                {rememberPassword && <CheckCircle2 size={13} color="#2563EB" />}
+              </View>
+              <Text style={styles.rememberText}>Recordar contraseña en este dispositivo</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.submitBtn, isLoading && { opacity: 0.7 }]}
               activeOpacity={0.85}
@@ -531,18 +585,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
               {isOfficeRegistered
                 ? 'Configurar oficina y rutas (Requiere clave Admin)'
                 : 'Registrar mi oficina y crear credenciales'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Botón de Auto-Sanación / Migración de Versión Anterior */}
-          <TouchableOpacity
-            style={styles.factoryResetBtn}
-            activeOpacity={0.7}
-            onPress={handleFactoryReset}
-          >
-            <RotateCcw size={12} color={COLORS.textMuted} style={{ marginRight: 6 }} />
-            <Text style={styles.factoryResetText}>
-              ¿Tienes datos de la versión 1? Toca aquí para reiniciar y actualizar
             </Text>
           </TouchableOpacity>
         </View>
@@ -1041,6 +1083,32 @@ const styles = StyleSheet.create({
   },
   eyeBtn: {
     padding: 8,
+  },
+  rememberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 12,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  checkboxActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  rememberText: {
+    fontSize: 12.5,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
   },
   submitBtn: {
     flexDirection: 'row',

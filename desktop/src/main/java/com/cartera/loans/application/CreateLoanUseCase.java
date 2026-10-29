@@ -132,6 +132,12 @@ public class CreateLoanUseCase {
             throw new IllegalArgumentException("La cantidad de cuotas debe ser mayor a cero.");
         }
 
+        if ("FECHA_FIJA".equalsIgnoreCase(frequency) || "FECHA FIJA".equalsIgnoreCase(frequency) || "FIXED_DATE".equalsIgnoreCase(frequency)) {
+            List<InstallmentPlanItem> singleItem = new ArrayList<>();
+            singleItem.add(new InstallmentPlanItem(1, startDate, totalAgreed));
+            return singleItem;
+        }
+
         boolean excludeSundays = isExcludeSundaysEnabled();
         BigDecimal regularAmount = totalAgreed.divide(BigDecimal.valueOf(installmentCount), 2, RoundingMode.HALF_UP);
         BigDecimal sumCalculated = BigDecimal.ZERO;
@@ -194,6 +200,7 @@ public class CreateLoanUseCase {
             case "SEMANAL" -> date.plusWeeks(1);
             case "QUINCENAL" -> date.plusDays(15);
             case "MENSUAL" -> date.plusMonths(1);
+            case "FECHA_FIJA", "FECHA FIJA", "FIXED_DATE" -> date;
             case "DIARIO" -> {
                 LocalDate next = date.plusDays(1);
                 if (excludeSundays && next.getDayOfWeek() == DayOfWeek.SUNDAY) {

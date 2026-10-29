@@ -1,3 +1,33 @@
+// Prevents "NotFoundError: Failed to execute 'removeChild' on 'Node'" in React Native Web DOM reconciliation
+if (typeof window !== 'undefined' && typeof Node !== 'undefined' && Node.prototype) {
+  const originalRemoveChild = Node.prototype.removeChild;
+  Node.prototype.removeChild = function <T extends Node>(child: T): T {
+    if (child.parentNode !== this) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('Prevented unhandled removeChild error on mismatched parent:', child, this);
+      }
+      return child;
+    }
+    return originalRemoveChild.apply(this, [child]) as T;
+  };
+
+  const originalInsertBefore = Node.prototype.insertBefore;
+  Node.prototype.insertBefore = function <T extends Node>(newNode: T, referenceNode: Node | null): T {
+    if (referenceNode && referenceNode.parentNode !== this) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('Prevented unhandled insertBefore error on mismatched parent:', referenceNode, this);
+      }
+      return newNode;
+    }
+    return originalInsertBefore.apply(this, [newNode, referenceNode]) as T;
+  };
+
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.setAttribute('translate', 'no');
+    document.documentElement.classList.add('notranslate');
+  }
+}
+
 import { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -37,6 +67,7 @@ import {
   DailyRouteMetrics,
   NonPaymentVisit,
   User,
+  LoanFrequency,
 } from './src/core/domain/types';
 import { COLORS, TYPOGRAPHY, FONT_FAMILY } from './src/presentation/theme/colors';
 import { getLocalTodayStr, calculateDelinquencyMetrics } from './src/core/domain/calculator';
@@ -57,6 +88,7 @@ import { OfficeConfigModal } from './src/presentation/components/OfficeConfigMod
 import { RecaudoModal } from './src/presentation/components/RecaudoModal';
 import { CustomerOptionsModal } from './src/presentation/components/CustomerOptionsModal';
 import { EditCustomerModal } from './src/presentation/components/EditCustomerModal';
+import { ErrorBoundary } from './src/presentation/components/ErrorBoundary';
 import { RouteSelectorModal } from './src/presentation/components/RouteSelectorModal';
 import { NotificationsModal } from './src/presentation/components/NotificationsModal';
 import { formatAccountStatementReminder, openWhatsAppReceipt } from './src/core/utils/whatsapp-receipt';
@@ -85,6 +117,10 @@ import {
   Lock,
   ShieldCheck,
   MoreHorizontal,
+  TrendingUp,
+  Calculator,
+  RefreshCw,
+  Home,
 } from 'lucide-react-native';
 import { verifyPassword } from './src/core/utils/security';
 import { useFonts } from 'expo-font';
@@ -179,11 +215,13 @@ export default function App() {
           >
             <View style={styles.phoneScreen}>
               <SafeAreaInsetsContext.Provider value={simulatedInsets}>
-                <MainApp
-                  isWideViewport={isWideViewport}
-                  phoneFrameEnabled={phoneFrameEnabled}
-                  onTogglePhoneFrame={() => setPhoneFrameEnabled(!phoneFrameEnabled)}
-                />
+                <ErrorBoundary>
+                  <MainApp
+                    isWideViewport={isWideViewport}
+                    phoneFrameEnabled={phoneFrameEnabled}
+                    onTogglePhoneFrame={() => setPhoneFrameEnabled(!phoneFrameEnabled)}
+                  />
+                </ErrorBoundary>
               </SafeAreaInsetsContext.Provider>
 
               {/* Barra de Estado Android Visible (Hora, Notificaciones, Señal y Batería) */}
@@ -230,11 +268,17 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <MainApp
-        isWideViewport={isWideViewport}
-        phoneFrameEnabled={phoneFrameEnabled}
-        onTogglePhoneFrame={() => setPhoneFrameEnabled(!phoneFrameEnabled)}
-      />
+      <View style={isWideViewport ? styles.webDesktopBackdrop : { flex: 1 }}>
+        <View style={isWideViewport ? styles.webDesktopContainer : { flex: 1 }}>
+          <ErrorBoundary>
+            <MainApp
+              isWideViewport={isWideViewport}
+              phoneFrameEnabled={phoneFrameEnabled}
+              onTogglePhoneFrame={() => setPhoneFrameEnabled(!phoneFrameEnabled)}
+            />
+          </ErrorBoundary>
+        </View>
+      </View>
     </SafeAreaProvider>
   );
 }
@@ -251,7 +295,7 @@ function MainApp({
   onTogglePhoneFrame,
 }: MainAppProps) {
   const insets = useSafeAreaInsets();
-  const dockClearance = insets.bottom + 112;
+  const dockClearance = insets.bottom + 140;
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   useEffect(() => {
@@ -315,6 +359,16 @@ function MainApp({
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
   const [recaudoModalVisible, setRecaudoModalVisible] = useState(false);
   const [officeConfigVisible, setOfficeConfigVisible] = useState(false);
+  const [officeConfigInitialTab, setOfficeConfigInitialTab] = useState<
+    'EMPRESA' | 'CAPITAL' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP'
+  >('EMPRESA');
+
+  const openOfficeConfig = (
+    tab: 'EMPRESA' | 'CAPITAL' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP' = 'EMPRESA'
+  ) => {
+    setOfficeConfigInitialTab(tab);
+    setOfficeConfigVisible(true);
+  };
   const [nonPaymentModalData, setNonPaymentModalData] = useState<{
     visible: boolean;
     customer: Customer | null;
@@ -334,12 +388,25 @@ function MainApp({
     'ALL' | 'ACTIVE' | 'UP_TO_DATE' | 'OVERDUE' | 'NO_LOAN'
   >('ALL');
   const [preselectedLoanCustomerId, setPreselectedLoanCustomerId] = useState<string>('');
+  const [newLoanInitialFrequency, setNewLoanInitialFrequency] = useState<LoanFrequency>('DAILY');
+  const [newLoanInitialFixedDate, setNewLoanInitialFixedDate] = useState<string>('');
   const [editCustomerModalData, setEditCustomerModalData] = useState<{
     visible: boolean;
     customer: Customer | null;
   }>({ visible: false, customer: null });
   const [routeSelectorVisible, setRouteSelectorVisible] = useState(false);
   const [notificationsModalVisible, setNotificationsModalVisible] = useState(false);
+
+  const handleOpenNewLoanForCustomer = (
+    customer: Customer,
+    initialFrequency?: LoanFrequency,
+    initialFixedDate?: string
+  ) => {
+    setPreselectedLoanCustomerId(customer.id);
+    setNewLoanInitialFrequency(initialFrequency || 'DAILY');
+    setNewLoanInitialFixedDate(initialFixedDate || '');
+    setNewLoanModalVisible(true);
+  };
 
   const handleOpenEditCustomer = (customer: Customer) => {
     setEditCustomerModalData({ visible: true, customer });
@@ -442,7 +509,10 @@ function MainApp({
 
   const handleDeleteCustomer = async (customer: Customer, force?: boolean) => {
     // Seguridad Operativa: Los cobradores no pueden eliminar clientes, solo la Administración
-    const isSessionAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN';
+    const isSessionAdmin =
+      userRole === 'ADMIN' ||
+      currentUser?.role === 'ADMIN' ||
+      currentUser?.role === 'SUPER_ADMIN';
     if (!isSessionAdmin) {
       const msg = 'Acceso Denegado: Los cobradores no tienen autorización para eliminar clientes. Esta acción debe ser solicitada a la administración de la oficina.';
       if (Platform.OS === 'web') {
@@ -454,7 +524,7 @@ function MainApp({
     }
 
     try {
-      const res = await localStore.deleteCustomer(customer.id, force);
+      const res = await localStore.deleteCustomer(customer.id, force, undefined, 'ADMIN');
       if (detailCustomer?.id === customer.id) {
         setDetailCustomer(null);
       }
@@ -507,6 +577,25 @@ function MainApp({
   };
 
   useEffect(() => {
+    // Si se accede con ?reset=1 o ?desde0=1, purgar el almacenamiento completo para iniciar desde cero
+    if (typeof window !== 'undefined' && window.location) {
+      const q = window.location.search || '';
+      if (q.includes('reset') || q.includes('limpiar') || q.includes('desde0')) {
+        localStore.factoryResetAll().then(() => {
+          safeStorage.removeItem('@prestamos_logged_user_id');
+          if (typeof window.localStorage !== 'undefined') {
+            window.localStorage.clear();
+          }
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+          syncFromStore();
+          setCurrentUser(null);
+        });
+        return;
+      }
+    }
+
     localStore.initialize().then(() => {
       syncFromStore();
       safeStorage.getItem('@prestamos_logged_user_id').then((savedUserId) => {
@@ -673,6 +762,29 @@ function MainApp({
     setCollectorTab('RUTA');
   };
 
+  // Alternar vista entre ADMINISTRADOR y COBRADOR para auditoría, supervisión y pruebas
+  const handleToggleRole = () => {
+    const nextRole = userRole === 'ADMIN' ? 'COBRADOR' : 'ADMIN';
+    setUserRole(nextRole);
+    setCollectorTab('HOME');
+    setDetailCustomer(null);
+    if (nextRole === 'COBRADOR') {
+      const assignedRoute = localStore
+        .getRoutes()
+        .find(
+          (r) =>
+            r.collectorId === currentUser?.id ||
+            r.id === currentUser?.routeId ||
+            currentUser?.assignedRouteIds?.includes(r.id)
+        );
+      setSelectedRouteId(
+        assignedRoute?.id || currentUser?.routeId || currentUser?.assignedRouteIds?.[0] || 'route-norte'
+      );
+    } else {
+      setSelectedRouteId('ALL');
+    }
+  };
+
   // Props compartidas por el Dashboard (botón central) y la Hoja de Ruta
   const collectionsViewProps = {
     customers: routeScopedCustomers,
@@ -683,14 +795,15 @@ function MainApp({
     metrics: routeMetrics,
     todayStr,
     isAdminMode: userRole === 'ADMIN',
+    currentUserId: currentUser?.id,
     nonPaymentVisits,
     onSelectCustomerToPay: (customer: Customer, loan: Loan) =>
       setPaymentModalData({ visible: true, customer, loan }),
     onViewCustomerDetail: (customer: Customer) => setDetailCustomer(customer),
     onOpenNewLoan: () => setNewLoanModalVisible(true),
     onOpenExpense: () => setExpenseModalVisible(true),
-    onOpenRecaudo: () => setRecaudoModalVisible(true),
-    onOpenSettlement: () => setSettlementModalVisible(true),
+    onOpenRecaudo: userRole === 'ADMIN' ? () => setRecaudoModalVisible(true) : undefined,
+    onOpenSettlement: userRole === 'ADMIN' ? () => setSettlementModalVisible(true) : undefined,
     onOpenDailyReport: () => setCollectorCuadreModalVisible(true),
     onNonPaymentCustomer: (customer: Customer, loan: Loan) =>
       setNonPaymentModalData({ visible: true, customer, loan }),
@@ -699,11 +812,32 @@ function MainApp({
     onRenewCustomer: (customer: Customer, loan: Loan) =>
       setRenewalModalData({ visible: true, customer, loan }),
     activeRouteLabel,
-    onOpenRouteSelector: () => setRouteSelectorVisible(true),
+    onOpenRouteSelector: userRole === 'ADMIN' ? () => setRouteSelectorVisible(true) : undefined,
+    onOpenCapitalConfig: () => openOfficeConfig('CAPITAL'),
+    onDeleteCustomer: userRole === 'ADMIN' ? handleDeleteCustomer : undefined,
+    onEditCustomer: handleOpenEditCustomer,
+    onNewLoanForCustomer: handleOpenNewLoanForCustomer,
+    onFixedDateLoan: (c: Customer) => handleOpenNewLoanForCustomer(c, 'FIXED_DATE'),
+    onViewHistory: (c: Customer) => {
+      setDetailCustomer(null);
+      setHistoryInitialDoc(c.documentNumber);
+      setCollectorTab('HISTORIAL');
+    },
+    onOpenNotifications: () => setNotificationsModalVisible(true),
+    unreadNotificationsCount: totalNotificationsCount,
+    onNavigateToCustomers: () => setCollectorTab('CLIENTES'),
   };
 
   const mobileContent = (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={[
+        styles.safeArea,
+        Platform.OS === 'web' && phoneFrameEnabled && {
+          paddingTop: insets.top,
+        },
+      ]}
+      edges={['top', 'left', 'right']}
+    >
       <StatusBar
         hidden={false}
         barStyle="dark-content"
@@ -711,107 +845,137 @@ function MainApp({
         translucent={false}
       />
 
-      {/* Top Bar Móvil Simplificado (Prioridad Operativa y Estado Local Offline) */}
-      <View style={styles.topBar}>
-        <TouchableOpacity
-          style={[styles.brandRow, { flex: 1, marginRight: 8 }]}
-          activeOpacity={userRole === 'ADMIN' ? 0.7 : 1}
-          onPress={() => {
-            if (userRole === 'ADMIN') {
-              setRouteSelectorVisible(true);
-            }
-          }}
-        >
-          <View style={styles.brandBadgeIcon}>
-            <Store size={15} color="#FFFFFF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={styles.brandTitle} numberOfLines={1}>
-                {activeRouteLabel}
-              </Text>
-              {userRole === 'ADMIN' && <ChevronDown size={14} color={COLORS.primary} />}
-            </View>
-            <Text style={styles.brandSub} numberOfLines={1}>
-              {localStore.getOfficeConfig().companyName || 'Kredia'} • ● Local activo
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.rightTopActions}>
-          {/* Campana: Alertas de Mora, Promesas y Renovación */}
+      {/* Top Bar Móvil con Rol Claramente Identificado y Segregación Total (Se oculta en Ficha 360 para vista limpia) */}
+      {!detailCustomer && (
+        <View style={styles.topBar}>
           <TouchableOpacity
-            style={styles.topActionIconBtn}
-            activeOpacity={0.7}
-            onPress={() => setNotificationsModalVisible(true)}
-          >
-            <Bell
-              size={17}
-              color={
-                totalNotificationsCount > 0
-                  ? overdueAlertsCount > 0
-                    ? COLORS.danger
-                    : COLORS.warning
-                  : COLORS.textPrimary
+            style={[styles.brandRow, { flex: 1, marginRight: 8 }]}
+            activeOpacity={userRole === 'ADMIN' ? 0.7 : 1}
+            onPress={() => {
+              if (userRole === 'ADMIN') {
+                setRouteSelectorVisible(true);
               }
-            />
-            {totalNotificationsCount > 0 && (
-              <View
+            }}
+          >
+            <View style={[
+              styles.brandBadgeIcon,
+              userRole === 'ADMIN' ? { backgroundColor: '#1E3A8A' } : { backgroundColor: COLORS.primary }
+            ]}>
+              {userRole === 'ADMIN' ? (
+                <ShieldCheck size={18} color="#FFFFFF" />
+              ) : (
+                <Store size={18} color="#FFFFFF" />
+              )}
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={styles.brandTitle} numberOfLines={1}>
+                  {userRole === 'ADMIN' ? 'Centro Gerencial' : 'Ruta de Cobro'}
+                </Text>
+                {userRole === 'ADMIN' && <ChevronDown size={14} color={COLORS.primary} />}
+              </View>
+              <Text style={styles.brandSub} numberOfLines={1}>
+                {userRole === 'ADMIN'
+                  ? `🛡️ Supervisión • ${activeRouteLabel}`
+                  : `🛵 ${activeRouteLabel} • ${currentUser?.name || 'En Calle'}`}
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.rightTopActions}>
+            {/* Indicador o Selector de Rol Segregado */}
+            {currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' ? (
+              <TouchableOpacity
                 style={[
-                  styles.topBadgeCircle,
-                  {
-                    backgroundColor: overdueAlertsCount > 0 ? COLORS.danger : COLORS.warning,
-                    minWidth: 16,
-                    height: 16,
-                  },
+                  styles.rolePillToggle,
+                  userRole === 'ADMIN' ? styles.rolePillToggleAdmin : styles.rolePillToggleCollector,
                 ]}
+                activeOpacity={0.75}
+                onPress={handleToggleRole}
               >
-                <Text style={styles.topBadgeText}>{totalNotificationsCount}</Text>
+                {userRole === 'ADMIN' ? (
+                  <>
+                    <Text style={styles.rolePillToggleTextAdmin}>🛡️ Admin</Text>
+                    <RefreshCw size={9} color="#1E40AF" style={{ marginLeft: 4 }} />
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.rolePillToggleTextCollector}>🛵 Ver Cobrador</Text>
+                    <RefreshCw size={9} color="#166534" style={{ marginLeft: 4 }} />
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.rolePillToggle, styles.rolePillToggleCollector]}>
+                <Text style={styles.rolePillToggleTextCollector}>🛵 Cobrador</Text>
               </View>
             )}
-          </TouchableOpacity>
 
-          {userRole === 'ADMIN' ? (
+            {/* Campana: Alertas de Mora, Promesas y Renovación */}
             <TouchableOpacity
-              style={styles.officeConfigBtn}
+              style={styles.topActionIconBtn}
               activeOpacity={0.7}
-              onPress={() => setOfficeConfigVisible(true)}
+              onPress={() => setNotificationsModalVisible(true)}
             >
-              <Settings size={13} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.officeConfigText}>Oficina</Text>
+              <Bell
+                size={17}
+                color={
+                  totalNotificationsCount > 0
+                    ? overdueAlertsCount > 0
+                      ? COLORS.danger
+                      : COLORS.warning
+                    : COLORS.textPrimary
+                }
+              />
+              {totalNotificationsCount > 0 && (
+                <View
+                  style={[
+                    styles.topBadgeCircle,
+                    {
+                      backgroundColor: overdueAlertsCount > 0 ? COLORS.danger : COLORS.warning,
+                      minWidth: 16,
+                      height: 16,
+                    },
+                  ]}
+                >
+                  <Text style={styles.topBadgeText}>{totalNotificationsCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
-          ) : (
+
+            {userRole === 'ADMIN' && (
+              <TouchableOpacity
+                style={styles.officeConfigBtn}
+                activeOpacity={0.7}
+                onPress={() => openOfficeConfig('EMPRESA')}
+              >
+                <Settings size={13} color={COLORS.primary} style={{ marginRight: 4 }} />
+                <Text style={styles.officeConfigText}>Oficina</Text>
+              </TouchableOpacity>
+            )}
+
+            {isWideViewport && (
+              <TouchableOpacity
+                style={styles.frameToggleBtn}
+                onPress={onTogglePhoneFrame}
+              >
+                <Text style={styles.frameToggleText}>
+                  {phoneFrameEnabled ? '📱' : '🖥️'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
-              style={styles.simulateDayBtn}
+              style={styles.logoutTopBtn}
               activeOpacity={0.7}
-              onPress={() => setExpenseModalVisible(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              onPress={handleLogout}
             >
-              <Fuel size={13} color={COLORS.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.simulateDayText}>Gasto</Text>
+              <LogOut size={14} color={COLORS.danger} />
             </TouchableOpacity>
-          )}
-
-          {isWideViewport && (
-            <TouchableOpacity
-              style={styles.frameToggleBtn}
-              onPress={onTogglePhoneFrame}
-            >
-              <Text style={styles.frameToggleText}>
-                {phoneFrameEnabled ? '📱' : '🖥️'}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={styles.logoutTopBtn}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            onPress={handleLogout}
-          >
-            <LogOut size={14} color={COLORS.danger} />
-          </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
 
 
       {/* Contenido Principal Móvil */}
@@ -830,7 +994,7 @@ function MainApp({
             renewals={renewals}
             promises={promises}
             todayStr={todayStr}
-            userRole={currentUser?.role || (userRole === 'ADMIN' ? 'ADMIN' : 'COBRADOR')}
+            userRole={userRole === 'ADMIN' ? 'ADMIN' : 'COBRADOR'}
             currentUserId={currentUser?.id || 'usr-col-1'}
             onDataChanged={syncFromStore}
             onBack={() => setDetailCustomer(null)}
@@ -851,12 +1015,9 @@ function MainApp({
               setHistoryInitialDoc(cust.documentNumber);
               setCollectorTab('HISTORIAL');
             }}
-            onDeleteCustomer={
-              currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN'
-                ? handleDeleteCustomer
-                : undefined
-            }
+            onDeleteCustomer={userRole === 'ADMIN' ? handleDeleteCustomer : undefined}
             onEditCustomer={handleOpenEditCustomer}
+            onNewLoan={handleOpenNewLoanForCustomer}
           />
         ) : collectorTab === 'HISTORIAL' ? (
           <CreditHistoryView
@@ -866,6 +1027,7 @@ function MainApp({
             payments={routeScopedPayments}
             todayStr={todayStr}
             initialDocumentNumber={historyInitialDoc}
+            onBack={() => setCollectorTab('HOME')}
             onOpenNewLoan={(c) => {
               setPreselectedLoanCustomerId(c.id);
               setNewLoanModalVisible(true);
@@ -1115,7 +1277,7 @@ function MainApp({
                           i.dueDate < todayStr
                       );
 
-                    const initials = c.fullName
+                    const initials = (c.fullName || 'CL')
                       .split(' ')
                       .filter(Boolean)
                       .slice(0, 2)
@@ -1217,7 +1379,7 @@ function MainApp({
                               style={[styles.inlineIconBtn, { backgroundColor: '#F0FDFA', borderColor: '#CCFBF1' }]}
                               activeOpacity={0.7}
                               onPress={() => {
-                                const clean = c.phone.replace(/[^\d+]/g, '');
+                                const clean = (c.phone || '').replace(/[^\d+]/g, '');
                                 Linking.openURL(`tel:${clean}`).catch(() => {});
                               }}
                             >
@@ -1228,10 +1390,10 @@ function MainApp({
                               style={[styles.inlineIconBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}
                               activeOpacity={0.7}
                               onPress={() => {
-                                let digits = c.phone.replace(/\D/g, '');
+                                let digits = (c.phone || '').replace(/\D/g, '');
                                 if (digits.length === 10) digits = `57${digits}`;
                                 const msg = encodeURIComponent(
-                                  `Hola ${c.fullName}, te contactamos de ${officeLabel}.`
+                                  `Hola ${c.fullName || 'Cliente'}, te contactamos de ${officeLabel}.`
                                 );
                                 Linking.openURL(`https://wa.me/${digits}?text=${msg}`).catch(() => {});
                               }}
@@ -1261,141 +1423,230 @@ function MainApp({
               </ScrollView>
             </View>
           );
-        })() : (
+        })() : userRole === 'ADMIN' ? (
           <SettlementsTableView
             settlements={settlements}
             routes={routes}
             users={localStore.getUsers()}
-            onOpenNewSettlement={() =>
-              userRole === 'COBRADOR'
-                ? setCollectorCuadreModalVisible(true)
-                : setSettlementModalVisible(true)
-            }
+            onOpenNewSettlement={() => setSettlementModalVisible(true)}
+            onBack={() => setCollectorTab('HOME')}
+          />
+        ) : (
+          <TodayCollectionsView
+            {...collectionsViewProps}
+            viewMode="DASHBOARD"
+            onNavigateToRoute={() => openRoute()}
           />
         )}
       </View>
 
-      {/* NAVEGACIÓN INFERIOR UNIFICADA POR ENCIMA DEL SISTEMA ANDROID */}
+      {/* NAVEGACIÓN INFERIOR SEGREGADA POR ROL */}
       {!detailCustomer && !isKeyboardVisible && (
         <View
           style={[
             styles.floatingDockWrapper,
-            { bottom: Math.max(insets.bottom, 8) + 6 },
+            { bottom: insets.bottom + 12 },
           ]}
           pointerEvents="box-none"
         >
           <View style={styles.floatingDockPill}>
-            {/* Ruta: espacio exclusivo para ejecutar los cobros. */}
-            <TouchableOpacity
-              style={[styles.dockNavBtn, collectorTab === 'RUTA' && styles.dockNavBtnActive]}
-              onPress={() => openRoute()}
-            >
-              <MapPin
-                size={19}
-                color={
-                  collectorTab === 'RUTA' ? COLORS.primary : '#64748B'
-                }
-              />
-              <Text
-                style={[
-                  styles.dockNavText,
-                  collectorTab === 'RUTA' && styles.dockNavTextActive,
-                ]}
-              >
-                Ruta
-              </Text>
-            </TouchableOpacity>
+            {userRole === 'ADMIN' ? (
+              <>
+                {/* ADMIN Tab 1: Inicio */}
+                <TouchableOpacity
+                  style={[styles.dockNavBtn, collectorTab === 'HOME' && styles.dockNavBtnActive]}
+                  onPress={() => setCollectorTab('HOME')}
+                  activeOpacity={0.75}
+                >
+                  <Home
+                    size={20}
+                    color={collectorTab === 'HOME' ? '#2563EB' : '#64748B'}
+                    strokeWidth={collectorTab === 'HOME' ? 2.3 : 1.8}
+                  />
+                  <Text
+                    style={[
+                      styles.dockNavText,
+                      collectorTab === 'HOME' && { color: '#2563EB', fontWeight: '700' },
+                    ]}
+                  >
+                    Inicio
+                  </Text>
+                </TouchableOpacity>
 
-            {/* Clientes: consulta y relación, no una acción urgente. */}
-            <TouchableOpacity
-              style={[styles.dockNavBtn, collectorTab === 'CLIENTES' && styles.dockNavBtnActive]}
-              onPress={() => setCollectorTab('CLIENTES')}
-            >
-              <Users
-                size={19}
-                color={
-                  collectorTab === 'CLIENTES' ? COLORS.primary : '#64748B'
-                }
-              />
-              <Text
-                style={[
-                  styles.dockNavText,
-                  collectorTab === 'CLIENTES' && styles.dockNavTextActive,
-                ]}
-              >
-                Clientes
-              </Text>
-            </TouchableOpacity>
+                {/* ADMIN Tab 2: Rutas */}
+                <TouchableOpacity
+                  style={[styles.dockNavBtn, collectorTab === 'RUTA' && styles.dockNavBtnActive]}
+                  onPress={() => openRoute()}
+                  activeOpacity={0.75}
+                >
+                  <MapPin
+                    size={20}
+                    color={collectorTab === 'RUTA' ? '#2563EB' : '#64748B'}
+                    strokeWidth={collectorTab === 'RUTA' ? 2.3 : 1.8}
+                  />
+                  <Text
+                    style={[
+                      styles.dockNavText,
+                      collectorTab === 'RUTA' && { color: '#2563EB', fontWeight: '700' },
+                    ]}
+                  >
+                    Rutas
+                  </Text>
+                </TouchableOpacity>
 
-            {/* Reserva central para la acción de Inicio flotante. */}
-            <View style={styles.dockCenterSpacer} />
+                {/* ADMIN Tab 3: Cartera */}
+                <TouchableOpacity
+                  style={[styles.dockNavBtn, collectorTab === 'CLIENTES' && styles.dockNavBtnActive]}
+                  onPress={() => setCollectorTab('CLIENTES')}
+                  activeOpacity={0.75}
+                >
+                  <Users
+                    size={20}
+                    color={collectorTab === 'CLIENTES' ? '#2563EB' : '#64748B'}
+                    strokeWidth={collectorTab === 'CLIENTES' ? 2.3 : 1.8}
+                  />
+                  <Text
+                    style={[
+                      styles.dockNavText,
+                      collectorTab === 'CLIENTES' && { color: '#2563EB', fontWeight: '700' },
+                    ]}
+                  >
+                    Cartera
+                  </Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.dockNavBtn, notificationsModalVisible && styles.dockNavBtnActive]}
-              onPress={() => setNotificationsModalVisible(true)}
-            >
-              <View style={{ position: 'relative' }}>
-                <Bell
-                  size={19}
-                  color={notificationsModalVisible ? COLORS.primary : '#64748B'}
-                />
-                {totalNotificationsCount > 0 && (
-                  <View style={styles.dockBadgePill}>
-                    <Text style={styles.dockBadgeText}>{totalNotificationsCount}</Text>
+                {/* ADMIN Tab 4: Más */}
+                <TouchableOpacity
+                  style={[
+                    styles.dockNavBtn,
+                    (operationsMenuVisible || collectorTab === 'HISTORIAL') && styles.dockNavBtnActive,
+                  ]}
+                  onPress={() => setOperationsMenuVisible(true)}
+                  activeOpacity={0.75}
+                >
+                  <MoreHorizontal
+                    size={20}
+                    color={operationsMenuVisible || collectorTab === 'HISTORIAL' ? '#2563EB' : '#64748B'}
+                    strokeWidth={operationsMenuVisible || collectorTab === 'HISTORIAL' ? 2.3 : 1.8}
+                  />
+                  <Text
+                    style={[
+                      styles.dockNavText,
+                      (operationsMenuVisible || collectorTab === 'HISTORIAL') && { color: '#2563EB', fontWeight: '700' },
+                    ]}
+                  >
+                    Más
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                {/* COBRADOR Tab 1: Hoja de Ruta de Calle */}
+                <TouchableOpacity
+                  style={[styles.dockNavBtn, collectorTab === 'RUTA' && styles.dockNavBtnActive]}
+                  onPress={() => openRoute()}
+                >
+                  <MapPin
+                    size={19}
+                    color={collectorTab === 'RUTA' ? COLORS.primary : '#64748B'}
+                  />
+                  <Text
+                    style={[
+                      styles.dockNavText,
+                      collectorTab === 'RUTA' && styles.dockNavTextActive,
+                    ]}
+                  >
+                    Mi Ruta
+                  </Text>
+                </TouchableOpacity>
+
+                {/* COBRADOR Tab 2: Mis Clientes */}
+                <TouchableOpacity
+                  style={[styles.dockNavBtn, collectorTab === 'CLIENTES' && styles.dockNavBtnActive]}
+                  onPress={() => setCollectorTab('CLIENTES')}
+                >
+                  <Users
+                    size={19}
+                    color={collectorTab === 'CLIENTES' ? COLORS.primary : '#64748B'}
+                  />
+                  <Text
+                    style={[
+                      styles.dockNavText,
+                      collectorTab === 'CLIENTES' && styles.dockNavTextActive,
+                    ]}
+                  >
+                    Clientes
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Reserva central */}
+                <View style={styles.dockCenterSpacer} />
+
+                {/* COBRADOR Tab 4: Alertas de mi Ruta */}
+                <TouchableOpacity
+                  style={[styles.dockNavBtn, notificationsModalVisible && styles.dockNavBtnActive]}
+                  onPress={() => setNotificationsModalVisible(true)}
+                >
+                  <View style={{ position: 'relative' }}>
+                    <Bell
+                      size={19}
+                      color={notificationsModalVisible ? COLORS.primary : '#64748B'}
+                    />
+                    {totalNotificationsCount > 0 && (
+                      <View style={styles.dockBadgePill}>
+                        <Text style={styles.dockBadgeText}>{totalNotificationsCount}</Text>
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
-              <Text style={[styles.dockNavText, notificationsModalVisible && styles.dockNavTextActive]}>
-                Alertas
-              </Text>
-            </TouchableOpacity>
+                  <Text style={[styles.dockNavText, notificationsModalVisible && styles.dockNavTextActive]}>
+                    Alertas
+                  </Text>
+                </TouchableOpacity>
 
-            {/* Lo administrativo se agrupa para no competir con el trabajo de calle. */}
+                {/* COBRADOR Tab 5: Mi Cuadre de Calle */}
+                <TouchableOpacity
+                  style={[
+                    styles.dockNavBtn,
+                    (operationsMenuVisible || collectorTab === 'HISTORIAL') && styles.dockNavBtnActive,
+                  ]}
+                  onPress={() => setOperationsMenuVisible(true)}
+                >
+                  <View style={{ position: 'relative' }}>
+                    <Calculator
+                      size={19}
+                      color={operationsMenuVisible || collectorTab === 'HISTORIAL' ? COLORS.primary : '#64748B'}
+                    />
+                    {todayPaymentsCount > 0 && (
+                      <View style={styles.dockBadgePill}>
+                        <Text style={styles.dockBadgeText}>{todayPaymentsCount}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text
+                    style={[
+                      styles.dockNavText,
+                      (operationsMenuVisible || collectorTab === 'HISTORIAL') && styles.dockNavTextActive,
+                    ]}
+                  >
+                    Mi Cuadre
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+          {userRole !== 'ADMIN' && (
             <TouchableOpacity
               style={[
-                styles.dockNavBtn,
-                (operationsMenuVisible || collectorTab === 'HISTORIAL' || collectorTab === 'LIQUIDAR') &&
-                  styles.dockNavBtnActive,
+                styles.dockHomeOrb,
+                collectorTab === 'HOME' && styles.dockHomeOrbActive,
               ]}
-              onPress={() => setOperationsMenuVisible(true)}
+              activeOpacity={0.88}
+              onPress={() => setCollectorTab('HOME')}
             >
-              <View style={{ position: 'relative' }}>
-                <MoreHorizontal
-                  size={19}
-                  color={
-                    operationsMenuVisible || collectorTab === 'HISTORIAL' || collectorTab === 'LIQUIDAR'
-                      ? COLORS.primary
-                      : '#64748B'
-                  }
-                />
-                {(todayPaymentsCount > 0 || pendingPromisesCount > 0) && (
-                  <View style={styles.dockBadgePill}>
-                    <Text style={styles.dockBadgeText}>{todayPaymentsCount + pendingPromisesCount}</Text>
-                  </View>
-                )}
-              </View>
-              <Text
-                style={[
-                  styles.dockNavText,
-                  (operationsMenuVisible || collectorTab === 'HISTORIAL' || collectorTab === 'LIQUIDAR') &&
-                    styles.dockNavTextActive,
-                ]}
-              >
-                Más
-              </Text>
+              <Store size={25} color="#FFFFFF" strokeWidth={2.4} />
+              <Text style={styles.dockHomeOrbText}>Mi Día</Text>
             </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.dockHomeOrb,
-              collectorTab === 'HOME' && styles.dockHomeOrbActive,
-            ]}
-            activeOpacity={0.88}
-            onPress={() => setCollectorTab('HOME')}
-          >
-            <Store size={25} color="#FFFFFF" strokeWidth={2.4} />
-            <Text style={styles.dockHomeOrbText}>Inicio</Text>
-          </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -1408,38 +1659,139 @@ function MainApp({
         <TouchableOpacity style={styles.operationsOverlay} activeOpacity={1} onPress={() => setOperationsMenuVisible(false)}>
           <View style={styles.operationsSheet}>
             <View style={styles.operationsHandle} />
-            <Text style={styles.operationsTitle}>Centro operativo</Text>
-            <Text style={styles.operationsSubtitle}>Consultas y cierre de jornada</Text>
-            <TouchableOpacity
-              style={styles.operationMenuItem}
-              onPress={() => {
-                setHistoryInitialDoc('');
-                setCollectorTab('HISTORIAL');
-                setOperationsMenuVisible(false);
-              }}
-            >
-              <View style={styles.operationMenuIcon}><Receipt size={18} color={COLORS.primary} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.operationMenuTitle}>Historial</Text>
-                <Text style={styles.operationMenuSubtitle}>Pagos, créditos y comprobantes</Text>
-              </View>
-              <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.operationMenuItem}
-              onPress={() => {
-                setOperationsMenuVisible(false);
-                if (userRole === 'COBRADOR') setCollectorCuadreModalVisible(true);
-                else setCollectorTab('LIQUIDAR');
-              }}
-            >
-              <View style={styles.operationMenuIcon}><Landmark size={18} color={COLORS.primary} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.operationMenuTitle}>Cierre de caja</Text>
-                <Text style={styles.operationMenuSubtitle}>Arqueo y liquidación de la ruta</Text>
-              </View>
-              <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
-            </TouchableOpacity>
+            {userRole === 'ADMIN' ? (
+              <>
+                <Text style={styles.operationsTitle}>🛡️ Centro de Control Gerencial</Text>
+                <Text style={styles.operationsSubtitle}>Liquidaciones multi-ruta, arqueo y administración general</Text>
+
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setOperationsMenuVisible(false);
+                    setSettlementModalVisible(true);
+                  }}
+                >
+                  <View style={styles.operationMenuIcon}><Landmark size={18} color={COLORS.primary} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>🏛️ Liquidación de Rutas</Text>
+                    <Text style={styles.operationMenuSubtitle}>Arqueo y cierre oficial de los cobradores</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setOperationsMenuVisible(false);
+                    setCollectorTab('LIQUIDAR');
+                  }}
+                >
+                  <View style={styles.operationMenuIcon}><TrendingUp size={18} color="#059669" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>📊 Historial de Liquidaciones</Text>
+                    <Text style={styles.operationMenuSubtitle}>Registro consolidado de cierres de caja</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setHistoryInitialDoc('');
+                    setCollectorTab('HISTORIAL');
+                    setOperationsMenuVisible(false);
+                  }}
+                >
+                  <View style={styles.operationMenuIcon}><Receipt size={18} color="#2563EB" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>📋 Comprobantes y Auditoría</Text>
+                    <Text style={styles.operationMenuSubtitle}>Todos los pagos y recibos de la red</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setOperationsMenuVisible(false);
+                    openOfficeConfig('CAPITAL');
+                  }}
+                >
+                  <View style={styles.operationMenuIcon}><Landmark size={18} color="#0D9488" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>💼 Administrativo, Cartera y Base</Text>
+                    <Text style={styles.operationMenuSubtitle}>Techo de capital, cartera en calle y base en mano por ruta</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setOperationsMenuVisible(false);
+                    openOfficeConfig('EMPRESA');
+                  }}
+                >
+                  <View style={styles.operationMenuIcon}><Settings size={18} color="#D97706" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>⚙️ Configuración de Oficina</Text>
+                    <Text style={styles.operationMenuSubtitle}>Tasas de interés, rutas, cobradores y políticas</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.operationsTitle}>🛵 Centro Operativo del Cobrador</Text>
+                <Text style={styles.operationsSubtitle}>Arqueo de mi ruta y comprobantes de calle</Text>
+
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setOperationsMenuVisible(false);
+                    setCollectorCuadreModalVisible(true);
+                  }}
+                >
+                  <View style={styles.operationMenuIcon}><Calculator size={18} color={COLORS.primary} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>📊 Mi Cuadre de Hoy</Text>
+                    <Text style={styles.operationMenuSubtitle}>Resumen de recaudo, dinero a entregar y arqueo</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setOperationsMenuVisible(false);
+                    setExpenseModalVisible(true);
+                  }}
+                >
+                  <View style={styles.operationMenuIcon}><Fuel size={18} color="#EA580C" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>⛽ Registrar Gasto de Ruta</Text>
+                    <Text style={styles.operationMenuSubtitle}>Gasolina u otros gastos menores autorizados</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setHistoryInitialDoc('');
+                    setCollectorTab('HISTORIAL');
+                    setOperationsMenuVisible(false);
+                  }}
+                >
+                  <View style={styles.operationMenuIcon}><Receipt size={18} color="#059669" /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>📋 Comprobantes de mi Ruta</Text>
+                    <Text style={styles.operationMenuSubtitle}>Recibos y abonos cobrados en mi ruta</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -1521,10 +1873,14 @@ function MainApp({
         todayStr={todayStr}
         baseAvailable={routeMetrics.cashAvailableInHand}
         preselectedCustomerId={preselectedLoanCustomerId}
+        initialFrequency={newLoanInitialFrequency}
+        initialFixedDueDate={newLoanInitialFixedDate}
         isCollector={userRole === 'COBRADOR'}
         onClose={() => {
           setNewLoanModalVisible(false);
           setPreselectedLoanCustomerId('');
+          setNewLoanInitialFrequency('DAILY');
+          setNewLoanInitialFixedDate('');
         }}
         onSuccess={syncFromStore}
       />
@@ -1540,6 +1896,16 @@ function MainApp({
         onEditCustomer={handleOpenEditCustomer}
         onNewLoan={(c) => {
           setPreselectedLoanCustomerId(c.id);
+          setNewLoanInitialFrequency('DAILY');
+          setNewLoanInitialFixedDate('');
+          setNewLoanModalVisible(true);
+        }}
+        onFixedDateLoan={(c) => {
+          setPreselectedLoanCustomerId(c.id);
+          setNewLoanInitialFrequency('FIXED_DATE');
+          const defaultFixed = new Date();
+          defaultFixed.setDate(defaultFixed.getDate() + 20);
+          setNewLoanInitialFixedDate(defaultFixed.toISOString().slice(0, 10));
           setNewLoanModalVisible(true);
         }}
         onViewHistory={(c) => {
@@ -1552,7 +1918,8 @@ function MainApp({
         onNonPayment={(c, loan) =>
           setNonPaymentModalData({ visible: true, customer: c, loan })
         }
-        onDeleteCustomer={handleDeleteCustomer}
+        isAdmin={userRole === 'ADMIN'}
+        onDeleteCustomer={userRole === 'ADMIN' ? handleDeleteCustomer : undefined}
       />
 
       <EditCustomerModal
@@ -1595,6 +1962,7 @@ function MainApp({
       {userRole === 'ADMIN' && (
         <OfficeConfigModal
           visible={officeConfigVisible}
+          initialTab={officeConfigInitialTab}
           onClose={() => setOfficeConfigVisible(false)}
           onSuccess={syncFromStore}
         />
@@ -1702,6 +2070,10 @@ function MainApp({
           {
             backgroundColor: COLORS.bgPrimary,
           },
+          Platform.OS === 'web' && phoneFrameEnabled && {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+          },
         ]}
         edges={['top', 'bottom', 'left', 'right']}
       >
@@ -1727,6 +2099,24 @@ function MainApp({
 }
 
 const styles = StyleSheet.create({
+  webDesktopBackdrop: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  webDesktopContainer: {
+    width: '100%',
+    maxWidth: 460,
+    height: '100%',
+    backgroundColor: COLORS.bgPrimary,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 28,
+    elevation: 12,
+    overflow: 'hidden',
+  },
   simulatorBackdrop: {
     flex: 1,
     backgroundColor: '#0F172A',
@@ -1872,8 +2262,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     backgroundColor: COLORS.bgSecondary,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.microBorder,
@@ -1881,12 +2271,12 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   brandBadgeIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1894,36 +2284,63 @@ const styles = StyleSheet.create({
   brandTitle: {
     fontFamily: FONT_FAMILY,
     color: COLORS.textPrimary,
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '800',
-    letterSpacing: -0.45,
+    letterSpacing: -0.3,
   },
   brandSub: {
     fontFamily: FONT_FAMILY,
     color: COLORS.textSecondary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
-    marginTop: 2,
+    marginTop: 1,
   },
   rightTopActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    flexShrink: 0,
   },
   logoutTopBtn: {
-    width: 38,
-    height: 38,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.surfaceSoft,
     borderWidth: 1,
     borderColor: COLORS.microBorder,
-    borderRadius: 19,
+    borderRadius: 16,
   },
   logoutTopBtnText: {
     fontSize: 11,
     color: COLORS.danger,
     fontWeight: '800',
+  },
+  rolePillToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  rolePillToggleAdmin: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+  },
+  rolePillToggleCollector: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+  },
+  rolePillToggleTextAdmin: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#1E40AF',
+  },
+  rolePillToggleTextCollector: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#15803D',
   },
   officeConfigBtn: {
     flexDirection: 'row',
@@ -2157,27 +2574,27 @@ const styles = StyleSheet.create({
   floatingDockPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     width: '100%',
-    height: 74,
+    height: 66,
     backgroundColor: '#FFFFFF',
-    borderRadius: 30,
+    borderRadius: 22,
     paddingHorizontal: 8,
     borderWidth: 1,
-    borderColor: '#E7E5E4',
+    borderColor: '#E8EAEE',
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.14,
-    shadowRadius: 22,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 6,
   },
   dockNavBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
-    height: 54,
-    borderRadius: 16,
+    height: 52,
+    borderRadius: 14,
   },
   dockNavBtnActive: {
     backgroundColor: COLORS.primaryLight,

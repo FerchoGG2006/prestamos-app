@@ -1064,14 +1064,19 @@ class LocalStore {
 
     const collectedToday = collectedCashToday + collectedDigitalToday;
 
-    const expectedDailyGoal = Math.max(
+    const rawGoal = Math.max(
       filterByRoute ? 0 : (this.activeSession?.expectedCollection || 0),
-      expectedTodayFromInstallments + overdueTotalAmount,
-      1
+      expectedTodayFromInstallments + overdueTotalAmount
     );
+    // Si no hay meta válida definida, la meta es 0 (no se fuerza 1 falso para evitar Meta: $1 100%)
+    const expectedDailyGoal = Math.max(0, rawGoal);
 
-    const progressRatio = Math.min(1, Math.max(0, collectedToday / expectedDailyGoal));
-    const progressPercentage = Math.round(progressRatio * 100);
+    const progressRatio = expectedDailyGoal > 0
+      ? Math.min(1, Math.max(0, collectedToday / expectedDailyGoal))
+      : 0;
+    const progressPercentage = expectedDailyGoal > 0
+      ? Math.round(progressRatio * 100)
+      : 0;
 
     const scopedCashMovements = filterByRoute
       ? this.cashMovements.filter((cm) => cm.routeId === routeIdFilter)

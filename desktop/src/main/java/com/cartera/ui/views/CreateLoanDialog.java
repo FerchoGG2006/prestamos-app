@@ -199,7 +199,7 @@ public class CreateLoanDialog extends Stage {
         // Interés %
         VBox boxInterest = createFieldBox("Tasa de Interés (%) *", txtInterestPercent);
         // Frecuencia
-        cmbFrequency.getItems().addAll("DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
+        cmbFrequency.getItems().addAll("FECHA FIJA", "DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
         cmbFrequency.setValue("DIARIO");
         cmbFrequency.setMaxWidth(Double.MAX_VALUE);
         cmbFrequency.getStyleClass().add("search-field");
@@ -209,6 +209,22 @@ public class CreateLoanDialog extends Stage {
 
         // Cuotas
         VBox boxCount = createFieldBox("Número Total de Cuotas *", txtInstallmentCount);
+
+        // Listener para Fecha Fija
+        cmbFrequency.valueProperty().addListener((obs, old, val) -> {
+            boolean isFixed = "FECHA FIJA".equalsIgnoreCase(val);
+            if (isFixed) {
+                txtInstallmentCount.setText("1");
+                txtInstallmentCount.setDisable(true);
+            } else {
+                txtInstallmentCount.setDisable(false);
+                if ("1".equals(txtInstallmentCount.getText().trim())) {
+                    txtInstallmentCount.setText("30");
+                }
+            }
+            paidInstallmentNumbers.clear();
+            recalculateAndSimulate();
+        });
 
         // Fecha Inicio
         dpStartDate.setMaxWidth(Double.MAX_VALUE);
@@ -494,6 +510,22 @@ public class CreateLoanDialog extends Stage {
                 checkCrossRouteAlert(c);
                 break;
             }
+        }
+    }
+
+    public void setFrequency(String frequency) {
+        if (frequency == null || cmbFrequency == null) return;
+        for (var item : cmbFrequency.getItems()) {
+            if (item.equalsIgnoreCase(frequency.trim())) {
+                cmbFrequency.setValue(item);
+                break;
+            }
+        }
+    }
+
+    public void setStartDate(LocalDate date) {
+        if (date != null && dpStartDate != null) {
+            dpStartDate.setValue(date);
         }
     }
 

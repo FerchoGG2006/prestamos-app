@@ -151,7 +151,7 @@ public class ConfigurationView extends VBox {
         // Columna Derecha: Gestión Multi-Ruta y Cobradores
         VBox rightCol = new VBox(16);
         HBox.setHgrow(rightCol, Priority.ALWAYS);
-        rightCol.getChildren().addAll(buildRoutesCard(), buildUsersCard());
+        rightCol.getChildren().addAll(buildCapitalTriadCard(), buildRoutesCard(), buildUsersCard());
 
         columns.getChildren().addAll(leftCol, rightCol);
         scrollPane.setContent(columns);
@@ -322,6 +322,28 @@ public class ConfigurationView extends VBox {
             lblBackupFeedback.setVisible(true);
             lblBackupFeedback.setManaged(true);
         }
+    }
+
+    private VBox buildCapitalTriadCard() {
+        VBox card = new VBox(10);
+        card.getStyleClass().add("table-card");
+        card.setPadding(new Insets(18));
+
+        Label title = new Label("💼 Capital Operativo: Administrativo, Cartera en Calle y Base");
+        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
+
+        Label formulaBadge = new Label("REGLA MAESTRA FINANCIERA:  Administrativo = Cartera en Calle + Base en Mano");
+        formulaBadge.setStyle("-fx-background-color: #0f172a; -fx-text-fill: #38bdf8; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 8 12; -fx-background-radius: 8;");
+
+        Label desc = new Label(
+                "• Administrativo: Techo o cupo total de capital de trabajo asignado a cada ruta.\n" +
+                "• Cartera en Calle: Saldo total prestado actualmente a clientes en créditos activos.\n" +
+                "• Base en Mano: Efectivo físico disponible en caja/calle para nuevos préstamos y vueltas."
+        );
+        desc.setStyle("-fx-text-fill: #475569; -fx-font-size: 12px; -fx-line-spacing: 4;");
+
+        card.getChildren().addAll(title, formulaBadge, desc);
+        return card;
     }
 
     @SuppressWarnings("unchecked")

@@ -34,10 +34,12 @@ interface CustomerOptionsModalProps {
   visible: boolean;
   customer: Customer | null;
   activeLoan?: Loan | null;
+  isAdmin?: boolean;
   onClose: () => void;
   onViewDetail: (customer: Customer) => void;
   onEditCustomer: (customer: Customer) => void;
   onNewLoan: (customer: Customer) => void;
+  onFixedDateLoan?: (customer: Customer) => void;
   onViewHistory: (customer: Customer) => void;
   onPromiseLoan?: (customer: Customer, loan: Loan) => void;
   onNonPayment?: (customer: Customer, loan: Loan) => void;
@@ -49,10 +51,12 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
   visible,
   customer,
   activeLoan,
+  isAdmin = false,
   onClose,
   onViewDetail,
   onEditCustomer,
   onNewLoan,
+  onFixedDateLoan,
   onViewHistory,
   onPromiseLoan,
   onNonPayment,
@@ -135,7 +139,7 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
     }
   };
 
-  const initials = customer.fullName
+  const initials = (customer.fullName || 'CL')
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
@@ -274,6 +278,31 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
                 <Text style={styles.optionTitle}>+ Otorgar Nuevo Crédito</Text>
                 <Text style={styles.optionSubtitle}>
                   Crear nuevo préstamo asignado a este cliente
+                </Text>
+              </View>
+              <ChevronRight size={18} color="#94a3b8" />
+            </TouchableOpacity>
+
+            {/* Opción Fecha Fija */}
+            <TouchableOpacity
+              style={styles.optionItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                onClose();
+                if (onFixedDateLoan) {
+                  onFixedDateLoan(customer);
+                } else {
+                  onNewLoan(customer);
+                }
+              }}
+            >
+              <View style={[styles.optionIconBox, { backgroundColor: '#f0fdf4' }]}>
+                <Calendar size={20} color="#15803d" />
+              </View>
+              <View style={styles.optionTextBox}>
+                <Text style={styles.optionTitle}>📅 Fecha Fija (1 Cuota a Plazo)</Text>
+                <Text style={styles.optionSubtitle}>
+                  Crédito a cancelar en una fecha fija convenida
                 </Text>
               </View>
               <ChevronRight size={18} color="#94a3b8" />
@@ -419,8 +448,8 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
               </TouchableOpacity>
             )}
 
-            {/* Opción: Eliminar Cliente (DANGER) */}
-            {onDeleteCustomer && (
+            {/* Opción: Eliminar Cliente (DANGER) - EXCLUSIVO PARA ADMINISTRADOR */}
+            {isAdmin && onDeleteCustomer && (
               <>
                 <View style={styles.dangerDivider} />
                 <TouchableOpacity
@@ -432,9 +461,9 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
                     <Trash2 size={20} color="#dc2626" />
                   </View>
                   <View style={styles.optionTextBox}>
-                    <Text style={styles.dangerOptionTitle}>Eliminar Cliente</Text>
+                    <Text style={styles.dangerOptionTitle}>🗑️ Eliminar Cliente</Text>
                     <Text style={styles.dangerOptionSubtitle}>
-                      Remover cliente del directorio y la ruta
+                      Remover cliente del directorio y la ruta (Requiere permisos de Administrador)
                     </Text>
                   </View>
                   <ChevronRight size={18} color="#ef4444" />

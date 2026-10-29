@@ -34,21 +34,29 @@ import {
   Download,
   Upload,
   HardDrive,
+  Briefcase,
+  TrendingUp,
+  Wallet,
+  Landmark,
+  Layers,
+  Calculator,
 } from 'lucide-react-native';
 
 interface OfficeConfigModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialTab?: 'EMPRESA' | 'CAPITAL' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP';
 }
 
 export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   visible,
   onClose,
   onSuccess,
+  initialTab,
 }) => {
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState<'EMPRESA' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP'>('EMPRESA');
+  const [activeTab, setActiveTab] = useState<'EMPRESA' | 'CAPITAL' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP'>('EMPRESA');
   const [restoreJsonInput, setRestoreJsonInput] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
 
@@ -86,7 +94,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newTargetAdminStr, setNewTargetAdminStr] = useState('20000000');
+  const [newInitialCashBaseStr, setNewInitialCashBaseStr] = useState('0');
   const [newExpectedCustomersStr, setNewExpectedCustomersStr] = useState('40');
+
+  // Estado dedicado de Administrativo y Base por Ruta (Pestaña 2: CAPITAL)
+  const [routeCapitals, setRouteCapitals] = useState<
+    Record<string, { targetAdminStr: string; cashBaseStr: string }>
+  >({});
 
   // Credenciales de Administrador editables
   const [adminNameEdit, setAdminNameEdit] = useState('Administración General');
@@ -101,12 +115,16 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editTargetAdminStr, setEditTargetAdminStr] = useState('20000000');
+  const [editInitialCashBaseStr, setEditInitialCashBaseStr] = useState('0');
   const [editExpectedCustomersStr, setEditExpectedCustomersStr] = useState('40');
 
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
+      if (initialTab) {
+        setActiveTab(initialTab);
+      }
       const cfg = localStore.getOfficeConfig();
       setCompanyName(cfg.companyName || '');
       setTaxId(cfg.taxId || '');
@@ -134,6 +152,15 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setRoutesList(loadedRoutes);
       setUsersList(loadedUsers);
 
+      const caps: Record<string, { targetAdminStr: string; cashBaseStr: string }> = {};
+      loadedRoutes.forEach((r) => {
+        caps[r.id] = {
+          targetAdminStr: (r.targetAdministrative ?? 20000000).toString(),
+          cashBaseStr: (r.initialCashBase ?? 0).toString(),
+        };
+      });
+      setRouteCapitals(caps);
+
       const adm = loadedUsers.find((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
       if (adm) {
         setAdminNameEdit(adm.name || 'Administración General');
@@ -142,7 +169,68 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       }
       setEditingRouteId(null);
     }
-  }, [visible]);
+  }, [visible, initialTab]);
+
+  const handleAdjustTargetAdmin = (routeId: string, deltaOrSet: number, isDelta: boolean) => {
+    setRouteCapitals((prev) => {
+      const cur = prev[routeId] || { targetAdminStr: '20000000', cashBaseStr: '0' };
+      const currentVal = parseInt(cur.targetAdminStr.replace(/\D/g, ''), 10) || 0;
+      const nextVal = isDelta ? Math.max(0, currentVal + deltaOrSet) : Math.max(0, deltaOrSet);
+      return {
+        ...prev,
+        [routeId]: {
+          ...cur,
+          targetAdminStr: nextVal.toString(),
+        },
+      };
+    });
+  };
+
+  const handleAdjustCashBase = (routeId: string, deltaOrSet: number, isDelta: boolean) => {
+    setRouteCapitals((prev) => {
+      const cur = prev[routeId] || { targetAdminStr: '20000000', cashBaseStr: '0' };
+      const currentVal = parseInt(cur.cashBaseStr.replace(/\D/g, ''), 10) || 0;
+      const nextVal = isDelta ? Math.max(0, currentVal + deltaOrSet) : Math.max(0, deltaOrSet);
+      return {
+        ...prev,
+        [routeId]: {
+          ...cur,
+          cashBaseStr: nextVal.toString(),
+        },
+      };
+    });
+  };
+
+  const handleSaveRouteCapital = async (routeId: string) => {
+    const cur = routeCapitals[routeId];
+    if (!cur) return;
+    const targetAdmin = parseInt(cur.targetAdminStr.replace(/\D/g, ''), 10) || 0;
+    const initialCashBase = parseInt(cur.cashBaseStr.replace(/\D/g, ''), 10) || 0;
+
+    try {
+      await localStore.updateRouteCapital({
+        routeId,
+        targetAdministrative: targetAdmin,
+        initialCashBase,
+      });
+      const updatedRoutes = [...localStore.getRoutes()];
+      setRoutesList(updatedRoutes);
+      const targetRoute = updatedRoutes.find((r) => r.id === routeId);
+      const routeLoans = localStore
+        .getLoans()
+        .filter((l) => l.routeId === routeId && l.status === 'ACTIVE');
+      const carteraCalle = routeLoans.reduce((sum, l) => sum + (l.principal || 0), 0);
+      const baseDisp = Math.max(0, targetAdmin - carteraCalle);
+
+      Alert.alert(
+        '¡Capital y Base Guardados!',
+        `Ruta: ${targetRoute?.name || routeId}\n\n• Administrativo: ${formatCOP(targetAdmin)}\n• Base de Efectivo: ${formatCOP(initialCashBase)}\n• Cartera en Calle: ${formatCOP(carteraCalle)}\n• Base Calculada Disponible: ${formatCOP(baseDisp)}`
+      );
+      onSuccess();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo guardar el capital.');
+    }
+  };
 
   const handleSaveAdminCredentials = async () => {
     try {
@@ -169,6 +257,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
     setEditUsername(collector?.username || '');
     setEditPassword(collector?.password || '');
     setEditTargetAdminStr(String(route.targetAdministrative || 20000000));
+    setEditInitialCashBaseStr(String(route.initialCashBase || 0));
     setEditExpectedCustomersStr(String(route.expectedCustomersCount || 40));
   };
 
@@ -176,6 +265,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
     if (!editingRouteId) return;
     try {
       const parsedAdmin = parseInt(editTargetAdminStr.replace(/\D/g, ''), 10) || 0;
+      const parsedCashBase = parseInt(editInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
       const parsedCustomers = parseInt(editExpectedCustomersStr.replace(/\D/g, ''), 10) || 0;
       await localStore.updateRouteWithCredentials({
         routeId: editingRouteId,
@@ -184,12 +274,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         username: editUsername,
         password: editPassword,
         targetAdministrative: parsedAdmin,
+        initialCashBase: parsedCashBase,
         expectedCustomersCount: parsedCustomers,
       });
       setRoutesList([...localStore.getRoutes()]);
       setUsersList([...localStore.getUsers()]);
       setEditingRouteId(null);
-      Alert.alert('Ruta Actualizada', 'Se guardaron los cambios de la ruta, administrativo y credenciales.');
+      Alert.alert('Ruta Actualizada', 'Se guardaron los cambios de la ruta, administrativo, base y credenciales.');
       onSuccess();
     } catch (err: any) {
       Alert.alert('Aviso', err.message || 'No se pudo actualizar la ruta.');
@@ -198,30 +289,41 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
   const handleDeleteRouteItem = (route: Route) => {
     if (routesList.length <= 1) {
-      Alert.alert('Aviso', 'La oficina debe conservar al menos 1 ruta activa.');
+      if (Platform.OS === 'web') {
+        window.alert('Aviso: La oficina debe conservar al menos 1 ruta activa.');
+      } else {
+        Alert.alert('Aviso', 'La oficina debe conservar al menos 1 ruta activa.');
+      }
       return;
     }
-    Alert.alert(
-      '¿Eliminar Ruta?',
-      `¿Desea eliminar "${route.name}" y su credencial de cobrador?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await localStore.deleteRoute(route.id);
-              setRoutesList([...localStore.getRoutes()]);
-              setUsersList([...localStore.getUsers()]);
-              onSuccess();
-            } catch (err: any) {
-              Alert.alert('Error', err.message || 'No se pudo eliminar la ruta.');
-            }
-          },
-        },
-      ]
-    );
+    const executeDelete = async () => {
+      try {
+        await localStore.deleteRoute(route.id);
+        setRoutesList([...localStore.getRoutes()]);
+        setUsersList([...localStore.getUsers()]);
+        onSuccess();
+      } catch (err: any) {
+        if (Platform.OS === 'web') {
+          window.alert(err.message || 'No se pudo eliminar la ruta.');
+        } else {
+          Alert.alert('Error', err.message || 'No se pudo eliminar la ruta.');
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      const ok = window.confirm(`¿Desea eliminar la ruta "${route.name}" y su credencial de cobrador?`);
+      if (ok) executeDelete();
+    } else {
+      Alert.alert(
+        '¿Eliminar Ruta?',
+        `¿Desea eliminar "${route.name}" y su credencial de cobrador?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Eliminar', style: 'destructive', onPress: executeDelete },
+        ]
+      );
+    }
   };
 
   const togglePasswordVisibility = (userId: string) => {
@@ -246,6 +348,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       const collectorId = `usr-col-${Date.now()}`;
       const colDisplayName = newCollectorName.trim() || newRouteName.trim();
       const parsedNewAdmin = parseInt(newTargetAdminStr.replace(/\D/g, ''), 10) || 20000000;
+      const parsedNewCashBase = parseInt(newInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
       const parsedNewCustomers = parseInt(newExpectedCustomersStr.replace(/\D/g, ''), 10) || 40;
 
       const newCollector: User = {
@@ -271,7 +374,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         description: `Ruta asignada a ${colDisplayName}`,
         targetAdministrative: parsedNewAdmin,
         expectedCustomersCount: parsedNewCustomers,
-        initialCashBase: 0,
+        initialCashBase: parsedNewCashBase,
         createdAt: new Date().toISOString(),
       };
 
@@ -288,11 +391,12 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setNewUsername('');
       setNewPassword('');
       setNewTargetAdminStr('20000000');
+      setNewInitialCashBaseStr('0');
       setNewExpectedCustomersStr('40');
 
       Alert.alert(
         '¡Ruta Creada Exitosamente!',
-        `Se habilitó "${newRoute.name}".\n\nAdministrativo: ${formatCOP(parsedNewAdmin)}\nCredenciales de Acceso:\nUsuario: ${newCollector.username}\nContraseña: ${newCollector.password}`
+        `Se habilitó "${newRoute.name}".\n\nAdministrativo: ${formatCOP(parsedNewAdmin)}\nBase de Efectivo: ${formatCOP(parsedNewCashBase)}\nCredenciales de Acceso:\nUsuario: ${newCollector.username}\nContraseña: ${newCollector.password}`
       );
     } catch (err: any) {
       Alert.alert('Error al crear ruta', err.message || 'No se pudo guardar la ruta.');
@@ -300,37 +404,40 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   };
 
   const handleResetDefaults = () => {
-    Alert.alert(
-      'Restablecer Valores Recomendados',
-      '¿Desea restaurar la configuración estándar para oficinas de crédito?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Restablecer',
-          style: 'destructive',
-          onPress: () => {
-            const def = DEFAULT_OFFICE_CONFIG;
-            setCompanyName(def.companyName);
-            setTaxId(def.taxId);
-            setCity(def.city);
-            setAddress(def.address);
-            setSupportPhone(def.supportPhone);
-            setReceiptFooterMessage(def.receiptFooterMessage);
-            setPaperworkFeeEnabled(true);
-            setPaperworkRateStr('5000');
-            setDefaultInterestRateStr('20');
-            setDefaultInstallmentsCountStr('30');
-            setExcludeSundays(true);
-            setGraceDaysStr('0');
-            setAllowRouteNewLoans(true);
-            setAllowCollectorExpenses(true);
-            setAllowRouteReorder(false);
-            setAllowPartialPayments(true);
-            setMaxNewLoanLimitStr('500000');
-          },
-        },
-      ]
-    );
+    const applyDefaults = () => {
+      const def = DEFAULT_OFFICE_CONFIG;
+      setCompanyName(def.companyName);
+      setTaxId(def.taxId);
+      setCity(def.city);
+      setAddress(def.address);
+      setSupportPhone(def.supportPhone);
+      setReceiptFooterMessage(def.receiptFooterMessage);
+      setPaperworkFeeEnabled(true);
+      setPaperworkRateStr('5000');
+      setDefaultInterestRateStr('20');
+      setDefaultInstallmentsCountStr('30');
+      setExcludeSundays(true);
+      setGraceDaysStr('0');
+      setAllowRouteNewLoans(true);
+      setAllowCollectorExpenses(true);
+      setAllowRouteReorder(false);
+      setAllowPartialPayments(true);
+      setMaxNewLoanLimitStr('500000');
+    };
+
+    if (Platform.OS === 'web') {
+      const ok = window.confirm('¿Desea restaurar la configuración estándar para oficinas de crédito?');
+      if (ok) applyDefaults();
+    } else {
+      Alert.alert(
+        'Restablecer Valores Recomendados',
+        '¿Desea restaurar la configuración estándar para oficinas de crédito?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Restablecer', style: 'destructive', onPress: applyDefaults },
+        ]
+      );
+    }
   };
 
   const handleSave = async () => {
@@ -479,8 +586,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Barra de 4 Tabs Operativas */}
-          <View style={styles.tabBar}>
+          {/* Barra de 6 Tabs Operativas */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.tabBarScroll}
+            contentContainerStyle={styles.tabBar}
+          >
             <TouchableOpacity
               style={[styles.tabBtn, activeTab === 'EMPRESA' && styles.tabBtnActive]}
               onPress={() => setActiveTab('EMPRESA')}
@@ -491,11 +603,20 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={[styles.tabBtn, activeTab === 'CAPITAL' && styles.tabBtnActive]}
+              onPress={() => setActiveTab('CAPITAL')}
+            >
+              <Text style={[styles.tabText, activeTab === 'CAPITAL' && styles.tabTextActive]}>
+                💼 2. Administrativo & Base
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.tabBtn, activeTab === 'CREDITO' && styles.tabBtnActive]}
               onPress={() => setActiveTab('CREDITO')}
             >
               <Text style={[styles.tabText, activeTab === 'CREDITO' && styles.tabTextActive]}>
-                2. Crédito & Cobro
+                3. Crédito & Cobro
               </Text>
             </TouchableOpacity>
 
@@ -504,7 +625,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
               onPress={() => setActiveTab('PERMISOS')}
             >
               <Text style={[styles.tabText, activeTab === 'PERMISOS' && styles.tabTextActive]}>
-                3. Permisos Ruta
+                4. Permisos Ruta
               </Text>
             </TouchableOpacity>
 
@@ -513,7 +634,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
               onPress={() => setActiveTab('RUTAS')}
             >
               <Text style={[styles.tabText, activeTab === 'RUTAS' && styles.tabTextActive]}>
-                4. Credenciales
+                5. Credenciales
               </Text>
             </TouchableOpacity>
 
@@ -522,10 +643,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
               onPress={() => setActiveTab('BACKUP')}
             >
               <Text style={[styles.tabText, activeTab === 'BACKUP' && styles.tabTextActive]}>
-                5. Respaldo
+                6. Respaldo
               </Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
 
           <ScrollView
             style={styles.body}
@@ -609,7 +730,236 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
               </View>
             )}
 
-            {/* PESTAÑA 2: POLÍTICAS DE CRÉDITO Y COBRO (AUDIO 2) */}
+            {/* PESTAÑA 2: ADMINISTRATIVO, CARTERA & BASE (REGLA FUNDAMENTAL) */}
+            {activeTab === 'CAPITAL' && (() => {
+              const todayStr = getLocalTodayStr();
+              const globalMetrics = localStore.getDailyRouteMetrics(todayStr);
+              const allLoans = localStore.getLoans().filter((l) => l.status === 'ACTIVE');
+              const globalTargetAdmin = routesList.reduce((sum, r) => {
+                const curCap = routeCapitals[r.id];
+                const val = curCap
+                  ? (parseInt(curCap.targetAdminStr.replace(/\D/g, ''), 10) || 0)
+                  : (r.targetAdministrative || 20000000);
+                return sum + val;
+              }, 0);
+              const displayGlobalAdmin = globalTargetAdmin > 0 ? globalTargetAdmin : globalMetrics.totalAdministrativeCapital;
+              const displayGlobalCartera = globalMetrics.activeCapitalInStreet;
+              const displayGlobalBase = globalMetrics.cashAvailableInHand;
+
+              return (
+                <View style={styles.sectionContainer}>
+                  {/* Banner Explicativo de la Fórmula Maestra */}
+                  <View style={styles.capFormulaCard}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <Text style={styles.capFormulaBadge}>💡 REGLA DE ORO FINANCIERA (MODELO B: EFECTIVO EN BOLSILLO)</Text>
+                    </View>
+                    <Text style={styles.capFormulaTitle}>
+                      Administrativo = Cartera en Calle + Base en Mano
+                    </Text>
+                    <Text style={styles.capFormulaDescription}>
+                      • <Text style={{ fontWeight: '800', color: '#FFFFFF' }}>Administrativo:</Text> Es el patrimonio total o cupo de trabajo de la ruta.{'\n'}
+                      • <Text style={{ fontWeight: '800', color: '#FFFFFF' }}>Cartera en Calle:</Text> Saldo total pendiente de cobro en poder de los clientes en créditos activos.{'\n'}
+                      • <Text style={{ fontWeight: '800', color: '#FFFFFF' }}>Base en Mano:</Text> Efectivo físico real que el cobrador lleva en el bolsillo. Disminuye con cada desembolso en efectivo y aumenta con cada cobro recibido.
+                    </Text>
+                  </View>
+
+                  {/* Resumen Global Consolidado */}
+                  <View style={styles.capGlobalCard}>
+                    <Text style={styles.capGlobalTitle}>📊 CONSOLIDADO GENERAL (TODAS LAS RUTAS)</Text>
+                    <View style={styles.capGlobalGrid}>
+                      <View style={styles.capGlobalCol}>
+                        <Text style={styles.capGlobalLabel}>📈 ADMINISTRATIVO</Text>
+                        <Text style={styles.capGlobalValue} numberOfLines={1} adjustsFontSizeToFit>
+                          {formatCOP(displayGlobalAdmin)}
+                        </Text>
+                        <Text style={styles.capGlobalHint}>Cupo global red</Text>
+                      </View>
+                      <Text style={styles.capGlobalOperator}>=</Text>
+                      <View style={styles.capGlobalCol}>
+                        <Text style={[styles.capGlobalLabel, { color: '#0F766E' }]}>👥 CARTERA CALLE</Text>
+                        <Text style={[styles.capGlobalValue, { color: '#0F766E' }]} numberOfLines={1} adjustsFontSizeToFit>
+                          {formatCOP(displayGlobalCartera)}
+                        </Text>
+                        <Text style={styles.capGlobalHint}>{allLoans.length} créditos activos</Text>
+                      </View>
+                      <Text style={styles.capGlobalOperator}>+</Text>
+                      <View style={styles.capGlobalCol}>
+                        <Text style={[styles.capGlobalLabel, { color: '#0284C7' }]}>💵 BASE EN MANO</Text>
+                        <Text style={[styles.capGlobalValue, { color: '#0284C7' }]} numberOfLines={1} adjustsFontSizeToFit>
+                          {formatCOP(displayGlobalBase)}
+                        </Text>
+                        <Text style={styles.capGlobalHint}>Efectivo en bolsillo</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Listado y Edición de cada Ruta */}
+                  <Text style={styles.sectionHeaderTitle}>
+                    CONFIGURACIÓN DE ADMINISTRATIVO Y BASE POR RUTA ({routesList.length})
+                  </Text>
+                  <Text style={styles.sectionHeaderSub}>
+                    Ajusta el cupo total (Administrativo) y la base de efectivo para cada cobrador y presiona Guardar. Los cambios impactarán de inmediato en los paneles operativos.
+                  </Text>
+
+                  {routesList.map((route) => {
+                    const collector = usersList.find((u) => u.id === route.collectorId);
+                    const routeLoans = localStore
+                      .getLoans()
+                      .filter((l) => l.routeId === route.id && l.status === 'ACTIVE');
+                    const rtMetrics = localStore.getDailyRouteMetrics(todayStr, route.id);
+                    const capData = routeCapitals[route.id] || {
+                      targetAdminStr: (route.targetAdministrative || 20000000).toString(),
+                      cashBaseStr: (route.initialCashBase || 0).toString(),
+                    };
+                    const curTargetAdmin = parseInt(capData.targetAdminStr.replace(/\D/g, ''), 10) || 0;
+                    const curInitialBase = parseInt(capData.cashBaseStr.replace(/\D/g, ''), 10) || 0;
+                    const displayAdmin = curTargetAdmin > 0 ? curTargetAdmin : rtMetrics.totalAdministrativeCapital;
+                    const displayCartera = rtMetrics.activeCapitalInStreet;
+                    const displayBase = rtMetrics.cashAvailableInHand;
+
+                    return (
+                      <View key={route.id} style={styles.routeCapConfigCard}>
+                        <View style={styles.routeCapCardHeader}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={styles.routeCapName}>{route.name}</Text>
+                              <View style={styles.routeCapPill}>
+                                <Text style={styles.routeCapPillText}>{route.code}</Text>
+                              </View>
+                            </View>
+                            <Text style={styles.routeCapCollector}>
+                              Cobrador: <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{collector?.name || route.collectorName || 'Sin asignar'}</Text>
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Triada en vivo de esta ruta */}
+                        <View style={styles.routeCapTriadRow}>
+                          <View style={styles.routeCapTriadCol}>
+                            <Text style={styles.routeCapTriadColLabel}>ADMINISTRATIVO</Text>
+                            <Text style={styles.routeCapTriadColVal}>{formatCOP(displayAdmin)}</Text>
+                          </View>
+                          <Text style={styles.routeCapTriadOp}>=</Text>
+                          <View style={styles.routeCapTriadCol}>
+                            <Text style={[styles.routeCapTriadColLabel, { color: '#0F766E' }]}>CARTERA EN CALLE</Text>
+                            <Text style={[styles.routeCapTriadColVal, { color: '#0F766E' }]}>{formatCOP(displayCartera)}</Text>
+                            <Text style={styles.routeCapTriadColSub}>{routeLoans.length} créditos</Text>
+                          </View>
+                          <Text style={styles.routeCapTriadOp}>+</Text>
+                          <View style={styles.routeCapTriadCol}>
+                            <Text style={[styles.routeCapTriadColLabel, { color: '#0284C7' }]}>BASE EN MANO</Text>
+                            <Text style={[styles.routeCapTriadColVal, { color: '#0284C7' }]}>
+                              {formatCOP(displayBase)}
+                            </Text>
+                            <Text style={styles.routeCapTriadColSub}>En bolsillo</Text>
+                          </View>
+                        </View>
+
+                        {/* Input 1: Administrativo Asignado */}
+                        <View style={styles.inputGroup}>
+                          <Text style={styles.inputLabel}>📈 Administrativo Asignado a esta Ruta ($ COP)</Text>
+                          <TextInput
+                            style={styles.textInput}
+                            value={capData.targetAdminStr}
+                            onChangeText={(text) => {
+                              const clean = text.replace(/\D/g, '');
+                              setRouteCapitals((prev) => ({
+                                ...prev,
+                                [route.id]: {
+                                  ...(prev[route.id] || { cashBaseStr: '0' }),
+                                  targetAdminStr: clean,
+                                },
+                              }));
+                            }}
+                            keyboardType="numeric"
+                            placeholder="20000000"
+                            placeholderTextColor={COLORS.textMuted}
+                          />
+                          {/* Presets rápidos para Administrativo */}
+                          <View style={styles.presetsRow}>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustTargetAdmin(route.id, 1000000, true)}>
+                              <Text style={styles.presetPillText}>+$1M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustTargetAdmin(route.id, 5000000, true)}>
+                              <Text style={styles.presetPillText}>+$5M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustTargetAdmin(route.id, 10000000, false)}>
+                              <Text style={styles.presetPillText}>$10M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustTargetAdmin(route.id, 20000000, false)}>
+                              <Text style={styles.presetPillText}>$20M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustTargetAdmin(route.id, 30000000, false)}>
+                              <Text style={styles.presetPillText}>$30M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustTargetAdmin(route.id, 50000000, false)}>
+                              <Text style={styles.presetPillText}>$50M</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        {/* Input 2: Base de Efectivo en Mano / Inicial */}
+                        <View style={styles.inputGroup}>
+                          <Text style={styles.inputLabel}>💵 Base de Efectivo Asignada / Inicial ($ COP)</Text>
+                          <TextInput
+                            style={styles.textInput}
+                            value={capData.cashBaseStr}
+                            onChangeText={(text) => {
+                              const clean = text.replace(/\D/g, '');
+                              setRouteCapitals((prev) => ({
+                                ...prev,
+                                [route.id]: {
+                                  ...(prev[route.id] || { targetAdminStr: '20000000' }),
+                                  cashBaseStr: clean,
+                                },
+                              }));
+                            }}
+                            keyboardType="numeric"
+                            placeholder="0"
+                            placeholderTextColor={COLORS.textMuted}
+                          />
+                          {/* Presets rápidos para Base */}
+                          <View style={styles.presetsRow}>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustCashBase(route.id, 500000, true)}>
+                              <Text style={styles.presetPillText}>+$500k</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustCashBase(route.id, 1000000, true)}>
+                              <Text style={styles.presetPillText}>+$1M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustCashBase(route.id, 1000000, false)}>
+                              <Text style={styles.presetPillText}>$1M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustCashBase(route.id, 2000000, false)}>
+                              <Text style={styles.presetPillText}>$2M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustCashBase(route.id, 3000000, false)}>
+                              <Text style={styles.presetPillText}>$3M</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.presetPill} onPress={() => handleAdjustCashBase(route.id, 5000000, false)}>
+                              <Text style={styles.presetPillText}>$5M</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        {/* Botón Guardar Capital de esta Ruta */}
+                        <TouchableOpacity
+                          style={styles.routeCapSaveBtn}
+                          activeOpacity={0.8}
+                          onPress={() => handleSaveRouteCapital(route.id)}
+                        >
+                          <CheckCircle size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+                          <Text style={styles.routeCapSaveBtnText}>
+                            💾 Guardar Administrativo y Base de esta Ruta
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })()}
+
+            {/* PESTAÑA 3: POLÍTICAS DE CRÉDITO Y COBRO (AUDIO 2) */}
             {activeTab === 'CREDITO' && (
               <View style={styles.sectionContainer}>
                 {/* Switch de Papelería / Cartulina */}
@@ -949,12 +1299,12 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                         />
                       </View>
                       <View style={[styles.inputGroup, { flex: 1 }]}>
-                        <Text style={styles.inputLabel}>Cant. Clientes de la Ruta</Text>
+                        <Text style={styles.inputLabel}>Base Efectivo Inicial ($ COP)</Text>
                         <TextInput
                           style={styles.textInput}
-                          value={newExpectedCustomersStr}
-                          onChangeText={(t) => setNewExpectedCustomersStr(t.replace(/\D/g, ''))}
-                          placeholder="40"
+                          value={newInitialCashBaseStr}
+                          onChangeText={(t) => setNewInitialCashBaseStr(t.replace(/\D/g, ''))}
+                          placeholder="0"
                           keyboardType="numeric"
                         />
                       </View>
@@ -1066,11 +1416,11 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                               />
                             </View>
                             <View style={[styles.inputGroup, { flex: 1 }]}>
-                              <Text style={styles.inputLabel}>Cant. Clientes de la Ruta</Text>
+                              <Text style={styles.inputLabel}>Base Efectivo Inicial ($ COP)</Text>
                               <TextInput
                                 style={styles.textInput}
-                                value={editExpectedCustomersStr}
-                                onChangeText={(t) => setEditExpectedCustomersStr(t.replace(/\D/g, ''))}
+                                value={editInitialCashBaseStr}
+                                onChangeText={(t) => setEditInitialCashBaseStr(t.replace(/\D/g, ''))}
                                 keyboardType="numeric"
                               />
                             </View>
@@ -1298,26 +1648,33 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   }}
                   activeOpacity={0.8}
                   onPress={async () => {
-                    Alert.alert(
-                      '¿Iniciar Cartera Limpia?',
-                      'Esta acción eliminará todos los clientes y créditos actuales para dejar la cartera en blanco ($0), lista para ingresar tus clientes reales.',
-                      [
-                        { text: 'Cancelar', style: 'cancel' },
-                        {
-                          text: 'Sí, Iniciar Limpia',
-                          style: 'destructive',
-                          onPress: async () => {
-                            await localStore.clearPortfolioToEmpty();
-                            onSuccess();
-                            onClose();
-                            Alert.alert(
-                              'Cartera Limpia',
-                              'La cartera ha sido reiniciada en blanco ($0). Ya puedes comenzar a registrar tus clientes uno a uno.'
-                            );
-                          },
-                        },
-                      ]
-                    );
+                    const executeClear = async () => {
+                      await localStore.clearPortfolioToEmpty();
+                      onSuccess();
+                      onClose();
+                      if (Platform.OS === 'web') {
+                        window.alert('La cartera ha sido reiniciada en blanco ($0). Ya puedes comenzar a registrar tus clientes uno a uno.');
+                      } else {
+                        Alert.alert(
+                          'Cartera Limpia',
+                          'La cartera ha sido reiniciada en blanco ($0). Ya puedes comenzar a registrar tus clientes uno a uno.'
+                        );
+                      }
+                    };
+
+                    if (Platform.OS === 'web') {
+                      const ok = window.confirm('¿Iniciar Cartera Limpia?\n\nEsta acción eliminará todos los clientes y créditos actuales para dejar la cartera en blanco ($0), lista para ingresar tus clientes reales.');
+                      if (ok) executeClear();
+                    } else {
+                      Alert.alert(
+                        '¿Iniciar Cartera Limpia?',
+                        'Esta acción eliminará todos los clientes y créditos actuales para dejar la cartera en blanco ($0), lista para ingresar tus clientes reales.',
+                        [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'Sí, Iniciar Limpia', style: 'destructive', onPress: executeClear },
+                        ]
+                      );
+                    }
                   }}
                 >
                   <RotateCcw size={14} color="#DC2626" style={{ marginRight: 6 }} />
@@ -1797,5 +2154,192 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 12.5,
     fontWeight: '800',
+  },
+  tabBarScroll: {
+    maxHeight: 46,
+    backgroundColor: COLORS.bgSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.microBorder,
+  },
+  capFormulaCard: {
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 4,
+  },
+  capFormulaBadge: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#38BDF8',
+    letterSpacing: 0.5,
+  },
+  capFormulaTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginBottom: 6,
+  },
+  capFormulaDescription: {
+    fontSize: 11,
+    color: '#94A3B8',
+    lineHeight: 16,
+  },
+  capGlobalCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  capGlobalTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+    marginBottom: 10,
+    letterSpacing: 0.5,
+  },
+  capGlobalGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  capGlobalCol: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  capGlobalLabel: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#475569',
+    marginBottom: 4,
+  },
+  capGlobalValue: {
+    fontSize: 12.5,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  capGlobalHint: {
+    fontSize: 9,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  capGlobalOperator: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#94A3B8',
+    paddingHorizontal: 4,
+  },
+  routeCapConfigCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  routeCapCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  routeCapName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+  },
+  routeCapPill: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  routeCapPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  routeCapCollector: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  routeCapTriadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  routeCapTriadCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  routeCapTriadColLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
+    marginBottom: 2,
+  },
+  routeCapTriadColVal: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  routeCapTriadColSub: {
+    fontSize: 8.5,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  routeCapTriadOp: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#94A3B8',
+    paddingHorizontal: 3,
+  },
+  presetsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
+  presetPill: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  presetPillText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  routeCapSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0D9488',
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  routeCapSaveBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

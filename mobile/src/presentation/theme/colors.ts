@@ -1,67 +1,70 @@
 /**
- * PALETA DE COLORES Y TOKENS DE DISEÑO UNIFICADOS — KREDIA (MÓVIL & ESCRITORIO)
- * Identidad visual unificada:
- * - Azul tinta: #12263F (Acción principal, encabezados ejecutivos, navegación inferior)
- * - Fondo cálido: #F6F4EE (Fondo general descansado y legible en exteriores)
- * - Ocre de acento: #C9892B (Acento de marca, indicadores activos, resaltados de ruta)
- * - Blanco puro: #FFFFFF (Superficies de tarjetas, hojas modales y tablas)
- * - Estados operativos reservados: Verde (#15803D), Rojo (#DC2626), Ámbar (#D97706)
- *   (Nunca usar el color como único indicador de estado; acompañar siempre de símbolo + etiqueta).
+ * PALETA DE COLORES Y DESIGN TOKENS UNIFICADOS — CUADRA / KREDIA
+ * Estética limpia Fintech (Nubank / Revolut Light):
+ * - Fondo: #F6F7F9
+ * - Superficie: #FFFFFF
+ * - Texto Principal: #0F172A (Contraste 14.5:1 contra blanco)
+ * - Texto Secundario: #64748B (Contraste 4.6:1 contra blanco - WCAG AA certificado)
+ * - Borde tenue: 1px #E8EAEE
+ * - Acento de Interacción: Azul Marino #12263F y Azul Fintech #2563EB / #0284C7
+ * - Estados Semánticos: Puntos y badges sutiles, nunca fondos completos saturados.
  */
 
 export const COLORS = {
-  // 1. SUPERFICIES Y FONDOS CÁLIDOS
-  bgPrimary: '#F6F4EE',       // Fondo cálido principal
-  bgSecondary: '#FFFFFF',     // Blanco puro para superficies, tarjetas y modales
-  bgTertiary: '#E6E2D8',      // Separadores cálidos y pistas de progreso
-  bgElevated: '#EFECE4',      // Superficie cálida para inputs rellenos
-  bgLight: '#F6F4EE',
-  surfaceCard: '#FFFFFF',     // Superficie de tarjetas
-  surfaceSoft: '#F2EFE7',     // Bloques secundarios cálidos
-  surfaceLavender: '#FDF6EA', // Superficie suave de acento ocre
+  // 1. SUPERFICIES Y FONDOS NEUTROS
+  bgPrimary: '#F6F7F9',       // Fondo de aplicación minimalista
+  bgSecondary: '#FFFFFF',     // Superficie blanca pura para tarjetas y modales
+  bgTertiary: '#E8EAEE',      // Separadores finos y pistas de progreso sutiles
+  bgElevated: '#F1F5F9',      // Fondo sutil para chips o inputs
+  bgLight: '#F6F7F9',
+  surfaceCard: '#FFFFFF',     // Tarjetas blancas
+  surfaceSoft: '#F8FAFC',     // Fondos neutros alternos
+  surfaceLavender: '#F0F9FF', // Azul sutil
   receiptPaper: '#FFFFFF',
 
-  // 2. TIPOGRAFÍA Y JERARQUÍA (Alto contraste para lectura a plena luz del día)
-  textPrimary: '#12263F',     // Azul tinta profundo para títulos y montos
-  textSecondary: '#475569',   // Subtítulos y metadatos principales
-  textMuted: '#64748B',       // Etiquetas auxiliares
-  textOnPrimary: '#FFFFFF',   // Texto blanco sobre azul tinta
+  // 2. TIPOGRAFÍA Y JERARQUÍA (WCAG AA Cumplido)
+  textPrimary: '#0F172A',     // Pizarra oscura profunda para títulos y montos
+  textSecondary: '#64748B',   // Gris slate para subtítulos y metadatos
+  textMuted: '#94A3B8',       // Gris auxiliar
+  textOnPrimary: '#FFFFFF',   // Texto blanco sobre acentos oscuros
 
-  // 3. IDENTIDAD DE MARCA: AZUL TINTA (#12263F) & OCRE DE ACENTO (#C9892B)
-  primary: '#12263F',         // Azul tinta principal
+  // 3. IDENTIDAD Y ACENTOS FINTECH
+  primary: '#12263F',         // Azul marino ejecutivo
   primaryHover: '#1B365D',
-  primaryLight: '#EDF2F7',    // Fondo azul tinta suave
-  primaryBorder: '#CBD5E1',
+  primaryLight: '#EFF6FF',    // Fondo azul tenue
+  primaryBorder: '#BFDBFE',
+  brandBlue: '#2563EB',       // Azul de interacción
+  brandCyan: '#0284C7',
 
-  navy: '#12263F',            // Azul tinta token
-  ochre: '#C9892B',           // Ocre de acento token
-  ochreDark: '#9A6318',       // Ocre oscuro para contraste de texto
-  ochreBorder: '#F3D5A3',     // Borde suave de ocre
+  navy: '#12263F',
+  ochre: '#C9892B',
+  ochreDark: '#9A6318',
+  ochreBorder: '#F3D5A3',
 
-  accent: '#C9892B',          // Ocre de acento
-  accentHover: '#B0741E',
-  accentLight: '#FDF6EA',     // Fondo ocre cálido suave
-  accentBorder: '#F3D5A3',
+  accent: '#2563EB',
+  accentHover: '#1D4ED8',
+  accentLight: '#EFF6FF',
+  accentBorder: '#BFDBFE',
 
   heroGradientStart: '#12263F',
   heroGradientEnd: '#1B365D',
   heroSubCardBg: 'rgba(255, 255, 255, 0.08)',
   heroTrackBg: 'rgba(255, 255, 255, 0.18)',
-  heroBarFill: '#C9892B',
+  heroBarFill: '#2563EB',
 
-  // 4. NAVEGACIÓN INFERIOR (Azul Tinta + Ocre de Acento)
+  // 4. NAVEGACIÓN INFERIOR & BOTONES DE ACCIÓN (Azul Tinta #12263F)
   dockBg: '#12263F',
-  dockBorder: 'rgba(255, 255, 255, 0.10)',
-  dockInactive: '#94A3B8',
-  dockActive: '#E5A93C',
-  fabBg: '#C9892B',
+  dockBorder: '#E8EAEE',
+  dockInactive: '#64748B',
+  dockActive: '#2563EB',
+  fabBg: '#12263F',
   fabRing: '#FFFFFF',
 
-  // 5. ESTADOS OPERATIVOS RESERVADOS (Verde, Rojo y Ámbar)
-  success: '#15803D',
-  successBright: '#16A34A',
-  successLight: '#ECFDF5',
-  successBorder: '#A7F3D0',
+  // 5. ESTADOS SEMÁNTICOS (Puntos, badges e iconos sutiles)
+  success: '#16A34A',
+  successBright: '#15803D',
+  successLight: '#F0FDF4',
+  successBorder: '#BBF7D0',
 
   warning: '#D97706',
   warningLight: '#FFFBEB',
@@ -71,23 +74,38 @@ export const COLORS = {
   dangerLight: '#FEF2F2',
   dangerBorder: '#FECACA',
 
-  // Acentos informativos y compatibilidad redirigidos a Azul Tinta / Ocre
-  info: '#12263F',
-  infoBright: '#1B365D',
-  infoLight: '#EDF2F7',
-  infoBorder: '#CBD5E1',
+  info: '#0284C7',
+  infoBright: '#0369A1',
+  infoLight: '#F0F9FF',
+  infoBorder: '#BAE6FD',
 
-  purple: '#C9892B',
-  purpleBright: '#B0741E',
-  purpleLight: '#FDF6EA',
-  purpleBorder: '#F3D5A3',
+  purple: '#7C3AED',
+  purpleBright: '#6D28D9',
+  purpleLight: '#F5F3FF',
+  purpleBorder: '#DDD6FE',
 
   // 6. BORDES Y SOMBRAS
-  microBorder: 'rgba(18, 38, 63, 0.08)',
-  inputBorder: '#D6D1C4',
-  border: '#E6E2D8',
-  borderStrong: '#CFC9B8',
-  overlayBackdrop: 'rgba(18, 38, 63, 0.48)',
+  microBorder: '#E8EAEE',
+  inputBorder: '#CBD5E1',
+  border: '#E8EAEE',          // Borde estándar 1px sutil
+  borderStrong: '#CBD5E1',
+  overlayBackdrop: 'rgba(15, 23, 42, 0.40)',
+};
+
+export const RADIUS = {
+  card: 16,
+  button: 12,
+  chip: 12,
+  pill: 9999,
+  sm: 8,
+};
+
+export const SPACING = {
+  screenPadding: 20,
+  sectionGap: 28,
+  itemGap: 16,
+  sm: 8,
+  xs: 4,
 };
 
 export { TYPOGRAPHY, FONT_FAMILY, FONT_FAMILY_MONO } from './typography';

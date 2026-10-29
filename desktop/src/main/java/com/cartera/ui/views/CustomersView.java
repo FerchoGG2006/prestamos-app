@@ -420,22 +420,6 @@ public class CustomersView extends VBox {
                 createDetailRow("Estado:", c.getStatus() != null ? c.getStatus() : "ACTIVO")
         );
 
-        // Botones Rápidos de Contacto y Geolocalización
-        HBox quickContactBox = new HBox(8);
-        Button btnMap = new Button("📍 Ver en Google Maps");
-        btnMap.setStyle("-fx-background-color: #e0f2fe; -fx-text-fill: #0369a1; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 6 10; -fx-background-radius: 6; -fx-cursor: hand;");
-        btnMap.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(btnMap, Priority.ALWAYS);
-        btnMap.setOnAction(e -> openGoogleMaps(c));
-
-        Button btnWhatsAppState = new Button("📲 WhatsApp Estado Cuenta");
-        btnWhatsAppState.setStyle("-fx-background-color: #16a34a; -fx-text-fill: white; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 6 10; -fx-background-radius: 6; -fx-cursor: hand;");
-        btnWhatsAppState.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(btnWhatsAppState, Priority.ALWAYS);
-        btnWhatsAppState.setOnAction(e -> sendAccountStatementViaWhatsApp(c));
-
-        quickContactBox.getChildren().addAll(btnMap, btnWhatsAppState);
-
         // Sección de Crédito
         VBox creditCard = new VBox(10);
         creditCard.setStyle("-fx-background-color: #f8fafc; -fx-background-radius: 10; -fx-padding: 14; -fx-border-color: #e2e8f0; -fx-border-radius: 10;");
@@ -497,11 +481,95 @@ public class CustomersView extends VBox {
             lblDetails.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
             figures.getChildren().addAll(lblBalTitle, lblBalVal, pbLoan, lblAmort, lblDetails);
 
-            // Acciones Rápidas para el Crédito
-            HBox actionButtons = new HBox(8);
-            Button btnRenew = new Button("Renovar Crédito");
-            btnRenew.getStyleClass().add("btn-primary");
-            btnRenew.setStyle("-fx-font-size: 11px; -fx-padding: 6 12;");
+            creditCard.getChildren().addAll(credHeader, figures);
+        } else {
+            Label noLoan = new Label("Cliente disponible sin crédito activo.");
+            noLoan.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
+
+            // Barra de Fecha Fija en una sola línea de párrafo
+            HBox fixedDateBar = new HBox(8);
+            fixedDateBar.setAlignment(Pos.CENTER_LEFT);
+            fixedDateBar.setStyle("-fx-background-color: #eff6ff; -fx-padding: 6 10; -fx-background-radius: 8; -fx-border-color: #bfdbfe; -fx-border-radius: 8;");
+
+            Label lblFixedLabel = new Label("📅 Fecha Fija:");
+            lblFixedLabel.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold;");
+
+            DatePicker dpFixed = new DatePicker(LocalDate.now().plusDays(20));
+            dpFixed.setPrefWidth(125);
+            dpFixed.setStyle("-fx-font-size: 11px; -fx-padding: 3 6;");
+
+            Button btnPill7 = new Button("+7d");
+            btnPill7.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
+            btnPill7.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(7)));
+
+            Button btnPill15 = new Button("+15d");
+            btnPill15.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
+            btnPill15.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(15)));
+
+            Button btnPill30 = new Button("+30d");
+            btnPill30.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
+            btnPill30.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(30)));
+
+            Region spFixed = new Region();
+            HBox.setHgrow(spFixed, Priority.ALWAYS);
+
+            Button btnApplyFixed = new Button("➕ Crear Préstamo");
+            btnApplyFixed.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
+            btnApplyFixed.setOnAction(e -> {
+                if (createLoanUseCase != null && customerRepository != null) {
+                    var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
+                        refresh();
+                        if (loansView != null) loansView.refresh();
+                    });
+                    dlg.setSelectedCustomer(c.getId());
+                    dlg.setFrequency("FECHA FIJA");
+                    dlg.setStartDate(dpFixed.getValue() != null ? dpFixed.getValue() : LocalDate.now().plusDays(15));
+                    dlg.showAndWait();
+                }
+            });
+
+            fixedDateBar.getChildren().addAll(lblFixedLabel, dpFixed, btnPill7, btnPill15, btnPill30, spFixed, btnApplyFixed);
+            creditCard.getChildren().addAll(noLoan, fixedDateBar);
+        }
+
+        // BARRA DE BOTONES EN UNA SOLA LÍNEA (BOTONES PEQUEÑOS, DE 2 PALABRAS, CON EMOJI)
+        HBox singleLineActionBar = new HBox(6);
+        singleLineActionBar.setAlignment(Pos.CENTER_LEFT);
+        singleLineActionBar.setPadding(new Insets(2, 0, 2, 0));
+
+        Button btnFixedDate = new Button("📅 Fecha Fija");
+        btnFixedDate.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnFixedDate.setOnAction(e -> {
+            if (createLoanUseCase != null && customerRepository != null) {
+                var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
+                    refresh();
+                    if (loansView != null) loansView.refresh();
+                });
+                dlg.setSelectedCustomer(c.getId());
+                dlg.setFrequency("FECHA FIJA");
+                dlg.setStartDate(LocalDate.now().plusDays(20));
+                dlg.showAndWait();
+            }
+        });
+
+        Button btnNewCredit = new Button("➕ Nuevo Crédito");
+        btnNewCredit.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f0fdf4; -fx-text-fill: #15803d; -fx-border-color: #bbf7d0; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnNewCredit.setOnAction(e -> {
+            if (createLoanUseCase != null && customerRepository != null) {
+                var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
+                    refresh();
+                    if (loansView != null) loansView.refresh();
+                });
+                dlg.setSelectedCustomer(c.getId());
+                dlg.showAndWait();
+            }
+        });
+
+        singleLineActionBar.getChildren().addAll(btnFixedDate, btnNewCredit);
+
+        if (activeLoan != null) {
+            Button btnRenew = new Button("🔄 Renovar Crédito");
+            btnRenew.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
             btnRenew.setOnAction(e -> {
                 if (renewLoanUseCase != null && installmentRepository != null) {
                     new RenewLoanDialog(activeLoan, c.getFullName(), renewLoanUseCase, installmentRepository, settingRepository, ownerStage, renewed -> {
@@ -511,70 +579,56 @@ public class CustomersView extends VBox {
                 }
             });
 
-            Button btnPlan = new Button("Ver Cuotas");
-            btnPlan.getStyleClass().add("btn-secondary");
-            btnPlan.setStyle("-fx-font-size: 11px; -fx-padding: 6 12;");
+            Button btnPlan = new Button("📋 Ver Cuotas");
+            btnPlan.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
             btnPlan.setOnAction(e -> showInstallmentsModal(activeLoan));
 
-            actionButtons.getChildren().addAll(btnRenew, btnPlan);
+            singleLineActionBar.getChildren().addAll(btnRenew, btnPlan);
 
-            // Botón Anular Crédito SOLO visible para ADMIN / SUPERVISOR
             if (UserSessionContext.canCurrentUserReverseOrCancel() && cancelLoanUseCase != null) {
-                Button btnVoidLoan = new Button("🚫 Anular");
-                btnVoidLoan.setStyle("-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 6 10; -fx-cursor: hand;");
-                btnVoidLoan.setOnAction(e -> promptCancelActiveLoan(activeLoan, c));
-                actionButtons.getChildren().add(btnVoidLoan);
+                Button btnVoid = new Button("🚫 Anular Crédito");
+                btnVoid.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+                btnVoid.setOnAction(e -> promptCancelActiveLoan(activeLoan, c));
+                singleLineActionBar.getChildren().add(btnVoid);
             }
-
-            creditCard.getChildren().addAll(credHeader, figures, actionButtons);
-        } else {
-            Label noLoan = new Label("Sin créditos activos en este momento.");
-            noLoan.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
-
-            Button btnNewLoan = new Button("Otorgar Nuevo Crédito");
-            btnNewLoan.getStyleClass().add("btn-success");
-            btnNewLoan.setMaxWidth(Double.MAX_VALUE);
-            btnNewLoan.setOnAction(e -> {
-                if (createLoanUseCase != null && customerRepository != null) {
-                    var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
-                        refresh();
-                        if (loansView != null) loansView.refresh();
-                    });
-                    dlg.setSelectedCustomer(c.getId());
-                    dlg.showAndWait();
-                }
-            });
-
-            creditCard.getChildren().addAll(noLoan, btnNewLoan);
         }
 
-        Button btnHistory = new Button("📋 Ver Historial y Calificación de Pago");
-        btnHistory.getStyleClass().add("btn-secondary");
-        btnHistory.setMaxWidth(Double.MAX_VALUE);
-        btnHistory.setStyle("-fx-font-size: 11px; -fx-padding: 7 12; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe;");
+        Button btnHistory = new Button("📋 Ver Historial");
+        btnHistory.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnHistory.setOnAction(e -> {
             if (onOpenCreditHistory != null && c.getDocumentNumber() != null) {
                 onOpenCreditHistory.accept(c.getDocumentNumber());
             }
         });
 
-        HBox customerActionsBox = new HBox(8);
-        customerActionsBox.setAlignment(Pos.CENTER_LEFT);
+        Button btnEdit = new Button("✏️ Editar Datos");
+        btnEdit.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnEdit.setOnAction(e -> showEditCustomerDialog(c));
 
-        Button btnEditCustomer = new Button("✏️ Editar Cliente");
-        btnEditCustomer.getStyleClass().add("btn-secondary");
-        btnEditCustomer.setStyle("-fx-font-size: 11px; -fx-padding: 7 12;");
-        btnEditCustomer.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(btnEditCustomer, Priority.ALWAYS);
-        btnEditCustomer.setOnAction(e -> showEditCustomerDialog(c));
+        Button btnWhatsApp = new Button("📲 Enviar WhatsApp");
+        btnWhatsApp.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #dcfce7; -fx-text-fill: #166534; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnWhatsApp.setOnAction(e -> sendAccountStatementViaWhatsApp(c));
 
-        Button btnDeleteCustomer = new Button("🗑️ Desactivar / Eliminar");
-        btnDeleteCustomer.setStyle("-fx-font-size: 11px; -fx-padding: 7 12; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6;");
-        btnDeleteCustomer.setOnAction(e -> handleDeleteCustomer(c));
+        Button btnMap = new Button("📍 Ver Mapa");
+        btnMap.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #e0f2fe; -fx-text-fill: #0369a1; -fx-border-color: #7dd3fc; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnMap.setOnAction(e -> openGoogleMaps(c));
 
-        customerActionsBox.getChildren().addAll(btnEditCustomer, btnDeleteCustomer);
+        Button btnDelete = new Button("🗑️ Eliminar Cliente");
+        btnDelete.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnDelete.setOnAction(e -> handleDeleteCustomer(c));
 
-        detailCard.getChildren().addAll(header, contactBox, quickContactBox, creditCard, btnHistory, customerActionsBox);
+        singleLineActionBar.getChildren().addAll(btnHistory, btnEdit, btnWhatsApp, btnMap);
+        if (UserSessionContext.canCurrentUserReverseOrCancel()) {
+            singleLineActionBar.getChildren().add(btnDelete);
+        }
+
+        ScrollPane scrollActionBar = new ScrollPane(singleLineActionBar);
+        scrollActionBar.setFitToHeight(true);
+        scrollActionBar.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scrollActionBar.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scrollActionBar.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-border-color: transparent; -fx-padding: 0;");
+
+        detailCard.getChildren().addAll(header, contactBox, creditCard, scrollActionBar);
     }
 
     private void openGoogleMaps(CustomerEntity c) {
@@ -786,31 +840,88 @@ public class CustomersView extends VBox {
     }
 
     private void handleDeleteCustomer(CustomerEntity customer) {
-        if (customerRepository == null) return;
-        List<LoanEntity> loans = (loanRepository != null) ? loanRepository.findByCustomerId(customer.getId()) : List.of();
-        boolean hasActive = loans.stream().anyMatch(l -> "ACTIVO".equalsIgnoreCase(l.getStatus()) || "ACTIVE".equalsIgnoreCase(l.getStatus()));
-
-        if (hasActive) {
-            Alert blocked = new Alert(Alert.AlertType.WARNING);
-            blocked.initOwner(ownerStage);
-            blocked.setTitle("Operación Bloqueada por Integridad Financiera");
-            blocked.setHeaderText("No se puede eliminar ni desactivar un cliente con crédito activo");
-            blocked.setContentText("El cliente '" + customer.getFullName() + "' mantiene un crédito activo con saldo en cartera. Debe liquidar o finalizar el crédito antes de dar de baja al cliente.");
-            blocked.showAndWait();
+        if (!UserSessionContext.canCurrentUserReverseOrCancel()) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.initOwner(ownerStage);
+            alert.setTitle("Acceso Denegado");
+            alert.setHeaderText("Operación no autorizada para el Cobrador");
+            alert.setContentText("Los cobradores no tienen autorización para eliminar clientes. Esta acción debe ser solicitada a la administración de la oficina.");
+            alert.showAndWait();
             return;
         }
+        if (customerRepository == null) return;
+        List<LoanEntity> loans = (loanRepository != null) ? loanRepository.findByCustomerId(customer.getId()) : List.of();
+        LoanEntity activeLoan = loans.stream()
+                .filter(l -> "ACTIVO".equalsIgnoreCase(l.getStatus()) || "ACTIVE".equalsIgnoreCase(l.getStatus()))
+                .findFirst()
+                .orElse(null);
 
         String author = UserSessionContext.getSession()
                 .map(com.cartera.infrastructure.security.UserSession::userId)
                 .orElse("admin");
         String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
+        // Caso 1: El cliente tiene crédito activo. Como Administrador, se ofrece anular el crédito y dar de baja.
+        if (activeLoan != null) {
+            Alert confirmActive = new Alert(Alert.AlertType.CONFIRMATION);
+            confirmActive.initOwner(ownerStage);
+            confirmActive.setTitle("Acceso de Administrador — Cliente con Crédito Activo");
+            confirmActive.setHeaderText("Anular crédito activo y proceder con la baja del cliente");
+            confirmActive.setContentText("El cliente '" + customer.getFullName() + "' tiene un crédito activo (#" + activeLoan.getId() + ") con saldo en cartera.\n\n"
+                    + "Como Administrador General usted cuenta con permisos totales. ¿Desea anular el crédito activo y proceder a retirar/inactivar al cliente del sistema?");
+
+            var res = confirmActive.showAndWait();
+            if (res.isPresent() && res.get() == ButtonType.OK) {
+                try {
+                    if (cancelLoanUseCase != null) {
+                        try {
+                            cancelLoanUseCase.execute(activeLoan.getId(), "Baja de cliente autorizada por Administrador General");
+                        } catch (Exception ex) {
+                            activeLoan.setStatus("CANCELADO");
+                            if (loanRepository != null) loanRepository.save(activeLoan);
+                        }
+                    } else if (loanRepository != null) {
+                        activeLoan.setStatus("CANCELADO");
+                        loanRepository.save(activeLoan);
+                    }
+
+                    if (loans.size() > 1) {
+                        customer.setStatus("INACTIVO");
+                        customerRepository.save(customer);
+                    } else {
+                        customerRepository.delete(customer);
+                    }
+
+                    if (auditLogRepository != null) {
+                        auditLogRepository.save(new AuditLogEntity(
+                                UUID.randomUUID().toString(),
+                                author,
+                                "CUSTOMER",
+                                customer.getId(),
+                                "ELIMINAR_CLIENTE_ADMIN",
+                                customer.getFullName(),
+                                "BAJA_TOTAL",
+                                "Eliminación de cliente y anulación de crédito activo autorizada por Administrador",
+                                now
+                        ));
+                    }
+                    refresh();
+                    showPlaceholderDetail();
+                    if (loansView != null) loansView.refresh();
+                    new Alert(Alert.AlertType.INFORMATION, "Cliente y crédito activo cancelados exitosamente por Administrador.").showAndWait();
+                } catch (Exception ex) {
+                    new Alert(Alert.AlertType.ERROR, "Error al procesar la baja del cliente: " + ex.getMessage()).showAndWait();
+                }
+            }
+            return;
+        }
+
         if (!loans.isEmpty()) {
             Alert confirmDeactivate = new Alert(Alert.AlertType.CONFIRMATION);
             confirmDeactivate.initOwner(ownerStage);
-            confirmDeactivate.setTitle("Inactivar Cliente con Historial");
-            confirmDeactivate.setHeaderText("Preservación de Auditoría Financiera");
-            confirmDeactivate.setContentText("El cliente '" + customer.getFullName() + "' posee historial de créditos cerrados/renovados. Por integridad contable no se borra físicamente, sino que se marcará como INACTIVO. ¿Desea continuar?");
+            confirmDeactivate.setTitle("Acceso Administrador — Inactivar Cliente");
+            confirmDeactivate.setHeaderText("Inactivación de Cliente con Historial");
+            confirmDeactivate.setContentText("El cliente '" + customer.getFullName() + "' posee historial de créditos cerrados/renovados. Por integridad contable y preservación de auditoría, se marcará como INACTIVO.\n\n¿Desea continuar?");
             var res = confirmDeactivate.showAndWait();
             if (res.isPresent() && res.get() == ButtonType.OK) {
                 String prevStatus = customer.getStatus();
@@ -825,7 +936,7 @@ public class CustomersView extends VBox {
                             "INACTIVAR_CLIENTE",
                             prevStatus,
                             "INACTIVO",
-                            "Inactivación de cliente con historial crediticio",
+                            "Inactivación de cliente con historial crediticio por Administrador",
                             now
                     ));
                 }
@@ -838,9 +949,9 @@ public class CustomersView extends VBox {
 
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
         confirm.initOwner(ownerStage);
-        confirm.setTitle("Eliminar Cliente");
-        confirm.setHeaderText("Confirmar eliminación de cliente sin créditos");
-        confirm.setContentText("¿Está seguro de eliminar al cliente '" + customer.getFullName() + "'? No tiene préstamos asociados.");
+        confirm.setTitle("Acceso Administrador — Eliminar Cliente");
+        confirm.setHeaderText("Confirmar eliminación de cliente");
+        confirm.setContentText("¿Está seguro de eliminar definitivamente al cliente '" + customer.getFullName() + "'? No tiene préstamos asociados.");
 
         var res = confirm.showAndWait();
         if (res.isPresent() && res.get() == ButtonType.OK) {
@@ -854,7 +965,7 @@ public class CustomersView extends VBox {
                         "ELIMINAR_CLIENTE",
                         customer.getFullName(),
                         "ELIMINADO",
-                        "Eliminación de cliente sin historial de préstamos",
+                        "Eliminación de cliente sin historial autorizada por Administrador",
                         now
                 ));
             }

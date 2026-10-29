@@ -47,6 +47,11 @@ public final class UserSessionContext {
         return s != null && s.canReverseOrCancel() && !s.isCollector();
     }
 
+    public static boolean isAdmin() {
+        UserSession s = CURRENT.get();
+        return s == null || s.isAdmin();
+    }
+
     public static void clear() {
         CURRENT.set(null);
         SELECTED_ROUTE_ID.set("ALL");

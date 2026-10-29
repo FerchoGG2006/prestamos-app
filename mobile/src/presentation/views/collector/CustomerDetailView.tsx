@@ -21,8 +21,9 @@ import {
   Renewal,
   PaymentPromise,
   UserRole,
+  LoanFrequency,
 } from '../../../core/domain/types';
-import { formatCOP } from '../../../core/config/business-rules';
+import { formatCOP, addDays } from '../../../core/config/business-rules';
 import { calculateDelinquencyMetrics } from '../../../core/domain/calculator';
 import { localStore } from '../../../infrastructure/storage/local-store';
 import {
@@ -47,11 +48,14 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Trash2,
   Edit3,
   RotateCcw,
   Ban,
   ShieldAlert,
+  X,
 } from 'lucide-react-native';
 
 interface CustomerDetailViewProps {
@@ -73,6 +77,7 @@ interface CustomerDetailViewProps {
   onOpenCreditHistory?: (customer: Customer) => void;
   onDeleteCustomer?: (customer: Customer, force?: boolean) => void;
   onEditCustomer?: (customer: Customer) => void;
+  onNewLoan?: (customer: Customer, initialFrequency?: LoanFrequency, initialFixedDate?: string) => void;
 }
 
 export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
@@ -93,8 +98,25 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
   onOpenCreditHistory,
   onDeleteCustomer,
   onEditCustomer,
+  onNewLoan,
 }) => {
   const insets = useSafeAreaInsets();
+  const [calendarModalVisible, setCalendarModalVisible] = useState(false);
+  const [selectedFixedDate, setSelectedFixedDate] = useState<string>(() => addDays(todayStr, 15));
+  const [calendarYear, setCalendarYear] = useState<number>(() => {
+    try {
+      return parseInt(todayStr.split('-')[0], 10) || new Date().getFullYear();
+    } catch {
+      return new Date().getFullYear();
+    }
+  });
+  const [calendarMonth, setCalendarMonth] = useState<number>(() => {
+    try {
+      return parseInt(todayStr.split('-')[1], 10) - 1 || new Date().getMonth();
+    } catch {
+      return new Date().getMonth();
+    }
+  });
   const isAdminOrSupervisor =
     userRole === 'ADMIN' || userRole === 'SUPERVISOR' || userRole === 'SUPER_ADMIN';
   const customerLoans = loans.filter((l) => l.customerId === customer.id);
@@ -487,6 +509,111 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           </View>
         </View>
 
+        {/* BARRA DE BOTONES EN UNA SOLA LÍNEA (PEQUEÑOS, 2 PALABRAS, CON EMOJI) */}
+        <View style={styles.singleLineBarWrapper}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.singleLineBarScroll}
+          >
+            <TouchableOpacity
+              style={[styles.smallTwoWordBtn, styles.btnFixedDate]}
+              activeOpacity={0.75}
+              onPress={() => setCalendarModalVisible(true)}
+            >
+              <Text style={[styles.smallTwoWordText, { color: '#1D4ED8' }]}>📅 Fecha Fija</Text>
+            </TouchableOpacity>
+
+            {onNewLoan && (
+              <TouchableOpacity
+                style={[styles.smallTwoWordBtn, styles.btnNewCredit]}
+                activeOpacity={0.75}
+                onPress={() => onNewLoan(customer, 'DAILY')}
+              >
+                <Text style={styles.smallTwoWordText}>➕ Nuevo Crédito</Text>
+              </TouchableOpacity>
+            )}
+
+            {activeLoan && (
+              <TouchableOpacity
+                style={[styles.smallTwoWordBtn, styles.btnPayInstallment]}
+                activeOpacity={0.75}
+                onPress={() => onPayLoan(customer, activeLoan)}
+              >
+                <Text style={styles.smallTwoWordText}>💵 Pagar Cuota</Text>
+              </TouchableOpacity>
+            )}
+
+            {activeLoan && onPromiseLoan && (
+              <TouchableOpacity
+                style={[styles.smallTwoWordBtn, styles.btnPromise]}
+                activeOpacity={0.75}
+                onPress={() => onPromiseLoan(customer, activeLoan)}
+              >
+                <Text style={styles.smallTwoWordText}>⏳ Pactar Promesa</Text>
+              </TouchableOpacity>
+            )}
+
+            {activeLoan && onNonPayment && (
+              <TouchableOpacity
+                style={[styles.smallTwoWordBtn, styles.btnNoPayment]}
+                activeOpacity={0.75}
+                onPress={() => onNonPayment(customer, activeLoan)}
+              >
+                <Text style={styles.smallTwoWordText}>⚠️ Reportar No-Pago</Text>
+              </TouchableOpacity>
+            )}
+
+            {activeLoan && (
+              <TouchableOpacity
+                style={[styles.smallTwoWordBtn, styles.btnRenew]}
+                activeOpacity={0.75}
+                onPress={() => onRenewLoan(customer, activeLoan)}
+              >
+                <Text style={styles.smallTwoWordText}>🔄 Renovar Crédito</Text>
+              </TouchableOpacity>
+            )}
+
+            {onOpenCreditHistory && (
+              <TouchableOpacity
+                style={[styles.smallTwoWordBtn, styles.btnHistory]}
+                activeOpacity={0.75}
+                onPress={() => onOpenCreditHistory(customer)}
+              >
+                <Text style={styles.smallTwoWordText}>📋 Ver Historial</Text>
+              </TouchableOpacity>
+            )}
+
+            {onEditCustomer && (
+              <TouchableOpacity
+                style={[styles.smallTwoWordBtn, styles.btnEdit]}
+                activeOpacity={0.75}
+                onPress={() => onEditCustomer(customer)}
+              >
+                <Text style={styles.smallTwoWordText}>✏️ Editar Datos</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.smallTwoWordBtn, styles.btnWhatsApp]}
+              activeOpacity={0.75}
+              onPress={handleWhatsApp}
+            >
+              <Text style={styles.smallTwoWordText}>📲 Enviar WhatsApp</Text>
+            </TouchableOpacity>
+
+            {isAdminOrSupervisor && onDeleteCustomer && (
+              <TouchableOpacity
+                style={[styles.smallTwoWordBtn, styles.btnDelete]}
+                activeOpacity={0.75}
+                onPress={handleDeletePress}
+              >
+                <Text style={[styles.smallTwoWordText, { color: '#DC2626' }]}>🗑️ Eliminar Cliente</Text>
+              </TouchableOpacity>
+            )}
+          </ScrollView>
+        </View>
+
         {/* 2. Cuadrícula Bento Financiera del Cliente */}
         <View style={styles.bentoRow}>
           <View style={styles.bentoBox}>
@@ -822,6 +949,49 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           </View>
         )}
 
+        {/* 3b. Estado sin crédito: Originar Préstamo o Fijar Fecha Única */}
+        {!activeLoan && (
+          <View style={styles.noLoanCard}>
+            <View style={styles.noLoanHeaderRow}>
+              <View style={styles.noLoanDot} />
+              <Text style={styles.noLoanTitle}>CLIENTE DISPONIBLE SIN CRÉDITO ACTIVO</Text>
+            </View>
+            <Text style={styles.noLoanSubtitle}>
+              Este cliente no posee deudas activas. Puedes originar un crédito regular o pactar una fecha fija acordada.
+            </Text>
+
+            {/* Fila en una misma línea de párrafo para fecha fija */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.singleLineFixedDateBar}
+            >
+              <View style={styles.fixedDatePillInline}>
+                <Calendar size={13} color="#2563EB" style={{ marginRight: 5 }} />
+                <Text style={styles.fixedDatePillText}>Fecha fija: {selectedFixedDate}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.openCalendarSmallBtn}
+                activeOpacity={0.8}
+                onPress={() => setCalendarModalVisible(true)}
+              >
+                <Text style={styles.openCalendarSmallText}>🗓️ Calendario</Text>
+              </TouchableOpacity>
+
+              {onNewLoan && (
+                <TouchableOpacity
+                  style={styles.actionNewLoanSmallBtn}
+                  activeOpacity={0.8}
+                  onPress={() => onNewLoan(customer, 'FIXED_DATE', selectedFixedDate)}
+                >
+                  <Text style={styles.actionNewLoanSmallText}>➕ Crear Préstamo</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </View>
+        )}
+
         {/* 4. Historial de Comprobantes de Abono (Estilo Tirilla con borderStyle: 'dashed') */}
         <View style={styles.receiptHistoryCard}>
           <View style={styles.receiptHeaderRow}>
@@ -949,8 +1119,8 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           </View>
         )}
 
-        {/* 6. Zona de Peligro / Gestión de Cliente */}
-        {onDeleteCustomer && (
+        {/* 6. Zona de Peligro / Gestión de Cliente (EXCLUSIVO ADMINISTRADOR / SUPERVISOR) */}
+        {isAdminOrSupervisor && onDeleteCustomer && (
           <View style={styles.dangerZoneCard}>
             <View style={styles.dangerZoneHeader}>
               <Trash2 size={16} color="#dc2626" style={{ marginRight: 6 }} />
@@ -1091,6 +1261,171 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           </KeyboardAvoidingView>
         </Modal>
       )}
+
+      {/* Modal de Calendario Interactivo para Fecha Fija del Cliente */}
+      <Modal
+        visible={calendarModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalendarModalVisible(false)}
+      >
+        <View style={styles.calendarModalBackdrop}>
+          <View style={styles.calendarModalCard}>
+            <View style={styles.calendarModalHeader}>
+              <View>
+                <Text style={styles.calendarModalTitle}>📅 Fecha Fija de Préstamo</Text>
+                <Text style={styles.calendarModalSubtitle}>Selecciona la fecha acordada para el cobro</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setCalendarModalVisible(false)}
+                style={styles.calendarCloseBtn}
+              >
+                <X size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Selector de Mes */}
+            <View style={styles.calendarMonthRow}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (calendarMonth === 0) {
+                    setCalendarMonth(11);
+                    setCalendarYear(calendarYear - 1);
+                  } else {
+                    setCalendarMonth(calendarMonth - 1);
+                  }
+                }}
+                style={styles.monthNavBtn}
+              >
+                <ChevronLeft size={18} color="#1E293B" />
+              </TouchableOpacity>
+
+              <Text style={styles.monthNameText}>
+                {[
+                  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+                ][calendarMonth]}{' '}{calendarYear}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (calendarMonth === 11) {
+                    setCalendarMonth(0);
+                    setCalendarYear(calendarYear + 1);
+                  } else {
+                    setCalendarMonth(calendarMonth + 1);
+                  }
+                }}
+                style={styles.monthNavBtn}
+              >
+                <ChevronRight size={18} color="#1E293B" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Cabecera de Días de Semana */}
+            <View style={styles.calendarWeekdaysRow}>
+              {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'].map((d, idx) => (
+                <Text key={idx} style={styles.calendarWeekdayText}>{d}</Text>
+              ))}
+            </View>
+
+            {/* Cuadrícula de Días */}
+            <View style={styles.calendarDaysGrid}>
+              {(() => {
+                const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
+                const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+                const cells = [];
+                for (let i = 0; i < firstDayIndex; i++) {
+                  cells.push(<View key={`empty-${i}`} style={styles.calendarDayCellEmpty} />);
+                }
+                for (let day = 1; day <= daysInMonth; day++) {
+                  const mStr = String(calendarMonth + 1).padStart(2, '0');
+                  const dStr = String(day).padStart(2, '0');
+                  const cellDate = `${calendarYear}-${mStr}-${dStr}`;
+                  const isSelected = selectedFixedDate === cellDate;
+                  const isToday = todayStr === cellDate;
+                  cells.push(
+                    <TouchableOpacity
+                      key={`day-${day}`}
+                      style={[
+                        styles.calendarDayCell,
+                        isSelected && styles.calendarDayCellSelected,
+                        isToday && !isSelected && styles.calendarDayCellToday,
+                      ]}
+                      onPress={() => {
+                        setSelectedFixedDate(cellDate);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.calendarDayText,
+                          isSelected && styles.calendarDayTextSelected,
+                          isToday && !isSelected && styles.calendarDayTextToday,
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
+                return cells;
+              })()}
+            </View>
+
+            {/* Atajos Rápidos */}
+            <View style={styles.calendarQuickRow}>
+              {[
+                { label: '+7 días', days: 7 },
+                { label: '+15 días', days: 15 },
+                { label: '+20 días', days: 20 },
+                { label: '+30 días', days: 30 },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.days}
+                  style={[
+                    styles.calendarQuickPill,
+                    selectedFixedDate === addDays(todayStr, item.days) && styles.calendarQuickPillActive,
+                  ]}
+                  onPress={() => {
+                    const target = addDays(todayStr, item.days);
+                    setSelectedFixedDate(target);
+                    const [y, m] = target.split('-');
+                    setCalendarYear(parseInt(y, 10));
+                    setCalendarMonth(parseInt(m, 10) - 1);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.calendarQuickPillText,
+                      selectedFixedDate === addDays(todayStr, item.days) && styles.calendarQuickPillTextActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Footer con fecha y botón de confirmación */}
+            <View style={styles.calendarFooterRow}>
+              <Text style={styles.calendarFooterPreview}>
+                Fecha fija: <Text style={{ fontWeight: '800', color: COLORS.primary }}>{selectedFixedDate}</Text>
+              </Text>
+              <TouchableOpacity
+                style={styles.calendarConfirmBtn}
+                onPress={() => {
+                  setCalendarModalVisible(false);
+                  if (onNewLoan) {
+                    onNewLoan(customer, 'FIXED_DATE', selectedFixedDate);
+                  }
+                }}
+              >
+                <Text style={styles.calendarConfirmBtnText}>✅ Crear Préstamo</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1763,5 +2098,316 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.warning,
+  },
+  singleLineBarWrapper: {
+    marginHorizontal: -16,
+    marginBottom: 14,
+  },
+  singleLineBarScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  smallTwoWordBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smallTwoWordText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  btnFixedDate: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#BFDBFE',
+  },
+  btnNewCredit: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
+  },
+  btnPayInstallment: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+  },
+  btnPromise: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  btnNoPayment: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  btnRenew: {
+    backgroundColor: '#FAF5FF',
+    borderColor: '#E9D5FF',
+  },
+  btnHistory: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#DBEAFE',
+  },
+  btnEdit: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  btnWhatsApp: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  btnDelete: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FECACA',
+  },
+  noLoanCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    marginBottom: 14,
+  },
+  noLoanHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  noLoanDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#0D9488',
+  },
+  noLoanTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#0F766E',
+    letterSpacing: 0.5,
+  },
+  noLoanSubtitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    color: '#64748B',
+    marginBottom: 12,
+  },
+  singleLineFixedDateBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'nowrap',
+  },
+  fixedDatePillInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  fixedDatePillText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  openCalendarSmallBtn: {
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  openCalendarSmallText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  actionNewLoanSmallBtn: {
+    backgroundColor: '#059669',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionNewLoanSmallText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  calendarModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  calendarModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  calendarModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  calendarModalTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  calendarModalSubtitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  calendarCloseBtn: {
+    padding: 4,
+  },
+  calendarMonthRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  monthNavBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+  },
+  monthNameText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  calendarWeekdaysRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 6,
+  },
+  calendarWeekdayText: {
+    width: 38,
+    textAlign: 'center',
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  calendarDaysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  calendarDayCellEmpty: {
+    width: `${100 / 7}%`,
+    height: 36,
+  },
+  calendarDayCell: {
+    width: `${100 / 7}%`,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  calendarDayCellSelected: {
+    backgroundColor: '#2563EB',
+  },
+  calendarDayCellToday: {
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  calendarDayText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  calendarDayTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  calendarDayTextToday: {
+    color: '#2563EB',
+    fontWeight: '800',
+  },
+  calendarQuickRow: {
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  calendarQuickPill: {
+    flex: 1,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarQuickPillActive: {
+    backgroundColor: '#0F172A',
+  },
+  calendarQuickPillText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  calendarQuickPillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  calendarFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  calendarFooterPreview: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    color: '#475569',
+  },
+  calendarConfirmBtn: {
+    backgroundColor: '#2563EB',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  calendarConfirmBtnText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

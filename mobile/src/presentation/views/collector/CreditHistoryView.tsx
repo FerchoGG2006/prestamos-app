@@ -34,6 +34,7 @@ import {
   X,
   CreditCard,
   PlusCircle,
+  ArrowLeft,
 } from 'lucide-react-native';
 
 interface CreditHistoryViewProps {
@@ -45,6 +46,7 @@ interface CreditHistoryViewProps {
   initialDocumentNumber?: string;
   onOpenNewLoan?: (customer: Customer) => void;
   onOpenPayment?: (customer: Customer, loan: Loan) => void;
+  onBack?: () => void;
 }
 
 export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
@@ -56,6 +58,7 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
   initialDocumentNumber = '',
   onOpenNewLoan,
   onOpenPayment,
+  onBack,
 }) => {
   const insets = useSafeAreaInsets();
   const [searchQuery, setSearchQuery] = useState(initialDocumentNumber);
@@ -63,7 +66,7 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
     if (initialDocumentNumber) {
       const match = customers.find(
         (c) =>
-          c.documentNumber.trim().toLowerCase() ===
+          (c.documentNumber || '').trim().toLowerCase() ===
           initialDocumentNumber.trim().toLowerCase()
       );
       return match ? match.id : null;
@@ -115,7 +118,7 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
   };
 
   const handleWhatsApp = (customer: Customer) => {
-    const clean = customer.phone.replace(/\D/g, '');
+    const clean = (customer.phone || '').replace(/\D/g, '');
     const phone = clean.startsWith('57') ? clean : `57${clean}`;
     const officeLabel = localStore.getOfficeConfig().companyName || 'Kredia';
     const msg = `Hola ${customer.fullName}, te contactamos de ${officeLabel} sobre el estado de tu cuenta.`;
@@ -129,13 +132,23 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
       style={styles.container}
       contentContainerStyle={[
         styles.contentContainer,
-        { paddingBottom: insets.bottom + 96 },
+        { paddingBottom: insets.bottom + 140 },
       ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
       {/* Encabezado */}
       <View style={styles.headerBox}>
+        {onBack && (
+          <TouchableOpacity
+            style={styles.backButton}
+            activeOpacity={0.7}
+            onPress={onBack}
+          >
+            <ArrowLeft size={14} color={COLORS.primary} style={{ marginRight: 5 }} />
+            <Text style={styles.backButtonText}>Volver al Panel</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.screenTitle}>Historial Crediticio</Text>
         <Text style={styles.screenSubtitle}>
           Verifica por cédula el récord de pagos y préstamos anteriores
@@ -206,7 +219,7 @@ export const CreditHistoryView: React.FC<CreditHistoryViewProps> = ({
                   onPress={() => handleSelectCustomer(c)}
                 >
                   <Text style={styles.chipText}>
-                    {c.fullName.split(' ')[0]} ({c.documentNumber.slice(-4)})
+                    {(c.fullName || 'Cliente').split(' ')[0]} ({(c.documentNumber || '0000').slice(-4)})
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -599,6 +612,23 @@ const styles = StyleSheet.create({
   },
   headerBox: {
     marginBottom: 14,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginBottom: 8,
+  },
+  backButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   screenTitle: {
     fontFamily: FONT_FAMILY,

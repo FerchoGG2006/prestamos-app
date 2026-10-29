@@ -10,13 +10,14 @@ import { DailySettlement, Route, User } from '../../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../../core/config/business-rules';
 import { COLORS } from '../../theme/colors';
-import { Landmark, Calendar, AlertTriangle, CheckCircle, Filter } from 'lucide-react-native';
+import { Landmark, Calendar, AlertTriangle, CheckCircle, Filter, ArrowLeft } from 'lucide-react-native';
 
 interface SettlementsTableViewProps {
   settlements: DailySettlement[];
   routes: Route[];
   users: User[];
   onOpenNewSettlement: () => void;
+  onBack?: () => void;
 }
 
 export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
@@ -24,6 +25,7 @@ export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
   routes,
   users,
   onOpenNewSettlement,
+  onBack,
 }) => {
   const insets = useSafeAreaInsets();
   const [selectedRouteId, setSelectedRouteId] = useState<string>('ALL');
@@ -38,19 +40,29 @@ export const SettlementsTableView: React.FC<SettlementsTableViewProps> = ({
     totalCollections: filteredSettlements.reduce((sum, s) => sum + s.actualCollection, 0),
     totalExpected: filteredSettlements.reduce((sum, s) => sum + s.expectedCollection, 0),
     newLoansCount: filteredSettlements.reduce((sum, s) => sum + s.newLoansCount, 0),
-    newLoansCapital: filteredSettlements.reduce((sum, s) => sum + s.newLoansCapitalPlaced, 0),
-    renewalsCount: filteredSettlements.reduce((sum, s) => sum + s.renewalsCount, 0),
-    renewalsCapital: filteredSettlements.reduce((sum, s) => sum + s.renewalsCapitalPlaced, 0),
-    actualCashDisbursed: filteredSettlements.reduce((sum, s) => sum + s.actualCashDisbursedTotal, 0),
-    recoveredDelinquency: filteredSettlements.reduce((sum, s) => sum + s.recoveredDelinquency, 0),
-    totalCashDifference: filteredSettlements.reduce((sum, s) => sum + s.cashDifference, 0),
+    newLoansCapital: filteredSettlements.reduce((sum, s) => sum + (s.newLoansCapitalPlaced || 0), 0),
+    renewalsCount: filteredSettlements.reduce((sum, s) => sum + (s.renewalsCount || 0), 0),
+    renewalsCapital: filteredSettlements.reduce((sum, s) => sum + (s.renewalsCapitalPlaced || 0), 0),
+    actualCashDisbursed: filteredSettlements.reduce((sum, s) => sum + (s.actualCashDisbursedTotal || 0), 0),
+    recoveredDelinquency: filteredSettlements.reduce((sum, s) => sum + (s.recoveredDelinquency || 0), 0),
+    totalCashDifference: filteredSettlements.reduce((sum, s) => sum + (s.cashDifference || 0), 0),
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom + 96 }} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: insets.bottom + 140 }} showsVerticalScrollIndicator={false}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1, marginRight: 10 }}>
+          {onBack && (
+            <TouchableOpacity
+              style={styles.backButton}
+              activeOpacity={0.7}
+              onPress={onBack}
+            >
+              <ArrowLeft size={14} color={COLORS.primary} style={{ marginRight: 5 }} />
+              <Text style={styles.backButtonText}>Volver al Panel</Text>
+            </TouchableOpacity>
+          )}
           <Text style={styles.title}>Liquidaciones y Arqueos</Text>
           <Text style={styles.subtitle}>Auditoría de cierres diarios y consolidado semanal</Text>
         </View>
@@ -227,6 +239,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bgPrimary,
     padding: 16,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    marginBottom: 8,
+  },
+  backButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   header: {
     flexDirection: 'row',
@@ -452,3 +481,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
+
