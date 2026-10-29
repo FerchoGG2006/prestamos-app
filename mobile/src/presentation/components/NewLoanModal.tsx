@@ -139,10 +139,10 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   const paperwork =
     principal > 0 && isPaperworkEnabled && !isMigration
       ? calculatePaperworkFee(principal, {
-          rate: officeConfig.paperworkRate || 5000,
-          base: 100000,
-          calculationMode: 'PROPORTIONAL',
-        })
+        rate: officeConfig.paperworkRate || 5000,
+        base: 100000,
+        calculationMode: 'PROPORTIONAL',
+      })
       : 0;
   const netCashToDeliver = isMigration ? 0 : Math.max(0, principal - paperwork);
 
@@ -157,12 +157,12 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     defaultCount: number;
     options: number[];
   }> = [
-    { key: 'FIXED_DATE', label: 'Fecha Fija', shortLabel: '📅 Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
-    { key: 'DAILY', label: 'Diario', shortLabel: '☀️ Pago Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
-    { key: 'WEEKLY', label: 'Semanal', shortLabel: '📆 Pago Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
-    { key: 'BIWEEKLY', label: 'Quincenal', shortLabel: '🗓️ Pago Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
-    { key: 'MONTHLY', label: 'Mensual', shortLabel: '🏛️ Pago Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
-  ];
+      { key: 'FIXED_DATE', label: 'Fecha Fija', shortLabel: '📅 Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
+      { key: 'DAILY', label: 'Diario', shortLabel: '☀️ Pago Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
+      { key: 'WEEKLY', label: 'Semanal', shortLabel: '📆 Pago Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
+      { key: 'BIWEEKLY', label: 'Quincenal', shortLabel: '🗓️ Pago Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
+      { key: 'MONTHLY', label: 'Mensual', shortLabel: '🏛️ Pago Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
+    ];
 
   const currentFreqConfig = frequencies.find((f) => f.key === frequency) || frequencies[0];
 
@@ -719,8 +719,8 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                     {isMigration
                       ? 'Impacto Caja Hoy:'
                       : isPaperworkEnabled
-                      ? `Cartulina / Papelería (${formatCOP(officeConfig.paperworkRate || 5000)} / $100k):`
-                      : 'Cartulina / Papelería:'}
+                        ? `Cartulina / Papelería (${formatCOP(officeConfig.paperworkRate || 5000)} / $100k):`
+                        : 'Cartulina / Papelería:'}
                   </Text>
                   <Text
                     style={[
@@ -728,15 +728,15 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       isMigration
                         ? { color: COLORS.primary }
                         : isPaperworkEnabled && paperwork > 0
-                        ? { color: COLORS.danger }
-                        : { color: COLORS.textMuted },
+                          ? { color: COLORS.danger }
+                          : { color: COLORS.textMuted },
                     ]}
                   >
                     {isMigration
                       ? '$ 0 (Cartulina física migrada)'
                       : isPaperworkEnabled && paperwork > 0
-                      ? `- ${formatCOP(paperwork)}`
-                      : '$ 0 (Desactivada por administración)'}
+                        ? `- ${formatCOP(paperwork)}`
+                        : '$ 0 (Desactivada por administración)'}
                   </Text>
                 </View>
                 <View style={styles.calcRow}>
@@ -761,8 +761,8 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               {isSubmitting
                 ? 'Guardando...'
                 : isCardMigration
-                ? 'Pasar Cartulina a Digital'
-                : 'Confirmar y Desembolsar'}
+                  ? 'Pasar Cartulina a Digital'
+                  : 'Confirmar y Desembolsar'}
             </Text>
           </TouchableOpacity>
         </View>
