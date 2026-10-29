@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  Alert,
 } from 'react-native';
 import { User, Route } from '../../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -188,14 +189,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
-    // Si ya había registrado su oficina previamente, la configuración está BLOQUEADA
-    // hasta que el Administrador ingrese su clave actual.
-    setIsSetupUnlocked(false);
+    // Si ya había registrado su oficina previamente, verificar si tiene clave válida
     const currentUsers = localStore.getUsers();
     const currentRoutes = localStore.getRoutes();
     const existingAdmin = currentUsers.find(
       (u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN'
     );
+    const hasAdminPassword = Boolean(existingAdmin?.password?.trim());
+    setIsSetupUnlocked(!hasAdminPassword); // Si es v1 residual sin clave, auto-desbloquear
 
     const adminUserStr = (existingAdmin?.username || '').toLowerCase();
     setWizCurrentAdminPassword('');
@@ -236,6 +237,37 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setWizRoutesDraft(drafts);
     setWizError('');
     setSetupVisible(true);
+  };
+
+  const handleFactoryReset = () => {
+    const doReset = async () => {
+      await localStore.factoryResetAll();
+      if (onDataReset) onDataReset();
+      setSavedNotice('Almacenamiento reiniciado correctamente. Ahora puedes registrar tu oficina.');
+      setErrorMessage('');
+    };
+
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' && window.confirm(
+        '¿Deseas restablecer el almacenamiento local de este teléfono para aplicar la nueva versión limpia de rutas y base de efectivo?'
+      );
+      if (confirmed) {
+        doReset();
+      }
+    } else {
+      Alert.alert(
+        'Actualizar desde Versión 1',
+        '¿Deseas restablecer los datos de la versión anterior en este teléfono para aplicar la nueva versión de rutas y base?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Sí, Restablecer',
+            style: 'destructive',
+            onPress: doReset,
+          },
+        ]
+      );
+    }
   };
 
   const changeRoutesCount = (newCount: number) => {
@@ -499,6 +531,18 @@ export const LoginView: React.FC<LoginViewProps> = ({
               {isOfficeRegistered
                 ? 'Configurar oficina y rutas (Requiere clave Admin)'
                 : 'Registrar mi oficina y crear credenciales'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Botón de Auto-Sanación / Migración de Versión Anterior */}
+          <TouchableOpacity
+            style={styles.factoryResetBtn}
+            activeOpacity={0.7}
+            onPress={handleFactoryReset}
+          >
+            <RotateCcw size={12} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+            <Text style={styles.factoryResetText}>
+              ¿Tienes datos de la versión 1? Toca aquí para reiniciar y actualizar
             </Text>
           </TouchableOpacity>
         </View>
@@ -769,18 +813,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         value={rt.targetAdministrativeStr ? (parseInt(rt.targetAdministrativeStr.replace(/\D/g, ''), 10) || 0).toLocaleString('es-CO') : ''}
                         onChangeText={(v) => updateRouteDraft(idx, 'targetAdministrativeStr', v.replace(/\D/g, ''))}
                         placeholder="ej: 20.000.000"
-                        placeholderTextColor={COLORS.textMuted}
-                        keyboardType="numeric"
-                        editable={isFormEditable}
-                      />
-                    </View>
-                    <View style={styles.colItem}>
-                      <Text style={styles.fieldCaption}>Cant. Clientes de la Ruta</Text>
-                      <TextInput
-                        style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
-                        value={rt.expectedCustomersCountStr}
-                        onChangeText={(v) => updateRouteDraft(idx, 'expectedCustomersCountStr', v.replace(/\D/g, ''))}
-                        placeholder="ej: 40"
                         placeholderTextColor={COLORS.textMuted}
                         keyboardType="numeric"
                         editable={isFormEditable}
@@ -1401,5 +1433,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12.5,
     fontWeight: '800',
+  },
+  factoryResetBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  factoryResetText: {
+    fontSize: 11.5,
+    color: COLORS.textMuted,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });

@@ -51,6 +51,7 @@ import {
   GripVertical,
   Zap,
   Landmark,
+  Calculator,
   RefreshCw,
   Phone,
   MessageCircle,
@@ -73,7 +74,7 @@ interface TodayCollectionsViewProps {
   onOpenNewLoan: () => void;
   onOpenExpense?: () => void;
   onOpenRecaudo?: () => void;
-  onOpenSettlement: () => void;
+  onOpenSettlement?: () => void;
   onOpenDailyReport?: () => void;
   onNonPaymentCustomer?: (customer: Customer, loan: Loan) => void;
   onPromiseCustomer?: (customer: Customer, loan: Loan) => void;
@@ -85,6 +86,12 @@ interface TodayCollectionsViewProps {
   onOpenRouteSelector?: () => void;
   /** Filtro de estado con el que abre la hoja de ruta (ej. 'PROMESAS' desde la campana). */
   initialFilter?: FilterType;
+  onOpenCapitalConfig?: () => void;
+  onDeleteCustomer?: (customer: Customer, force?: boolean) => void;
+  onEditCustomer?: (customer: Customer) => void;
+  onNewLoanForCustomer?: (customer: Customer) => void;
+  onFixedDateLoan?: (customer: Customer) => void;
+  onViewHistory?: (customer: Customer) => void;
 }
 
 const formatDateLabel = (dateStr: string): string => {
@@ -133,9 +140,15 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   activeRouteLabel,
   onOpenRouteSelector,
   initialFilter = 'TODOS',
+  onOpenCapitalConfig,
+  onDeleteCustomer,
+  onEditCustomer,
+  onNewLoanForCustomer,
+  onFixedDateLoan,
+  onViewHistory,
 }) => {
   const insets = useSafeAreaInsets();
-  const dockScrollClearance = insets.bottom + 96;
+  const dockScrollClearance = insets.bottom + 140;
   const [activeFilter, setActiveFilter] = useState<FilterType>(initialFilter);
   const [searchQuery, setSearchQuery] = useState('');
   // Por seguridad en la calle, el modo anti-miradas (ocultar montos) inicia activo por defecto
@@ -454,10 +467,10 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     .filter((item) => {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchName = item.customer.fullName.toLowerCase().includes(q);
-        const matchDoc = item.customer.documentNumber.includes(q);
-        const matchBiz = item.customer.businessName?.toLowerCase().includes(q);
-        const matchNeighborhood = item.customer.neighborhood.toLowerCase().includes(q);
+        const matchName = item.customer.fullName?.toLowerCase().includes(q) ?? false;
+        const matchDoc = item.customer.documentNumber?.toLowerCase().includes(q) ?? false;
+        const matchBiz = item.customer.businessName?.toLowerCase().includes(q) ?? false;
+        const matchNeighborhood = item.customer.neighborhood?.toLowerCase().includes(q) ?? false;
         if (!matchName && !matchDoc && !matchBiz && !matchNeighborhood) return false;
       }
 
@@ -524,7 +537,23 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     { key: 'MONTHLY', label: 'Mensuales', count: freqCounts.MONTHLY },
   ];
 
-  if (viewMode === 'DASHBOARD') {
+  const renderAdminGeneralDashboard = () => {
+    const allRoutes = localStore.getRoutes();
+    const allUsers = localStore.getUsers();
+    const allLoans = localStore.getLoans();
+    const activeLoans = allLoans.filter((l) => l.status === 'ACTIVE');
+    const totalPrincipalActive = activeLoans.reduce((sum, l) => sum + l.principal, 0);
+    const totalBalanceRemaining = installments
+      .filter((i) => i.pendingAmount > 0)
+      .reduce((sum, i) => sum + i.pendingAmount, 0);
+
+    const totalCollectedGlobal = payments
+      .filter((p) => p.status === 'COMPLETED' && p.createdAt?.startsWith(todayStr))
+      .reduce((sum, p) => sum + p.amountReceived, 0);
+
+    const totalOverdueAmount = metrics.overdueTotalAmount || 0;
+    const totalOverdueCount = metrics.overdueCustomersCount || 0;
+
     return (
       <ScrollView
         style={styles.container}
@@ -532,240 +561,588 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* 1. HERO FINTECH LIMPIO: COBRO PLENO */}
-        <View style={styles.cleanHeroCard}>
-          <View style={styles.cleanHeroTopRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.cleanHeroLabel}>COBRADO HOY</Text>
-              <TouchableOpacity onPress={togglePrivacy} style={styles.cleanEyeBtn} activeOpacity={0.7}>
-                {privacyMode ? (
-                  <EyeOff size={11} color="#94A3B8" />
-                ) : (
-                  <Eye size={11} color="#94A3B8" />
-                )}
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.cleanPercentPill}>
-              <TrendingUp size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
-              <Text style={styles.cleanPercentText}>{metrics.progressPercentage}%</Text>
-            </View>
-          </View>
-
-          <View style={styles.cleanAmountRow}>
-            <Text style={styles.cleanMainAmount} numberOfLines={1} adjustsFontSizeToFit>
-              {maskIfPrivate(metrics.collectedToday)}
-            </Text>
-            <Text style={styles.cleanGoalText}>
-              de {maskIfPrivate(metrics.expectedDailyGoal)} • {metrics.visitedCustomersCount}/{metrics.expectedCustomersCount} cobrados
-            </Text>
-          </View>
-
-          <View style={styles.cleanProgressTrack}>
-            <View
-              style={[
-                styles.cleanProgressFill,
-                { width: `${Math.min(100, Math.max(4, metrics.progressPercentage))}%` },
-              ]}
-            />
-          </View>
-
-          {isAdminMode && (
-            <TouchableOpacity
-              style={styles.cleanHeroFooterLink}
-              activeOpacity={0.7}
-              onPress={onOpenSettlement}
-            >
-              <Text style={styles.cleanHeroFooterText}>
-                Caja actual: <Text style={{ fontWeight: '800', color: '#F8FAFC' }}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
-                {metrics.salidasCount > 0 ? ` • ${metrics.salidasCount} salidas` : ''}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                <Text style={styles.cleanHeroLinkAction}>Caja Admin</Text>
-                <ChevronRight size={13} color="#38BDF8" />
+        {/* ENCABEZADO DE ADMINISTRACIÓN GENERAL */}
+        <View style={styles.adminHeaderCard}>
+          <View style={styles.adminHeaderTopRow}>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <Text style={styles.adminRoleBadge}>🛡️ ADMINISTRADOR GENERAL</Text>
+                <View style={styles.liveIndicator}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.liveText}>EN LÍNEA</Text>
+                </View>
               </View>
-            </TouchableOpacity>
-          )}
+              <Text style={styles.adminMainTitle}>Centro de Control Gerencial</Text>
+              <Text style={styles.adminSubtitle}>
+                Supervisión multi-ruta, cartera activa y patrimonio en tiempo real
+              </Text>
+            </View>
 
-          {!isAdminMode && onOpenDailyReport && (
-            <View style={styles.cleanHeroFooterLink}>
+            {onOpenRouteSelector && (
               <TouchableOpacity
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-                activeOpacity={0.7}
-                onPress={onOpenDailyReport}
+                style={styles.adminRouteSelectorBtn}
+                activeOpacity={0.8}
+                onPress={onOpenRouteSelector}
               >
-                <Text style={styles.cleanHeroFooterText}>
-                  Cobrado hoy: <Text style={{ fontWeight: '800', color: '#F8FAFC' }}>{maskIfPrivate(metrics.collectedToday)}</Text>
-                  {metrics.salidasCount > 0 ? ` • ${metrics.salidasCount} salidas` : ''}
+                <MapPin size={13} color="#2563EB" style={{ marginRight: 4 }} />
+                <Text style={styles.adminRouteSelectorText} numberOfLines={1}>
+                  {activeRouteLabel || 'Todas las Rutas'}
                 </Text>
               </TouchableOpacity>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {onOpenExpense && officeConfig.allowCollectorExpenses !== false && (
-                  <TouchableOpacity
-                    style={styles.heroExpensePill}
-                    activeOpacity={0.7}
-                    onPress={onOpenExpense}
-                  >
-                    <Fuel size={11} color="#ea580c" />
-                    <Text style={styles.heroExpensePillText}>+ Gasto</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
-                  activeOpacity={0.7}
-                  onPress={onOpenDailyReport}
-                >
-                  <Text style={styles.cleanHeroLinkAction}>📊 Cuadre</Text>
-                  <ChevronRight size={13} color="#38BDF8" />
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+            )}
+          </View>
         </View>
 
-        {/* 2. La siguiente decisión se muestra antes que los indicadores secundarios. */}
-        {firstPendingItem && (
-          <TouchableOpacity
-            style={styles.nextCollectionCard}
-            activeOpacity={0.82}
-            onPress={handleQuickPayFirstPending}
-          >
-            <View style={styles.nextCollectionTopRow}>
-              <Text style={styles.nextCollectionEyebrow}>SIGUIENTE COBRO</Text>
-              <Text style={styles.nextCollectionOrder}>PARADA #{firstPendingItem.customer.orderIndex || 1}</Text>
+        {/* TRIADA FINANCIERA CENTRAL: ADMINISTRATIVO = CARTERA + BASE */}
+        <View style={styles.capitalTriadCard}>
+          <View style={styles.capitalTriadHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={styles.capitalTriadIconBox}>
+                <Landmark size={14} color="#1D4ED8" />
+              </View>
+              <Text style={styles.capitalTriadTag}>💼 CAPITAL MAESTRO DE LA OPERACIÓN</Text>
             </View>
-            <View style={styles.nextCollectionBody}>
-              <View style={styles.nextCollectionAvatar}>
-                <Text style={styles.nextCollectionAvatarText}>{getInitials(firstPendingItem.customer.fullName)}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.nextCollectionName} numberOfLines={1}>{firstPendingItem.customer.fullName}</Text>
-                <Text style={styles.nextCollectionMeta} numberOfLines={1}>
-                  {firstPendingItem.customer.neighborhood} · {firstPendingItem.dueDateDisplay}
-                </Text>
-              </View>
-              <View style={styles.nextCollectionAction}>
-                <Text style={styles.nextCollectionActionText}>Cobrar</Text>
-                <ChevronRight size={15} color="#FFFFFF" />
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
+            {onOpenCapitalConfig && (
+              <TouchableOpacity
+                style={styles.capitalAdjustBtn}
+                activeOpacity={0.75}
+                onPress={onOpenCapitalConfig}
+              >
+                <Text style={styles.capitalAdjustBtnText}>⚙️ Ajustar Admin & Base</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-        {/* 3. Atajos de operación: módulos amplios, no una fila de iconos comprimidos. */}
-        <View style={styles.quickActionsSection}>
-          <Text style={styles.fintechSectionTitle}>Favoritos</Text>
+          <Text style={styles.capitalTriadFormulaText}>
+            Administrativo = Cartera en Calle + Base en Mano
+          </Text>
+
+          <View style={styles.capitalTriadColsRow}>
+            {/* 1. ADMINISTRATIVO */}
+            <View style={[styles.capitalTriadColBox, { backgroundColor: '#F8FAFC', borderColor: '#CBD5E1' }]}>
+              <Text style={styles.capitalTriadColLabel}>📈 ADMINISTRATIVO</Text>
+              <Text style={[styles.capitalTriadColAmount, { color: '#0F172A' }]} numberOfLines={1} adjustsFontSizeToFit>
+                {maskIfPrivate(metrics.totalAdministrativeCapital)}
+              </Text>
+              <Text style={styles.capitalTriadColSub}>Cupo total red</Text>
+            </View>
+
+            <View style={styles.capitalTriadSignBox}>
+              <Text style={styles.capitalTriadSignText}>=</Text>
+            </View>
+
+            {/* 2. CARTERA EN CALLE */}
+            <View style={[styles.capitalTriadColBox, { backgroundColor: '#F0FDFA', borderColor: '#99F6E4' }]}>
+              <Text style={[styles.capitalTriadColLabel, { color: '#0F766E' }]}>👥 CARTERA CALLE</Text>
+              <Text style={[styles.capitalTriadColAmount, { color: '#0F766E' }]} numberOfLines={1} adjustsFontSizeToFit>
+                {maskIfPrivate(metrics.activeCapitalInStreet)}
+              </Text>
+              <Text style={styles.capitalTriadColSub}>{activeLoans.length} créditos</Text>
+            </View>
+
+            <View style={styles.capitalTriadSignBox}>
+              <Text style={styles.capitalTriadSignText}>+</Text>
+            </View>
+
+            {/* 3. BASE EN MANO */}
+            <View style={[styles.capitalTriadColBox, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
+              <Text style={[styles.capitalTriadColLabel, { color: '#1D4ED8' }]}>💵 BASE EN MANO</Text>
+              <Text style={[styles.capitalTriadColAmount, { color: '#1D4ED8' }]} numberOfLines={1} adjustsFontSizeToFit>
+                {maskIfPrivate(metrics.cashAvailableInHand)}
+              </Text>
+              <Text style={styles.capitalTriadColSub}>Efectivo libre</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* BENTO GRID EJECUTIVO CONSOLIDADO */}
+        <View style={styles.adminBentoGrid}>
+          {/* Fila 1 */}
+          <View style={styles.adminBentoRow}>
+            <View style={[styles.adminBentoCard, { backgroundColor: '#0F172A' }]}>
+              <View style={styles.adminBentoIconRow}>
+                <Text style={styles.adminBentoTagDark}>💼 CARTERA ACTIVA</Text>
+                <TrendingUp size={14} color="#38BDF8" />
+              </View>
+              <Text style={styles.adminBentoBigAmountWhite} numberOfLines={1} adjustsFontSizeToFit>
+                {maskIfPrivate(metrics.activeCapitalInStreet)}
+              </Text>
+              <Text style={styles.adminBentoHintDark}>
+                {activeLoans.length} créditos activos • {customers.length} clientes en red
+              </Text>
+            </View>
+
+            <View style={[styles.adminBentoCard, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}>
+              <View style={styles.adminBentoIconRow}>
+                <Text style={[styles.adminBentoTagDark, { color: '#166534' }]}>💰 RECAUDO GLOBAL HOY</Text>
+                <Wallet size={14} color="#16A34A" />
+              </View>
+              <Text style={[styles.adminBentoBigAmountDark, { color: '#15803D' }]} numberOfLines={1} adjustsFontSizeToFit>
+                {maskIfPrivate(totalCollectedGlobal > 0 ? totalCollectedGlobal : metrics.collectedToday)}
+              </Text>
+              <Text style={styles.adminBentoHintLight}>
+                Meta: {maskIfPrivate(metrics.expectedDailyGoal)} ({metrics.progressPercentage}%)
+              </Text>
+            </View>
+          </View>
+
+          {/* Fila 2 */}
+          <View style={styles.adminBentoRow}>
+            <View style={[styles.adminBentoCard, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
+              <View style={styles.adminBentoIconRow}>
+                <Text style={[styles.adminBentoTagDark, { color: '#991B1B' }]}>⚠️ CARTERA EN MORA</Text>
+                <AlertCircle size={14} color="#DC2626" />
+              </View>
+              <Text style={[styles.adminBentoBigAmountDark, { color: '#B91C1C' }]} numberOfLines={1} adjustsFontSizeToFit>
+                {maskIfPrivate(totalOverdueAmount)}
+              </Text>
+              <Text style={styles.adminBentoHintLight}>
+                {totalOverdueCount} cliente(s) en mora activa
+              </Text>
+            </View>
+
+            <View style={[styles.adminBentoCard, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
+              <View style={styles.adminBentoIconRow}>
+                <Text style={[styles.adminBentoTagDark, { color: '#1E40AF' }]}>🏦 CAJA Y LIQUIDEZ</Text>
+                <Landmark size={14} color="#2563EB" />
+              </View>
+              <Text style={[styles.adminBentoBigAmountDark, { color: '#1D4ED8' }]} numberOfLines={1} adjustsFontSizeToFit>
+                {maskIfPrivate(metrics.cashAvailableInHand)}
+              </Text>
+              <Text style={styles.adminBentoHintLight}>
+                Efectivo disponible en calle y oficina
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* BARRA DE ACCIONES EJECUTIVAS EN UNA LÍNEA (BOTONES PEQUEÑOS, 2 PALABRAS, CON EMOJI) */}
+        <View style={styles.adminActionsSingleLineSection}>
+          <Text style={styles.adminSectionTitle}>ACCIONES GERENCIALES</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickActionsGrid}
+            contentContainerStyle={styles.adminActionsScrollRow}
           >
             <TouchableOpacity
-              style={styles.quickActionCard}
-              activeOpacity={0.8}
-              onPress={handleQuickPayFirstPending}
-            >
-              <View style={[styles.quickActionIconWrap, { backgroundColor: '#EFF6FF' }]}>
-                <Zap size={18} color="#2563EB" />
-              </View>
-              <Text style={styles.quickActionTitle}>Cobro rápido</Text>
-              <Text style={styles.quickActionSub} numberOfLines={1}>
-                {firstPendingItem ? `#${firstPendingItem.customer.orderIndex || 1} ${firstPendingItem.customer.fullName.split(' ')[0]}` : 'Al día'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickActionCard}
-              activeOpacity={0.8}
+              style={[styles.adminSmallBtn, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}
+              activeOpacity={0.75}
               onPress={onOpenNewLoan}
             >
-              <View style={[styles.quickActionIconWrap, { backgroundColor: '#ECFDF5' }]}>
-                <FilePlus2 size={18} color="#059669" />
-              </View>
-              <Text style={styles.quickActionTitle}>Nuevo crédito</Text>
-              <Text style={styles.quickActionSub} numberOfLines={1}>Desembolsar</Text>
+              <Text style={styles.adminSmallBtnText}>➕ Nuevo Crédito</Text>
             </TouchableOpacity>
+
+            {onOpenCapitalConfig && (
+              <TouchableOpacity
+                style={[styles.adminSmallBtn, { backgroundColor: '#F8FAFC', borderColor: '#CBD5E1' }]}
+                activeOpacity={0.75}
+                onPress={onOpenCapitalConfig}
+              >
+                <Text style={styles.adminSmallBtnText}>💼 Base & Admin</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
-              style={styles.quickActionCard}
-              activeOpacity={0.8}
-              onPress={onNavigateToRoute || (() => setActiveFilter('PROMESAS'))}
+              style={[styles.adminSmallBtn, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}
+              activeOpacity={0.75}
+              onPress={onOpenSettlement}
             >
-              <View style={[styles.quickActionIconWrap, { backgroundColor: '#FFFBEB' }]}>
-                <Clock size={18} color="#D97706" />
-                {counts.PROMESAS > 0 && (
-                  <View style={styles.quickActionBadge}>
-                    <Text style={styles.quickActionBadgeText}>{counts.PROMESAS}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.quickActionTitle}>Pendientes</Text>
-              <Text style={styles.quickActionSub} numberOfLines={1}>
-                {counts.PROMESAS > 0 ? `${counts.PROMESAS} hoy` : 'Sin tareas'}
-              </Text>
+              <Text style={styles.adminSmallBtnText}>📊 Liquidar Rutas</Text>
             </TouchableOpacity>
 
-            {onOpenRecaudo && (
+            {onOpenDailyReport && (
               <TouchableOpacity
-                style={styles.quickActionCard}
-                activeOpacity={0.8}
-                onPress={onOpenRecaudo}
+                style={[styles.adminSmallBtn, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}
+                activeOpacity={0.75}
+                onPress={onOpenDailyReport}
               >
-                <View style={[styles.quickActionIconWrap, { backgroundColor: '#E0F2FE' }]}>
-                  <Landmark size={18} color="#0284C7" />
-                </View>
-                <Text style={styles.quickActionTitle}>Avance</Text>
-                <Text style={styles.quickActionSub} numberOfLines={1}>
-                  Avance oficina
-                </Text>
+                <Text style={styles.adminSmallBtnText}>📑 Ver Reportes</Text>
+              </TouchableOpacity>
+            )}
+
+            {onOpenExpense && (
+              <TouchableOpacity
+                style={[styles.adminSmallBtn, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}
+                activeOpacity={0.75}
+                onPress={onOpenExpense}
+              >
+                <Text style={styles.adminSmallBtnText}>⛽ Registrar Gasto</Text>
+              </TouchableOpacity>
+            )}
+
+            {onOpenRouteSelector && (
+              <TouchableOpacity
+                style={[styles.adminSmallBtn, { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}
+                activeOpacity={0.75}
+                onPress={onOpenRouteSelector}
+              >
+                <Text style={styles.adminSmallBtnText}>👥 Cambiar Ruta</Text>
               </TouchableOpacity>
             )}
           </ScrollView>
         </View>
 
-        {/* 4. Solo dos señales operativas; el detalle vive en la hoja de ruta. */}
-        <View style={styles.routeSignalsRow}>
-          <View style={styles.routeSignal}>
-            <Text style={styles.routeSignalLabel}>AVANCE</Text>
-            <Text style={styles.routeSignalValue}>{metrics.visitedCustomersCount}/{metrics.expectedCustomersCount}</Text>
-            <Text style={styles.routeSignalHint}>clientes gestionados</Text>
+        {/* SECCIÓN SUPERVISIÓN DE TODAS LAS RUTAS */}
+        <View style={styles.adminRoutesSection}>
+          <View style={styles.adminRoutesHeaderRow}>
+            <Text style={styles.adminSectionTitle}>SUPERVISIÓN DE RUTAS Y COBRADORES ({allRoutes.length})</Text>
+            {onOpenRouteSelector && (
+              <TouchableOpacity onPress={onOpenRouteSelector}>
+                <Text style={styles.adminFilterAllText}>Ver todas</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <View style={styles.routeSignalDivider} />
-          <View style={styles.routeSignal}>
-            <Text style={styles.routeSignalLabel}>MORA ACTIVA</Text>
-            <Text style={[styles.routeSignalValue, metrics.overdueCustomersCount > 0 && { color: COLORS.danger }]}>
-              {metrics.overdueCustomersCount}
+
+          {allRoutes.map((rt) => {
+            const collectorUser = allUsers.find((u) => u.id === rt.collectorId);
+            const rtCustomers = customers.filter(
+              (c) => c.routeId === rt.id || c.assignedCollectorId === rt.collectorId
+            );
+            const rtLoans = loans.filter((l) => l.routeId === rt.id);
+            const rtActiveLoans = rtLoans.filter((l) => l.status === 'ACTIVE');
+            const rtPayments = payments.filter(
+              (p) =>
+                p.status === 'COMPLETED' &&
+                p.createdAt?.startsWith(todayStr) &&
+                rtCustomers.some((c) => c.id === p.customerId)
+            );
+            const rtCollected = rtPayments.reduce((s, p) => s + p.amountReceived, 0);
+
+            return (
+              <View key={rt.id} style={styles.adminRouteCard}>
+                <View style={styles.adminRouteCardTop}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.adminRouteName}>{rt.name}</Text>
+                      <View style={styles.adminRouteActivePill}>
+                        <Text style={styles.adminRouteActivePillText}>Activa</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.adminRouteCollector}>
+                      Cobrador: <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{collectorUser?.name || 'Asignado'}</Text>
+                    </Text>
+                  </View>
+
+                  {onNavigateToRoute && (
+                    <TouchableOpacity
+                      style={styles.adminSuperviseBtn}
+                      activeOpacity={0.8}
+                      onPress={onNavigateToRoute}
+                    >
+                      <Text style={styles.adminSuperviseBtnText}>👁️ Ver Ruta</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Métricas de la ruta */}
+                <View style={styles.adminRouteMetricsRow}>
+                  <View style={styles.adminRouteMetricCol}>
+                    <Text style={styles.adminRouteMetricLabel}>Cobrado Hoy</Text>
+                    <Text style={styles.adminRouteMetricValue}>
+                      {formatCOP(rtCollected > 0 ? rtCollected : (allRoutes.length === 1 ? metrics.collectedToday : 0))}
+                    </Text>
+                  </View>
+
+                  <View style={styles.adminRouteMetricCol}>
+                    <Text style={styles.adminRouteMetricLabel}>Créditos Activos</Text>
+                    <Text style={styles.adminRouteMetricValue}>
+                      {rtActiveLoans.length} préstamos
+                    </Text>
+                  </View>
+
+                  <View style={styles.adminRouteMetricCol}>
+                    <Text style={styles.adminRouteMetricLabel}>Clientes en Ruta</Text>
+                    <Text style={styles.adminRouteMetricValue}>
+                      {rtCustomers.length} clientes
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+    );
+  };
+
+  const renderCollectorDashboard = () => (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: dockScrollClearance }]}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      {/* ENCABEZADO EXCLUSIVO PARA COBRADOR */}
+      <View style={styles.collectorHeaderCard}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+          <Text style={styles.collectorRoleBadge}>🛵 RUTA DE COBRADOR</Text>
+          <View style={styles.liveIndicator}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>EN CALLE</Text>
+          </View>
+        </View>
+        <Text style={styles.collectorHeaderTitle}>Mi Ruta de Cobro de Hoy</Text>
+        <Text style={styles.collectorHeaderSub}>
+          {activeRouteLabel || 'Ruta activa'} • {customerCardsData.length} paradas asignadas
+        </Text>
+      </View>
+
+      {/* 1. HERO FINTECH LIMPIO: COBRO PLENO DE LA RUTA */}
+      <View style={styles.cleanHeroCard}>
+        <View style={styles.cleanHeroTopRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.cleanHeroLabel}>COBRADO HOY EN MI RUTA</Text>
+            <TouchableOpacity onPress={togglePrivacy} style={styles.cleanEyeBtn} activeOpacity={0.7}>
+              {privacyMode ? (
+                <EyeOff size={11} color="#94A3B8" />
+              ) : (
+                <Eye size={11} color="#94A3B8" />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.cleanPercentPill}>
+            <TrendingUp size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
+            <Text style={styles.cleanPercentText}>{metrics.progressPercentage}%</Text>
+          </View>
+        </View>
+
+        <View style={styles.cleanAmountRow}>
+          <Text style={styles.cleanMainAmount} numberOfLines={1} adjustsFontSizeToFit>
+            {maskIfPrivate(metrics.collectedToday)}
+          </Text>
+          <Text style={styles.cleanGoalText}>
+            de {maskIfPrivate(metrics.expectedDailyGoal)} • {metrics.visitedCustomersCount}/{metrics.expectedCustomersCount} cobrados
+          </Text>
+        </View>
+
+        <View style={styles.cleanProgressTrack}>
+          <View
+            style={[
+              styles.cleanProgressFill,
+              { width: `${Math.min(100, Math.max(4, metrics.progressPercentage))}%` },
+            ]}
+          />
+        </View>
+
+        {onOpenDailyReport && (
+          <View style={styles.cleanHeroFooterLink}>
+            <TouchableOpacity
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+              activeOpacity={0.7}
+              onPress={onOpenDailyReport}
+            >
+              <Text style={styles.cleanHeroFooterText}>
+                {metrics.salidasCount > 0 ? (
+                  <>
+                    Salidas: <Text style={{ fontWeight: '800', color: '#F8FAFC' }}>{maskIfPrivate(metrics.disbursedToday || 0)}</Text>
+                    {` • ${metrics.salidasCount} salida${metrics.salidasCount > 1 ? 's' : ''}`}
+                  </>
+                ) : (
+                  <Text style={{ color: '#94A3B8' }}>Ruta al día • Sin salidas pendientes</Text>
+                )}
+              </Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {onOpenExpense && officeConfig.allowCollectorExpenses !== false && (
+                <TouchableOpacity
+                  style={styles.heroExpensePill}
+                  activeOpacity={0.7}
+                  onPress={onOpenExpense}
+                >
+                  <Fuel size={11} color="#ea580c" />
+                  <Text style={styles.heroExpensePillText}>+ Gasto</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}
+                activeOpacity={0.7}
+                onPress={onOpenDailyReport}
+              >
+                <Text style={styles.cleanHeroLinkAction}>📊 Cuadre</Text>
+                <ChevronRight size={13} color="#38BDF8" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* TARJETA DE CAPITAL ASIGNADO A MI RUTA */}
+      <View style={styles.collectorCapitalCard}>
+        <View style={styles.collectorCapitalHeader}>
+          <Text style={styles.collectorCapitalTag}>💼 CAPITAL ASIGNADO A MI RUTA</Text>
+          <Text style={styles.collectorCapitalFormula}>Admin = Cartera + Base</Text>
+        </View>
+
+        <View style={styles.collectorCapitalGrid}>
+          <View style={styles.collectorCapitalItem}>
+            <Text style={styles.collectorCapitalItemLabel}>📈 Administrativo</Text>
+            <Text style={styles.collectorCapitalItemVal} numberOfLines={1} adjustsFontSizeToFit>
+              {maskIfPrivate(metrics.totalAdministrativeCapital)}
             </Text>
-            <Text style={styles.routeSignalHint}>
-              {metrics.overdueCustomersCount > 0 ? 'clientes por priorizar' : 'ruta al día'}
+          </View>
+
+          <View style={styles.collectorCapitalDivider} />
+
+          <View style={styles.collectorCapitalItem}>
+            <Text style={styles.collectorCapitalItemLabel}>👥 Cartera en Calle</Text>
+            <Text style={[styles.collectorCapitalItemVal, { color: '#0F766E' }]} numberOfLines={1} adjustsFontSizeToFit>
+              {maskIfPrivate(metrics.activeCapitalInStreet)}
+            </Text>
+          </View>
+
+          <View style={styles.collectorCapitalDivider} />
+
+          <View style={styles.collectorCapitalItem}>
+            <Text style={styles.collectorCapitalItemLabel}>💵 Base en Mano</Text>
+            <Text style={[styles.collectorCapitalItemVal, { color: '#1D4ED8' }]} numberOfLines={1} adjustsFontSizeToFit>
+              {maskIfPrivate(metrics.cashAvailableInHand)}
             </Text>
           </View>
         </View>
 
-        {/* 3. BANNER PRINCIPAL: IR A LA HOJA DE RUTA */}
-        {onNavigateToRoute && (
-          <TouchableOpacity
-            style={styles.openRouteBanner}
-            activeOpacity={0.85}
-            onPress={onNavigateToRoute}
-          >
-            <View style={styles.openRouteBannerLeft}>
-              <View style={styles.openRouteIconWrap}>
-                <MapPin size={20} color="#2563EB" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.openRouteBannerTitle}>Ir a Hoja de Ruta de Cobro</Text>
-                <Text style={styles.openRouteBannerSub}>
-                  {customerCardsData.length} clientes en secuencia • {counts.COBRAR_HOY} a cobrar hoy
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={18} color="#2563EB" />
-          </TouchableOpacity>
-        )}
+        <View style={styles.collectorCapitalFooter}>
+          <Text style={styles.collectorCapitalFooterText}>
+            💡 Base disponible para prestar hoy: <Text style={{ fontWeight: '800', color: '#1D4ED8' }}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
+          </Text>
+        </View>
+      </View>
 
-      </ScrollView>
-    );
+      {/* 2. ACCIONES RÁPIDAS DEL COBRADOR EN UNA SOLA LÍNEA (BOTONES PEQUEÑOS, 2 PALABRAS, CON EMOJI) */}
+      <View style={styles.adminActionsSingleLineSection}>
+        <Text style={styles.adminSectionTitle}>ACCIONES DE RUTA</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.adminActionsScrollRow}
+        >
+          {firstPendingItem && (
+            <TouchableOpacity
+              style={[styles.adminSmallBtn, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}
+              activeOpacity={0.75}
+              onPress={handleQuickPayFirstPending}
+            >
+              <Text style={styles.adminSmallBtnText}>💵 Registrar Cobro</Text>
+            </TouchableOpacity>
+          )}
+
+          {onOpenExpense && (
+            <TouchableOpacity
+              style={[styles.adminSmallBtn, { backgroundColor: '#FFF7ED', borderColor: '#FED7AA' }]}
+              activeOpacity={0.75}
+              onPress={onOpenExpense}
+            >
+              <Text style={styles.adminSmallBtnText}>⛽ Gasto Ruta</Text>
+            </TouchableOpacity>
+          )}
+
+          {onNavigateToRoute && (
+            <TouchableOpacity
+              style={[styles.adminSmallBtn, { backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }]}
+              activeOpacity={0.75}
+              onPress={onNavigateToRoute}
+            >
+              <Text style={styles.adminSmallBtnText}>📍 Ver Ruta</Text>
+            </TouchableOpacity>
+          )}
+
+          {onOpenDailyReport && (
+            <TouchableOpacity
+              style={[styles.adminSmallBtn, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}
+              activeOpacity={0.75}
+              onPress={onOpenDailyReport}
+            >
+              <Text style={styles.adminSmallBtnText}>📊 Mi Cuadre</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.adminSmallBtn, { backgroundColor: '#FAF5FF', borderColor: '#E9D5FF' }]}
+            activeOpacity={0.75}
+            onPress={onOpenNewLoan}
+          >
+            <Text style={styles.adminSmallBtnText}>➕ Nuevo Crédito</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* 3. SIGUIENTE COBRO EN CALLE */}
+      {firstPendingItem && (
+        <TouchableOpacity
+          style={styles.nextCollectionCard}
+          activeOpacity={0.82}
+          onPress={handleQuickPayFirstPending}
+        >
+          <View style={styles.nextCollectionTopRow}>
+            <Text style={styles.nextCollectionEyebrow}>SIGUIENTE COBRO EN CALLE</Text>
+            <Text style={styles.nextCollectionOrder}>PARADA #{firstPendingItem.customer.orderIndex || 1}</Text>
+          </View>
+          <View style={styles.nextCollectionBody}>
+            <View style={styles.nextCollectionAvatar}>
+              <Text style={styles.nextCollectionAvatarText}>{getInitials(firstPendingItem.customer.fullName)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.nextCollectionName} numberOfLines={1}>{firstPendingItem.customer.fullName}</Text>
+              <Text style={styles.nextCollectionMeta} numberOfLines={1}>
+                {firstPendingItem.customer.neighborhood} · {firstPendingItem.dueDateDisplay}
+              </Text>
+            </View>
+            <View style={styles.nextCollectionAction}>
+              <Text style={styles.nextCollectionActionText}>Cobrar</Text>
+              <ChevronRight size={15} color="#FFFFFF" />
+            </View>
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* 4. Señales de avance de la jornada */}
+      <View style={styles.routeSignalsRow}>
+        <View style={styles.routeSignal}>
+          <Text style={styles.routeSignalLabel}>AVANCE HOY</Text>
+          <Text style={styles.routeSignalValue}>{metrics.visitedCustomersCount}/{metrics.expectedCustomersCount}</Text>
+          <Text style={styles.routeSignalHint}>clientes visitados</Text>
+        </View>
+        <View style={styles.routeSignalDivider} />
+        <View style={styles.routeSignal}>
+          <Text style={styles.routeSignalLabel}>MORA EN RUTA</Text>
+          <Text style={[styles.routeSignalValue, metrics.overdueCustomersCount > 0 && { color: COLORS.danger }]}>
+            {metrics.overdueCustomersCount}
+          </Text>
+          <Text style={styles.routeSignalHint}>
+            {metrics.overdueCustomersCount > 0 ? 'clientes vencidos' : 'ruta al día'}
+          </Text>
+        </View>
+      </View>
+
+      {/* 5. BANNER: IR A LA HOJA DE RUTA */}
+      {onNavigateToRoute && (
+        <TouchableOpacity
+          style={styles.openRouteBanner}
+          activeOpacity={0.85}
+          onPress={onNavigateToRoute}
+        >
+          <View style={styles.openRouteBannerLeft}>
+            <View style={styles.openRouteIconWrap}>
+              <MapPin size={20} color="#2563EB" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.openRouteBannerTitle}>Ir a Hoja de Ruta de Cobro</Text>
+              <Text style={styles.openRouteBannerSub}>
+                {customerCardsData.length} clientes en secuencia • {counts.COBRAR_HOY} a cobrar hoy
+              </Text>
+            </View>
+          </View>
+          <ChevronRight size={18} color="#2563EB" />
+        </TouchableOpacity>
+      )}
+    </ScrollView>
+  );
+
+  if (viewMode === 'DASHBOARD') {
+    if (isAdminMode) {
+      return renderAdminGeneralDashboard();
+    }
+    return renderCollectorDashboard();
   }
 
   // MODO RUTA PURA: Enfocado 100% en la cobranza secuencial de la calle sin cuadros de métricas
@@ -1075,12 +1452,23 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             borderRadius: 8,
           }}
           activeOpacity={0.75}
-          onPress={isAdminMode ? onOpenSettlement : onOpenDailyReport || onOpenSettlement}
+          onPress={isAdminMode ? onOpenSettlement : onOpenDailyReport}
         >
-          <Landmark size={11} color={COLORS.primary} style={{ marginRight: 4 }} />
-          <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.primary }}>
-            Liquidar
-          </Text>
+          {isAdminMode ? (
+            <>
+              <Landmark size={11} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.primary }}>
+                🏛️ Liquidar Rutas
+              </Text>
+            </>
+          ) : (
+            <>
+              <Calculator size={11} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.primary }}>
+                📊 Mi Cuadre
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -1386,14 +1774,17 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             ? loans.find((l) => l.customerId === optionsCustomer.id && l.status === 'ACTIVE') || null
             : null
         }
+        isAdmin={isAdminMode}
         onClose={() => setOptionsCustomer(null)}
         onViewDetail={(c) => onViewCustomerDetail(c)}
-        onEditCustomer={(c) => onViewCustomerDetail(c)}
-        onNewLoan={() => onOpenNewLoan()}
-        onViewHistory={(c) => onViewCustomerDetail(c)}
+        onEditCustomer={(c) => (onEditCustomer ? onEditCustomer(c) : onViewCustomerDetail(c))}
+        onNewLoan={(c) => (onNewLoanForCustomer ? onNewLoanForCustomer(c) : onOpenNewLoan())}
+        onFixedDateLoan={(c) => (onFixedDateLoan ? onFixedDateLoan(c) : onOpenNewLoan())}
+        onViewHistory={(c) => (onViewHistory ? onViewHistory(c) : onViewCustomerDetail(c))}
         onPromiseLoan={(c, l) => onPromiseCustomer && onPromiseCustomer(c, l)}
         onNonPayment={(c, l) => onNonPaymentCustomer && onNonPaymentCustomer(c, l)}
         onRenewLoan={(c, l) => onRenewCustomer && onRenewCustomer(c, l)}
+        onDeleteCustomer={isAdminMode ? onDeleteCustomer : undefined}
       />
     </ScrollView>
   );
@@ -1409,14 +1800,14 @@ const styles = StyleSheet.create({
   },
   // 1. HERO FINTECH LIMPIO: COBRO PLENO (.cleanHeroCard)
   cleanHeroCard: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 24,
+    marginHorizontal: 16,
+    marginTop: 2,
+    marginBottom: 16,
     minHeight: 158,
-    paddingHorizontal: 20,
-    paddingTop: 18,
+    paddingHorizontal: 18,
+    paddingTop: 16,
     paddingBottom: 14,
-    borderRadius: 24,
+    borderRadius: 22,
     backgroundColor: COLORS.dockBg,
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 3 },
@@ -1719,9 +2110,9 @@ const styles = StyleSheet.create({
 
   routeSignalsRow: {
     flexDirection: 'row',
-    marginHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
+    marginHorizontal: 16,
+    marginBottom: 20,
+    gap: 10,
     backgroundColor: 'transparent',
   },
   routeSignal: {
@@ -2845,5 +3236,486 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#1D4ED8',
+  },
+  adminHeaderCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  adminHeaderTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  adminRoleBadge: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#1D4ED8',
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    letterSpacing: 0.5,
+  },
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#16A34A',
+  },
+  liveText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#16A34A',
+  },
+  adminMainTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: -0.4,
+  },
+  adminSubtitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  adminRouteSelectorBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    maxWidth: 160,
+  },
+  adminRouteSelectorText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  adminBentoGrid: {
+    marginHorizontal: 16,
+    gap: 10,
+    marginBottom: 14,
+  },
+  adminBentoRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  adminBentoCard: {
+    flex: 1,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  adminBentoIconRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  adminBentoTagDark: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+  },
+  adminBentoBigAmountWhite: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  adminBentoBigAmountDark: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  adminBentoHintDark: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10,
+    color: '#94A3B8',
+    marginTop: 4,
+  },
+  adminBentoHintLight: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 4,
+  },
+  adminActionsSingleLineSection: {
+    marginHorizontal: 0,
+    marginBottom: 14,
+  },
+  adminSectionTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#64748B',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    paddingHorizontal: 16,
+  },
+  adminActionsScrollRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  adminSmallBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminSmallBtnText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  adminRoutesSection: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  adminRoutesHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  adminFilterAllText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  adminRouteCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 10,
+  },
+  adminRouteCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  adminRouteName: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  adminRouteActivePill: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  adminRouteActivePillText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#16A34A',
+  },
+  adminRouteCollector: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  adminSuperviseBtn: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  adminSuperviseBtnText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  adminRouteMetricsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  adminRouteMetricCol: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  adminRouteMetricLabel: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 9.5,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  adminRouteMetricValue: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+  collectorHeaderCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  collectorRoleBadge: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#0D9488',
+    backgroundColor: '#F0FDFA',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#99F6E4',
+    letterSpacing: 0.5,
+  },
+  collectorHeaderTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: -0.4,
+  },
+  collectorHeaderSub: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  capitalTriadCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  capitalTriadHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  capitalTriadIconBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  capitalTriadTag: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10.5,
+    fontWeight: '900',
+    color: '#1D4ED8',
+    letterSpacing: 0.4,
+  },
+  capitalAdjustBtn: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  capitalAdjustBtnText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  capitalTriadFormulaText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 10,
+  },
+  capitalTriadColsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  capitalTriadColBox: {
+    flex: 1,
+    borderRadius: 10,
+    padding: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  capitalTriadColLabel: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#475569',
+    marginBottom: 2,
+  },
+  capitalTriadColAmount: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  capitalTriadColSub: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 8.5,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
+  capitalTriadSignBox: {
+    paddingHorizontal: 3,
+  },
+  capitalTriadSignText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#94A3B8',
+  },
+  collectorCapitalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  collectorCapitalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  collectorCapitalTag: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10.5,
+    fontWeight: '900',
+    color: '#0D9488',
+    letterSpacing: 0.4,
+  },
+  collectorCapitalFormula: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  collectorCapitalGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  collectorCapitalItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  collectorCapitalItemLabel: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748B',
+    marginBottom: 2,
+  },
+  collectorCapitalItemVal: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  collectorCapitalDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#E2E8F0',
+  },
+  collectorCapitalFooter: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  collectorCapitalFooterText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10.5,
+    color: '#64748B',
   },
 });

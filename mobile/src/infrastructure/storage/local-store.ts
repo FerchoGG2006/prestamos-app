@@ -338,6 +338,40 @@ class LocalStore {
           safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
         }
 
+        // =========================================================================
+        // MIGRACIÓN Y AUTO-SANACIÓN V1 -> V2 (Teléfonos con versión anterior)
+        // =========================================================================
+        // 1. Purgar movimientos obsoletos de 'Base sugerida' ($200.000) heredados de v1
+        const legacyBaseMovs = this.cashMovements.filter((cm: any) =>
+          cm.description?.includes('Base') ||
+          cm.notes?.includes('Base') ||
+          (cm.category === 'ADJUSTMENT' && cm.amount === 200000) ||
+          (cm.type === 'INCOME' && cm.amount === 200000 && cm.description?.toLowerCase().includes('base'))
+        );
+        if (legacyBaseMovs.length > 0) {
+          this.cashMovements = this.cashMovements.filter((cm: any) =>
+            !cm.description?.includes('Base') &&
+            !cm.notes?.includes('Base') &&
+            !(cm.category === 'ADJUSTMENT' && cm.amount === 200000) &&
+            !(cm.type === 'INCOME' && cm.amount === 200000 && cm.description?.toLowerCase().includes('base'))
+          );
+          safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
+        }
+
+        // 2. Si la oficina venía de v1 y no tiene targetAdministrative en rutas o no tiene admin con clave válida:
+        const validAdmin = this.users.find(
+          (u) => (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') && Boolean(u.password?.trim())
+        );
+        const routesNeedMigration =
+          this.routes.length === 0 ||
+          this.routes.some((r) => r.targetAdministrative === undefined || r.targetAdministrative === null);
+
+        if (this.officeConfig.isSetupCompleted && (!validAdmin || routesNeedMigration)) {
+          // Desbloquear automáticamente la configuración para que el asistente v2 configure dinero total y claves
+          this.officeConfig.isSetupCompleted = false;
+          safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
+        }
+
         // Si la cartera aún contiene clientes o préstamos demo de prueba antiguos ('cust-1'), limpiarla para inicio real
         if (this.customers.some((c) => c.id === 'cust-1' || c.fullName?.includes('Ana María Gómez'))) {
           this.customers = [];
@@ -523,7 +557,8 @@ class LocalStore {
     const existingAdmin = this.users.find(
       (u) => (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') && Boolean(u.password?.trim())
     );
-    if (!existingAdmin || !existingAdmin.password) return false;
+    // Si no hay Administrador con clave válida previa (migración de v1), permitir el acceso para configurar
+    if (!existingAdmin || !existingAdmin.password) return true;
     return verifyPassword(password, existingAdmin.password);
   }
 
@@ -908,6 +943,37 @@ class LocalStore {
     this.notify();
   }
 
+  /**
+   * Actualiza directamente el Administrativo (Cupo Total) y la Base de Efectivo de una ruta
+   * sin requerir re-escribir usuario o contraseña.
+   */
+  public async updateRouteCapital(params: {
+    routeId: string;
+    targetAdministrative?: number;
+    initialCashBase?: number;
+  }): Promise<Route> {
+    const routeIdx = this.routes.findIndex((r) => r.id === params.routeId);
+    if (routeIdx === -1) throw new Error('Ruta no encontrada.');
+    const currentRoute = this.routes[routeIdx];
+
+    const updatedRoute: Route = {
+      ...currentRoute,
+      targetAdministrative:
+        params.targetAdministrative !== undefined
+          ? params.targetAdministrative
+          : currentRoute.targetAdministrative,
+      initialCashBase:
+        params.initialCashBase !== undefined
+          ? params.initialCashBase
+          : currentRoute.initialCashBase,
+    };
+
+    this.routes[routeIdx] = updatedRoute;
+    await safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
+    this.notify();
+    return updatedRoute;
+  }
+
   public async deleteRoute(routeId: string): Promise<void> {
     if (this.routes.length <= 1) {
       throw new Error('La oficina debe mantener al menos 1 ruta activa.');
@@ -1091,34 +1157,62 @@ class LocalStore {
     const hasTargetAdmin = matchingRoutes.some((r) => (r.targetAdministrative || 0) > 0);
     const totalTarget = matchingRoutes.reduce((sum, r) => sum + (r.targetAdministrative || 0), 0);
     const totalTargetCustomers = matchingRoutes.reduce((sum, r) => sum + (r.expectedCustomersCount || 0), 0);
+    const totalAssignedCashBase = matchingRoutes.reduce((sum, r) => sum + (r.initialCashBase || 0), 0);
 
-    let initialCashBase = 0;
-    if (hasTargetAdmin) {
-      // Dinero Total de la ruta fijado por la oficina.
-      // Al pasar o ingresar clientes uno por uno, la base disponible para prestar es:
-      // Dinero Total de la Ruta - Cartera colocada en calle
-      initialCashBase = Math.max(0, totalTarget - activeCapitalInStreet);
-    } else {
-      const adjustmentMovements = scopedCashMovements.filter(
-        (cm) => cm.type === 'INCOME' && cm.category === 'ADJUSTMENT' && !cm.id.startsWith('cm-base-')
+    // =========================================================================
+    // CÁLCULO DE BASE EN EFECTIVO Y CAPITAL ADMINISTRATIVO TOTAL
+    //
+    // Reglas Financieras Inmutables:
+    // 1. Un pago de cuota ($30k en efectivo):
+    //    - Se RESTA ÚNICAMENTE de la Cartera (disminuye la deuda en calle de los clientes).
+    //    - Se SUMA a la Base en mano (ingresa dinero físico al bolsillo del cobrador).
+    //    - El Administrativo NO SE RESTA (el patrimonio total de la ruta permanece inmutable).
+    // 2. Si la ruta tiene Dinero Total Asignado (totalTarget > 0):
+    //    - Administrativo Total = totalTarget (constante fijada por la oficina).
+    //    - Base en Mano = totalTarget - activeCapitalInStreet - collectedDigitalToday - expensesToday - recaudoRetiradoToday
+    // 3. Si la ruta NO tiene Dinero Total Asignado aún (totalTarget <= 0):
+    //    - Base en Mano = Base Inicial + collectedCashToday - salidasNetCashDisbursed - expensesToday - recaudoRetiradoToday
+    //    - Administrativo Total = activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
+    // =========================================================================
+
+    let cashAvailableInHand = 0;
+    let totalAdministrativeCapital = 0;
+
+    if (hasTargetAdmin && totalTarget > 0 && totalTarget >= activeCapitalInStreet) {
+      // MODELO A: La ruta tiene fijado un Dinero Total Administrado (ej: $10.000.000)
+      totalAdministrativeCapital = totalTarget;
+
+      // Base = Dinero Total de la ruta - Cartera en la calle
+      // ajustado por transferencias digitales (dinero en banco), gastos de hoy y retiros a oficina de hoy.
+      // Cuando un cliente abona 30k en efectivo:
+      // activeCapitalInStreet BAJA 30k -> (totalTarget - activeCapitalInStreet) SUBE 30k directamente a la Base.
+      cashAvailableInHand = Math.max(
+        0,
+        totalTarget -
+          activeCapitalInStreet -
+          collectedDigitalToday -
+          expensesToday -
+          recaudoRetiradoToday
       );
-      if (adjustmentMovements.length > 0) {
-        initialCashBase = adjustmentMovements.reduce((sum, cm) => sum + cm.amount, 0);
-      } else {
-        initialCashBase = 0;
-      }
+    } else {
+      // MODELO B: La ruta no tiene un Administrativo tope fijado o está en transición
+      const initialBase = totalAssignedCashBase;
+      cashAvailableInHand = Math.max(
+        0,
+        initialBase +
+          collectedCashToday -
+          salidasNetCashDisbursed -
+          expensesToday -
+          recaudoRetiradoToday
+      );
+
+      // El Administrativo es la suma del patrimonio vivo: Cartera en Calle + Base en Mano + Cobros Digitales
+      // Como un abono de 30k resta 30k a Cartera y suma 30k a Base, el Administrativo permanece EXACTAMENTE IGUAL.
+      totalAdministrativeCapital = Math.max(
+        totalTarget,
+        activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
+      );
     }
-
-    const cashAvailableInHand = Math.max(
-      0,
-      initialCashBase + collectedCashToday - disbursedToday - expensesToday - recaudoRetiradoToday
-    );
-
-    // Administrativo de la Ruta (Dinero total asignado a la ruta):
-    const totalAdministrativeCapital =
-      totalTarget > 0
-        ? totalTarget
-        : activeCapitalInStreet + cashAvailableInHand;
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
 
@@ -1394,12 +1488,17 @@ class LocalStore {
   public async deleteCustomer(
     customerId: string,
     force: boolean = false,
-    adminPassword?: string
+    adminPassword?: string,
+    callerRole?: UserRole
   ): Promise<{ success: boolean; message: string }> {
     // Protección de seguridad: La eliminación de clientes es exclusiva del Administrador o requiere clave de autorización
     const sessionUser = this.users.find((u) => u.id === this.activeSession?.collectorId);
     const isSessionAdmin =
-      sessionUser?.role === 'ADMIN' || sessionUser?.role === 'SUPER_ADMIN';
+      callerRole === 'ADMIN' ||
+      callerRole === 'SUPER_ADMIN' ||
+      sessionUser?.role === 'ADMIN' ||
+      sessionUser?.role === 'SUPER_ADMIN';
+
     if (!isSessionAdmin) {
       if (!adminPassword || !this.verifyAdminPassword(adminPassword)) {
         throw new Error(
@@ -3213,6 +3312,29 @@ class LocalStore {
       safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
       safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession)),
     ]);
+    this.notify();
+  }
+
+  /**
+   * Restablecimiento integral de fábrica (Factory Reset):
+   * Purga absolutamente todas las claves locales para actualizar dispositivos con versiones heredadas corruptas.
+   */
+  public async factoryResetAll(): Promise<void> {
+    await Promise.all(Object.values(STORAGE_KEYS).map((k) => safeStorage.removeItem(k)));
+    this.users = [];
+    this.routes = [];
+    this.customers = [];
+    this.loans = [];
+    this.installments = [];
+    this.payments = [];
+    this.renewals = [];
+    this.settlements = [];
+    this.promises = [];
+    this.cashMovements = [];
+    this.nonPaymentVisits = [];
+    this.auditLogs = [];
+    this.officeConfig = { ...DEFAULT_OFFICE_CONFIG, isSetupCompleted: false, companyName: '' };
+    this.activeSession = null;
     this.notify();
   }
 }
