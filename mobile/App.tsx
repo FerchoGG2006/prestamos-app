@@ -650,6 +650,7 @@ function MainApp({
     } else {
       setSelectedRouteId('ALL');
     }
+    syncFromStore();
     if (remember) {
       await safeStorage.setItem('@prestamos_logged_user_id', user.id);
     } else {
@@ -1668,28 +1669,13 @@ function MainApp({
                   style={styles.operationMenuItem}
                   onPress={() => {
                     setOperationsMenuVisible(false);
-                    setSettlementModalVisible(true);
+                    setCollectorTab('LIQUIDAR');
                   }}
                 >
                   <View style={styles.operationMenuIcon}><Landmark size={18} color={COLORS.primary} /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>🏛️ Liquidación de Rutas</Text>
-                    <Text style={styles.operationMenuSubtitle}>Arqueo y cierre oficial de los cobradores</Text>
-                  </View>
-                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.operationMenuItem}
-                  onPress={() => {
-                    setOperationsMenuVisible(false);
-                    setCollectorTab('LIQUIDAR');
-                  }}
-                >
-                  <View style={styles.operationMenuIcon}><TrendingUp size={18} color="#059669" /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>📊 Historial de Liquidaciones</Text>
-                    <Text style={styles.operationMenuSubtitle}>Registro consolidado de cierres de caja</Text>
+                    <Text style={styles.operationMenuTitle}>🏛️ Liquidaciones y Arqueos</Text>
+                    <Text style={styles.operationMenuSubtitle}>Auditoría de cierres diarios, consolidado y liquidar ruta</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
@@ -1749,7 +1735,9 @@ function MainApp({
                   style={styles.operationMenuItem}
                   onPress={() => {
                     setOperationsMenuVisible(false);
-                    setCollectorCuadreModalVisible(true);
+                    setTimeout(() => {
+                      setCollectorCuadreModalVisible(true);
+                    }, Platform.OS === 'ios' ? 250 : 50);
                   }}
                 >
                   <View style={styles.operationMenuIcon}><Calculator size={18} color={COLORS.primary} /></View>
@@ -1764,7 +1752,9 @@ function MainApp({
                   style={styles.operationMenuItem}
                   onPress={() => {
                     setOperationsMenuVisible(false);
-                    setExpenseModalVisible(true);
+                    setTimeout(() => {
+                      setExpenseModalVisible(true);
+                    }, Platform.OS === 'ios' ? 250 : 50);
                   }}
                 >
                   <View style={styles.operationMenuIcon}><Fuel size={18} color="#EA580C" /></View>

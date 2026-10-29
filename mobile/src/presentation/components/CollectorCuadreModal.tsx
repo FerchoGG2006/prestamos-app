@@ -67,12 +67,12 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [targetPhone, setTargetPhone] = useState('');
 
-  const collectedCash = metrics.collectedCashToday;
-  const collectedDigital = metrics.collectedDigitalToday;
-  const totalCollected = metrics.collectedToday;
-  const expensesToday = metrics.expensesToday || 0;
-  const disbursedToday = metrics.disbursedToday || 0;
-  const recaudoRetiradoToday = metrics.recaudoRetiradoToday || 0;
+  const collectedCash = metrics?.collectedCashToday || 0;
+  const collectedDigital = metrics?.collectedDigitalToday || 0;
+  const totalCollected = metrics?.collectedToday || 0;
+  const expensesToday = metrics?.expensesToday || 0;
+  const disbursedToday = metrics?.disbursedToday || 0;
+  const recaudoRetiradoToday = metrics?.recaudoRetiradoToday || 0;
 
   // REGLA FUNDAMENTAL DE NEGOCIO:
   // El arqueo físico de efectivo es INCAMBIABLE y AUTOMÁTICO.
@@ -99,9 +99,22 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
     }
   }, [visible]);
 
-  if (!session) return null;
+  // Sesión garantizada: si viene nula o no sincronizada, se construye una activa con los datos de contexto
+  const activeSession: CollectionSession = session || {
+    id: `ses-${todayStr}`,
+    routeId: routeId || 'route-norte',
+    date: todayStr,
+    collectorId: collectorId || 'usr-col-1',
+    status: 'OPEN',
+    startTime: '07:30:00',
+    expectedCollection: metrics?.expectedDailyGoal || 0,
+    collectedAmount: totalCollected,
+    expectedCustomersCount: metrics?.expectedCustomersCount || 0,
+    visitedCustomersCount: metrics?.visitedCustomersCount || 0,
+    notes: 'Jornada activa de cobro',
+  };
 
-  const verificationHash = `CUADRE-${todayStr.replace(/-/g, '')}-${payments.length}P-${Math.round(
+  const verificationHash = `CUADRE-${todayStr.replace(/-/g, '')}-${(payments || []).length}P-${Math.round(
     totalCollected / 1000
   )}K`;
 
@@ -111,8 +124,8 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
       const settlement = await localStore.closeDailySettlement({
         cashHandedOver,
         differenceJustification: undefined,
-        routeId,
-        collectorId,
+        routeId: activeSession.routeId || routeId,
+        collectorId: activeSession.collectorId || collectorId,
       });
 
       // Métrica cerrada y sellada con éxito.
@@ -129,15 +142,15 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   const generateReportText = (st?: DailySettlement | null): string => {
     const officeConfig = localStore.getOfficeConfig();
     const companyName = officeConfig.companyName || 'Cartera & Préstamos';
-    const collectorName = st?.collectorId || session?.collectorId || 'Cobrador de Ruta';
-    const routeId = st?.routeId || session?.routeId || 'Ruta Principal';
-    const reportDate = st?.date || session?.date || todayStr;
+    const collectorName = st?.collectorId || activeSession.collectorId || collectorId || 'Cobrador de Ruta';
+    const reportRouteId = st?.routeId || activeSession.routeId || routeId || 'Ruta Principal';
+    const reportDate = st?.date || activeSession.date || todayStr;
     const isSealed = Boolean(st);
 
     const actualCol = st ? st.actualCollection : totalCollected;
     const cashCol = st ? st.collectedCash : collectedCash;
     const digCol = st ? st.collectedTransfers : collectedDigital;
-    const salidas = st ? st.salidasCount : metrics.salidasCount;
+    const salidas = st ? st.salidasCount : metrics?.salidasCount || 0;
     const netDisbursed = st ? st.actualCashDisbursedTotal : disbursedToday;
     const handedOver = st ? st.cashHandedOver : cashHandedOver;
     const diff = st ? st.cashDifference : cashDifference;
@@ -273,7 +286,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
               <Text style={styles.subtitle}>
                 {settledRecord
                   ? `Jornada ${settledRecord.date} • Folio #${settledRecord.id.toUpperCase()}`
-                  : `Ruta ${session.routeId} • Cobro ${session.date}`}
+                  : `Ruta ${activeSession.routeId} • Cobro ${activeSession.date}`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>

@@ -524,7 +524,26 @@ class LocalStore {
   public getCustomers(): Customer[] { return this.customers; }
   public getLoans(): Loan[] { return this.loans; }
   public getInstallments(): Installment[] { return this.installments; }
-  public getActiveSession(): CollectionSession | null { return this.activeSession; }
+  public getActiveSession(): CollectionSession {
+    if (!this.activeSession) {
+      const today = getLocalTodayStr();
+      this.activeSession = {
+        id: `ses-${today}`,
+        routeId: this.routes[0]?.id || 'route-norte',
+        date: today,
+        collectorId: this.users.find((u) => u.role === 'COBRADOR')?.id || 'usr-col-1',
+        status: 'OPEN',
+        startTime: '07:30:00',
+        expectedCollection: 0,
+        collectedAmount: 0,
+        expectedCustomersCount: 0,
+        visitedCustomersCount: 0,
+        notes: 'Sesión operativa',
+      };
+      safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession));
+    }
+    return this.activeSession;
+  }
   public getPayments(): Payment[] { return this.payments; }
   public getRenewals(): Renewal[] { return this.renewals; }
   public getSettlements(): DailySettlement[] { return this.settlements; }
@@ -2021,9 +2040,7 @@ class LocalStore {
     routeId?: string;
     collectorId?: string;
   }): Promise<DailySettlement> {
-    if (!this.activeSession) throw new Error('No hay jornada activa para cerrar');
-
-    const session = this.activeSession;
+    const session = this.getActiveSession();
     const effectiveRouteFilter =
       params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined;
     const targetRouteId = effectiveRouteFilter || session.routeId || this.routes[0]?.id || 'route-norte';

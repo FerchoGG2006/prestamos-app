@@ -114,10 +114,23 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
     }
   }, [visible, netCashExpected]);
 
-  if (!session) return null;
+  // Sesión garantizada: si viene nula o no sincronizada, se construye una activa con los datos de contexto
+  const activeSession: CollectionSession = session || {
+    id: `ses-${todayStr}`,
+    routeId: routeId || 'route-norte',
+    date: todayStr,
+    collectorId: collectorId || 'usr-col-1',
+    status: 'OPEN',
+    startTime: '07:30:00',
+    expectedCollection: metrics?.expectedDailyGoal || 0,
+    collectedAmount: totalCollected,
+    expectedCustomersCount: metrics?.expectedCustomersCount || 0,
+    visitedCustomersCount: metrics?.visitedCustomersCount || 0,
+    notes: 'Jornada activa',
+  };
 
   // Firma de verificación determinista del paquete de ruta
-  const verificationHash = `SYNC-${todayStr.replace(/-/g, '')}-${payments.length}P-${Math.round(
+  const verificationHash = `SYNC-${todayStr.replace(/-/g, '')}-${(payments || []).length}P-${Math.round(
     totalCollected / 1000
   )}K`;
 
@@ -515,7 +528,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               <Text style={styles.subtitle}>
                 {settledRecord
                   ? `Jornada ${settledRecord.date} • Folio #${settledRecord.id.toUpperCase()}`
-                  : `Capital General • Ruta ${session.routeId} • Cartera.db`}
+                  : `Capital General • Ruta ${activeSession.routeId} • Cartera.db`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -1047,7 +1060,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 </Text>
               </View>
               <Text style={styles.syncTicketSubtitle}>
-                Ruta: {session.routeId} • Jornada: {todayStr} • {session.status}
+                Ruta: {activeSession.routeId} • Jornada: {todayStr} • {activeSession.status}
               </Text>
 
               <View style={styles.dashedDivider} />
