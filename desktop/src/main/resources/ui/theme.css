@@ -4,7 +4,51 @@
    ========================================================================== */
 
 /* Fuente tipográfica uniforme en toda la aplicación */
-.root {
+* {
+    -fx-font-family: 'Manrope';
+}
+
+.root,
+.root *,
+.label,
+.button,
+.toggle-button,
+.check-box,
+.radio-button,
+.hyperlink,
+.text,
+.text-input,
+.text-field,
+.text-area,
+.combo-box,
+.choice-box,
+.date-picker,
+.color-picker,
+.spinner,
+.table-view,
+.table-row-cell,
+.table-cell,
+.table-column,
+.column-header,
+.column-header-background,
+.tree-table-view,
+.list-view,
+.list-cell,
+.tree-view,
+.tree-cell,
+.tab,
+.tab-pane,
+.titled-pane,
+.accordion,
+.menu-bar,
+.menu,
+.menu-item,
+.context-menu,
+.tooltip,
+.dialog-pane,
+.alert,
+.scroll-pane,
+.header-panel {
     -fx-font-family: 'Manrope';
 }
 

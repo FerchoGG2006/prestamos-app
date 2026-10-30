@@ -14,7 +14,7 @@ import {
 import { localStore } from '../../infrastructure/storage/local-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { Landmark, X, Check, ArrowDownCircle, AlertCircle } from 'lucide-react-native';
 
 interface RecaudoModalProps {
@@ -326,11 +326,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '800',
     color: '#0f172a',
   },
   modalSubtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#64748b',
     marginTop: 1,
@@ -357,6 +359,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   baseCardLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: '#94a3b8',
@@ -369,17 +372,20 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   baseBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
     color: '#ffffff',
   },
   baseCardAmount: {
+    fontFamily: FONT_FAMILY,
     fontSize: 26,
     fontWeight: '900',
     color: '#38bdf8',
     letterSpacing: 0.5,
   },
   baseCardHelp: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#94a3b8',
     marginTop: 4,
@@ -388,6 +394,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   inputLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#475569',
@@ -409,6 +416,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fef2f2',
   },
   currencyPrefix: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '800',
     color: '#0284c7',
@@ -416,6 +424,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
@@ -439,6 +448,7 @@ const styles = StyleSheet.create({
     borderColor: '#0284c7',
   },
   quickBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: '#475569',
@@ -464,6 +474,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#dc2626',
     fontWeight: '600',
@@ -474,6 +485,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   successText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#166534',
     fontWeight: '600',
@@ -497,6 +509,7 @@ const styles = StyleSheet.create({
     borderColor: '#22c55e',
   },
   destItemText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
     color: '#334155',
@@ -511,6 +524,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     height: 42,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#0f172a',
     backgroundColor: '#f8fafc',
@@ -533,6 +547,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#e2e8f0',
   },
   cancelBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: '#475569',
@@ -550,6 +565,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   submitBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: '#ffffff',

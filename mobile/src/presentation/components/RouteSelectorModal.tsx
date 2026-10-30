@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Route, Customer, Loan } from '../../core/domain/types';
 import { localStore } from '../../infrastructure/storage/local-store';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import {
   X,
   Search,
@@ -325,11 +325,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F1F5F9',
   },
   headerTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '800',
     color: '#0F172A',
   },
   headerSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
@@ -354,6 +356,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: '#0F172A',
     paddingVertical: 0,
@@ -399,6 +402,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   routeName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14.5,
     fontWeight: '800',
     color: '#0F172A',
@@ -413,6 +417,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   allBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9.5,
     fontWeight: '800',
     color: '#1D4ED8',
@@ -424,11 +429,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   codeBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: '#475569',
   },
   routeSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     color: '#64748B',
   },
@@ -439,11 +446,13 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   collectorText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     fontWeight: '600',
     color: '#475569',
   },
   routeMetricsText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: '#64748B',
@@ -475,6 +484,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   dividerLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '800',
     color: '#94A3B8',
@@ -486,11 +496,13 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
   },
   emptyTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '700',
     color: '#475569',
   },
   emptySub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#94A3B8',
     marginTop: 2,

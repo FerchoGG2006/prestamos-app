@@ -32,7 +32,7 @@ import {
 } from 'lucide-react-native';
 import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
 import { verifyPassword } from '../../../core/utils/security';
-import { COLORS } from '../../theme/colors';
+import { COLORS, FONT_FAMILY } from '../../theme/colors';
 
 interface LoginViewProps {
   users: User[];
@@ -942,6 +942,7 @@ const styles = StyleSheet.create({
   },
   brandEmblemLetter: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 25,
     fontWeight: '900',
     letterSpacing: -0.5,
@@ -961,6 +962,7 @@ const styles = StyleSheet.create({
   },
   appBrandName: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 24,
     fontWeight: '900',
     letterSpacing: -0.5,
@@ -968,6 +970,7 @@ const styles = StyleSheet.create({
   },
   appTagline: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -985,6 +988,7 @@ const styles = StyleSheet.create({
   },
   activeOfficeBadgeText: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -1001,6 +1005,7 @@ const styles = StyleSheet.create({
   },
   unconfiguredNoticeText: {
     color: COLORS.warning,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -1031,6 +1036,7 @@ const styles = StyleSheet.create({
   },
   successText: {
     color: COLORS.success,
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     fontWeight: '700',
   },
@@ -1048,6 +1054,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: COLORS.danger,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     flexShrink: 1,
@@ -1057,6 +1064,7 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 5,
@@ -1078,6 +1086,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     height: 46,
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 14.5,
     fontWeight: '600',
   },
@@ -1106,6 +1115,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF',
   },
   rememberText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12.5,
     color: COLORS.textSecondary,
     fontWeight: '600',
@@ -1126,6 +1136,7 @@ const styles = StyleSheet.create({
   },
   submitBtnText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -1148,6 +1159,7 @@ const styles = StyleSheet.create({
   },
   setupPillText: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1200,11 +1212,13 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
   },
   modalSubtitle: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '500',
   },
@@ -1220,6 +1234,7 @@ const styles = StyleSheet.create({
   },
   clearBtnText: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '700',
   },
@@ -1249,6 +1264,7 @@ const styles = StyleSheet.create({
   },
   authVerifyTitle: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     marginBottom: 6,
@@ -1268,6 +1284,7 @@ const styles = StyleSheet.create({
     borderColor: '#BBF7D0',
   },
   lockStatusBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9.5,
     fontWeight: '900',
     letterSpacing: 0.3,
@@ -1289,6 +1306,7 @@ const styles = StyleSheet.create({
   },
   verifyBtnText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1309,6 +1327,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   miniLockTagText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9.5,
     fontWeight: '700',
     color: '#64748B',
@@ -1331,6 +1350,7 @@ const styles = StyleSheet.create({
   },
   lockedNoticeText: {
     flex: 1,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: '#991B1B',
@@ -1357,12 +1377,14 @@ const styles = StyleSheet.create({
   },
   adminBadgeText: {
     color: COLORS.primary,
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
   fieldCaption: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     marginBottom: 4,
@@ -1377,6 +1399,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.inputBorder,
     paddingHorizontal: 10,
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1410,6 +1433,7 @@ const styles = StyleSheet.create({
   },
   routesHeaderTitle: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1434,6 +1458,7 @@ const styles = StyleSheet.create({
   },
   stepCountText: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     minWidth: 18,
@@ -1462,6 +1487,7 @@ const styles = StyleSheet.create({
   },
   routeNumBadgeText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '800',
   },
@@ -1486,6 +1512,7 @@ const styles = StyleSheet.create({
   },
   secondarySaveBtnText: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1499,6 +1526,7 @@ const styles = StyleSheet.create({
   },
   primarySaveBtnText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 12.5,
     fontWeight: '800',
   },
@@ -1511,6 +1539,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   factoryResetText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     color: COLORS.textMuted,
     fontWeight: '600',

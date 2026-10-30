@@ -1460,6 +1460,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   editProfileSmallBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: '#2563eb',
@@ -1482,6 +1483,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   shareTicketWhatsAppText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: '#16a34a',
@@ -1500,12 +1502,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   dangerZoneTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: '#dc2626',
     letterSpacing: 0.5,
   },
   dangerZoneDesc: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#7f1d1d',
     lineHeight: 18,
@@ -1522,6 +1526,7 @@ const styles = StyleSheet.create({
   },
   dangerZoneBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1631,6 +1636,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.infoBorder,
   },
   contactPillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: COLORS.primary,
@@ -1650,12 +1656,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   bentoLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
     letterSpacing: 0.5,
   },
   bentoAmountDark: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: -0.5,
@@ -1663,6 +1671,7 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   bentoSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.textSecondary,
@@ -1681,12 +1690,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardSectionTag: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
     letterSpacing: 0.5,
   },
   loanNumberBig: {
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '900',
     color: COLORS.textPrimary,
@@ -1712,6 +1723,7 @@ const styles = StyleSheet.create({
   },
   payPrimaryBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.3,
@@ -1735,6 +1747,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.microBorder,
   },
   secondaryActionText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.navy,
@@ -1762,6 +1775,7 @@ const styles = StyleSheet.create({
   },
   payNowBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1795,6 +1809,7 @@ const styles = StyleSheet.create({
   },
   frequencyTagText: {
     color: COLORS.primary,
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -1813,12 +1828,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   financialMiniLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
     letterSpacing: 0.3,
   },
   financialMiniVal: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12.5,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -1839,18 +1856,21 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primaryBorder,
   },
   paperworkNoteLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '900',
     color: COLORS.primary,
     letterSpacing: 0.5,
   },
   paperworkNoteValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.textPrimary,
     marginTop: 2,
   },
   paperworkNoteHint: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.textSecondary,
@@ -1864,6 +1884,7 @@ const styles = StyleSheet.create({
     marginVertical: 12,
   },
   subHeaderLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -1886,6 +1907,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceSoft,
   },
   expandToggleText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.primary,
@@ -1924,11 +1946,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   instNumBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#334155',
   },
   instCardDueDate: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.textSecondary,
@@ -1936,6 +1960,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   instCardAmount: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -1959,6 +1984,7 @@ const styles = StyleSheet.create({
     borderColor: '#bae6fd',
   },
   paidDateBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
     color: '#0369a1',
@@ -1972,6 +1998,7 @@ const styles = StyleSheet.create({
     borderColor: '#fde68a',
   },
   delayBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: '#b45309',
@@ -1985,6 +2012,7 @@ const styles = StyleSheet.create({
     borderColor: '#c7d2fe',
   },
   earlyBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: '#4338ca',
@@ -1998,6 +2026,7 @@ const styles = StyleSheet.create({
     borderColor: '#bbf7d0',
   },
   onTimeBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: '#15803d',
@@ -2009,11 +2038,13 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
   instPartialText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
     color: '#b45309',
   },
   instPartialDateText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     color: COLORS.textMuted,
     marginTop: 2,
@@ -2027,6 +2058,7 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
   instOverdueText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
     color: '#dc2626',
@@ -2036,6 +2068,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
   },
   instPendingText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     color: COLORS.textMuted,
     fontStyle: 'italic',
@@ -2055,12 +2088,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   receiptSectionTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textPrimary,
     letterSpacing: 0.5,
   },
   emptyHistoryText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textMuted,
     fontStyle: 'italic',
@@ -2072,6 +2107,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   paymentTicketAmount: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '900',
     color: COLORS.textPrimary,
@@ -2085,16 +2121,19 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
   },
   methodPillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.success,
   },
   paymentTicketMeta: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 3,
   },
   promiseStatusTag: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.warning,

@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Customer, Loan } from '../../core/domain/types';
 import { formatCOP, addDays, getNextMonday, getNextWeekend } from '../../core/config/business-rules';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { CalendarClock, X, Check } from 'lucide-react-native';
 
@@ -268,12 +268,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: -0.4,
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -292,6 +294,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -310,6 +313,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   floatingInternalLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -318,6 +322,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     height: 38,
+    fontFamily: FONT_FAMILY,
     fontSize: 24,
     fontWeight: '900',
     letterSpacing: -0.5,
@@ -344,6 +349,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.warning,
   },
   datePillLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: COLORS.textSecondary,
@@ -352,6 +358,7 @@ const styles = StyleSheet.create({
     color: COLORS.warning,
   },
   datePillValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '900',
     color: COLORS.textPrimary,
@@ -377,6 +384,7 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     height: 30,
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.textPrimary,
@@ -395,6 +403,7 @@ const styles = StyleSheet.create({
   },
   confirmBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '800',
   },

@@ -156,18 +156,41 @@ export default function App() {
     hour12: false,
   });
 
-  // Garantiza Manrope incluso en textos heredados de vistas antiguas que no definen fontFamily.
+  // Garantiza Manrope en la web y en todos los textos nativos
   useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const styleId = 'global-manrope-font-override';
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+          @font-face {
+            font-family: 'Manrope';
+            src: url('./assets/fonts/Manrope-Variable.ttf') format('truetype');
+            font-weight: 100 900;
+            font-style: normal;
+          }
+          *, *::before, *::after {
+            font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+          }
+          body, input, textarea, button, select, option, div, span, p, a, h1, h2, h3, h4, h5, h6 {
+            font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+
     if (!fontsLoaded) return;
     const TextComponent = Text as unknown as { defaultProps?: Record<string, unknown> };
     const InputComponent = TextInput as unknown as { defaultProps?: Record<string, unknown> };
     TextComponent.defaultProps = {
       ...TextComponent.defaultProps,
-      style: [TextComponent.defaultProps?.style, { fontFamily: 'Manrope' }],
+      style: [{ fontFamily: 'Manrope' }, TextComponent.defaultProps?.style],
     };
     InputComponent.defaultProps = {
       ...InputComponent.defaultProps,
-      style: [InputComponent.defaultProps?.style, { fontFamily: 'Manrope' }],
+      style: [{ fontFamily: 'Manrope' }, InputComponent.defaultProps?.style],
     };
     setFontSystemReady(true);
   }, [fontsLoaded]);
@@ -2240,6 +2263,7 @@ const styles = StyleSheet.create({
   },
   androidProfileChipText: {
     color: '#94A3B8',
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -2267,11 +2291,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   androidStatusClock: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   androidStatusIcons: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     color: COLORS.textSecondary,
   },
@@ -2280,6 +2306,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   androidStatusMeta: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '700',
     color: COLORS.textPrimary,
@@ -2303,6 +2330,7 @@ const styles = StyleSheet.create({
     width: '72%',
   },
   androidNavButtonGlyph: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     color: COLORS.textSecondary,
@@ -2380,6 +2408,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   logoutTopBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.danger,
     fontWeight: '800',
@@ -2401,11 +2430,13 @@ const styles = StyleSheet.create({
     borderColor: '#86EFAC',
   },
   rolePillToggleTextAdmin: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '800',
     color: '#1E40AF',
   },
   rolePillToggleTextCollector: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '800',
     color: '#15803D',
@@ -2422,6 +2453,7 @@ const styles = StyleSheet.create({
   },
   officeConfigText: {
     color: COLORS.primary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -2437,6 +2469,7 @@ const styles = StyleSheet.create({
   },
   simulateDayText: {
     color: COLORS.primary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -2449,6 +2482,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.microBorder,
   },
   frameToggleText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: COLORS.textSecondary,
@@ -2464,6 +2498,7 @@ const styles = StyleSheet.create({
   },
   sectionHeaderTitle: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 17,
     fontWeight: '900',
     letterSpacing: -0.3,
@@ -2478,6 +2513,7 @@ const styles = StyleSheet.create({
   },
   addCustomerHeaderText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -2488,10 +2524,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   loanTagText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
   },
   directorySubheader: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -2511,6 +2549,7 @@ const styles = StyleSheet.create({
   },
   searchBarInput: {
     flex: 1,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textPrimary,
     paddingVertical: 6,
@@ -2607,11 +2646,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   emptyResultsTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '700',
     color: '#475569',
   },
   emptyResultsSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: '#94a3b8',
     textAlign: 'center',
@@ -2627,6 +2668,7 @@ const styles = StyleSheet.create({
     borderColor: '#bfdbfe',
   },
   resetFilterBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
     color: '#2563eb',
@@ -2669,6 +2711,7 @@ const styles = StyleSheet.create({
   },
   dockNavText: {
     color: '#64748B',
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '700',
   },
@@ -2809,6 +2852,7 @@ const styles = StyleSheet.create({
   },
   centralLogoText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '900',
     letterSpacing: -0.4,
@@ -2816,6 +2860,7 @@ const styles = StyleSheet.create({
   },
   centralLogoSub: {
     color: 'rgba(255, 255, 255, 0.85)',
+    fontFamily: FONT_FAMILY,
     fontSize: 7.5,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -2852,6 +2897,7 @@ const styles = StyleSheet.create({
   },
   topBadgeText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 8.5,
     fontWeight: '900',
   },
@@ -2871,6 +2917,7 @@ const styles = StyleSheet.create({
   },
   dockBadgeText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 8.5,
     fontWeight: '900',
   },
@@ -2904,12 +2951,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   lockTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 18,
     fontWeight: '800',
     color: COLORS.textPrimary,
     marginBottom: 6,
   },
   lockSubtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     textAlign: 'center',
@@ -2926,11 +2975,13 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   lockUserText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.textPrimary,
   },
   lockErrorText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.danger,
     fontWeight: '700',
@@ -2944,6 +2995,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     color: COLORS.textPrimary,
     backgroundColor: '#F8FAFC',
@@ -2959,6 +3011,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   lockUnlockBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
@@ -2970,6 +3023,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   lockLogoutBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.danger,

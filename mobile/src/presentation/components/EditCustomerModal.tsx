@@ -1,3 +1,4 @@
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -464,11 +465,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '800',
     color: '#0f172a',
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#64748b',
     marginTop: 1,
@@ -488,6 +491,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   fieldLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: '#334155',
@@ -500,6 +504,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'ios' ? 10 : 7,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: '#0f172a',
   },
@@ -518,6 +523,7 @@ const styles = StyleSheet.create({
   },
   textInputBare: {
     paddingVertical: Platform.OS === 'ios' ? 10 : 7,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: '#0f172a',
   },
@@ -531,6 +537,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   sectionTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: '#475569',
@@ -551,6 +558,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9',
   },
   cancelBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: '#64748b',
@@ -564,6 +572,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563eb',
   },
   saveBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: '#ffffff',

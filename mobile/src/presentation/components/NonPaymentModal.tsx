@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Customer, Loan, NonPaymentReason } from '../../core/domain/types';
 import { localStore } from '../../infrastructure/storage/local-store';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { AlertCircle, X, Check } from 'lucide-react-native';
 
 interface NonPaymentModalProps {
@@ -195,11 +195,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -213,6 +215,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -237,11 +240,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
   reasonIcon: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     marginRight: 10,
   },
   reasonText: {
     flex: 1,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '600',
     color: COLORS.textPrimary,
@@ -257,6 +262,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.inputBorder,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textPrimary,
     minHeight: 50,
@@ -275,6 +281,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceSoft,
   },
   cancelBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -289,6 +296,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.danger,
   },
   saveBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',

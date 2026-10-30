@@ -1903,6 +1903,7 @@ const styles = StyleSheet.create({
   },
   cleanHeroLabel: {
     color: '#94A3B8',
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
@@ -1922,6 +1923,7 @@ const styles = StyleSheet.create({
   },
   cleanPercentText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '800',
   },
@@ -1933,12 +1935,14 @@ const styles = StyleSheet.create({
   },
   cleanMainAmount: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 34,
     fontWeight: '900',
     letterSpacing: -0.5,
   },
   cleanGoalText: {
     color: '#94A3B8',
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1964,11 +1968,13 @@ const styles = StyleSheet.create({
   },
   cleanHeroFooterText: {
     color: '#CBD5E1',
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '600',
   },
   cleanHeroLinkAction: {
     color: '#38BDF8',
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -1985,6 +1991,7 @@ const styles = StyleSheet.create({
   },
   heroExpensePillText: {
     color: '#FDBA74',
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
   },
@@ -2010,12 +2017,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   nextCollectionEyebrow: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '900',
     color: COLORS.textMuted,
     letterSpacing: 0.7,
   },
   nextCollectionOrder: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.primary,
@@ -2034,16 +2043,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   nextCollectionAvatarText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '900',
     color: COLORS.primary,
   },
   nextCollectionName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
   nextCollectionMeta: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.textSecondary,
@@ -2059,6 +2071,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   nextCollectionActionText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
@@ -2090,6 +2103,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   financialTrioLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#64748b',
@@ -2097,12 +2111,14 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   financialTrioValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
     fontWeight: '900',
     color: '#0f172a',
     letterSpacing: -0.3,
   },
   financialTrioHint: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: '#94a3b8',
@@ -2209,18 +2225,21 @@ const styles = StyleSheet.create({
     display: 'none',
   },
   routeSignalLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.5,
     color: COLORS.textMuted,
   },
   routeSignalValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 25,
     fontWeight: '900',
     color: COLORS.textPrimary,
     marginTop: 2,
   },
   routeSignalHint: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.textSecondary,
@@ -2239,6 +2258,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   bentoHeaderDate: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textMuted,
@@ -2317,11 +2337,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   openRouteBannerTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '900',
     color: '#1E3A8A',
   },
   openRouteBannerSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#3B82F6',
     fontWeight: '600',
@@ -2338,6 +2360,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   chatName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -2345,6 +2368,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   chatTime: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textMuted,
     fontWeight: '700',
@@ -2355,6 +2379,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chatSnippet: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     color: COLORS.textSecondary,
     fontWeight: '600',
@@ -2371,6 +2396,7 @@ const styles = StyleSheet.create({
   },
   quickPayPillText: {
     color: '#2563EB',
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
   },
@@ -2388,6 +2414,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   routeHeaderTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 21,
     fontWeight: '900',
     color: COLORS.textPrimary,
@@ -2416,6 +2443,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   btnNuevoCreditoHeaderText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: '#B45309',
@@ -2440,11 +2468,13 @@ const styles = StyleSheet.create({
     borderColor: '#059669',
   },
   btnOrdenarHeaderText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: COLORS.primary,
   },
   btnOrdenarHeaderTextActive: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
@@ -2474,6 +2504,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2563EB',
   },
   routeBadgeTextPending: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#1E40AF',
@@ -2489,6 +2520,7 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
   },
   routeBadgeTextDone: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#15803D',
@@ -2504,6 +2536,7 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
   },
   routeBadgeTextMora: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#DC2626',
@@ -2519,6 +2552,7 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
   },
   routeBadgeTextPromise: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#B45309',
@@ -2606,6 +2640,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primary,
   },
   unifiedFreqCycleText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: COLORS.primary,
@@ -2637,6 +2672,7 @@ const styles = StyleSheet.create({
   },
   routeOrderBadgeText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '900',
   },
@@ -2692,6 +2728,7 @@ const styles = StyleSheet.create({
   },
   cardPrimaryPayBtnText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -2712,10 +2749,12 @@ const styles = StyleSheet.create({
   },
   cardSecondaryBtnText: {
     color: '#475569',
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
   },
   chatBalanceHint: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textMuted,
     fontWeight: '600',
@@ -2734,6 +2773,7 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -2831,6 +2871,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   pastelBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -2880,12 +2921,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '800',
     marginBottom: 4,
   },
   emptyText: {
     color: COLORS.textMuted,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     textAlign: 'center',
   },
@@ -2906,11 +2949,13 @@ const styles = StyleSheet.create({
     borderColor: '#059669',
   },
   editRouteToggleText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: COLORS.primary,
   },
   saveRouteToggleText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
@@ -2937,11 +2982,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   editingRouteBannerTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '900',
     color: '#1E3A8A',
   },
   editingRouteBannerSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '600',
     color: '#3B82F6',
@@ -2956,6 +3003,7 @@ const styles = StyleSheet.create({
     borderColor: '#CBD5E1',
   },
   cancelEditBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '700',
     color: '#64748B',
@@ -2987,6 +3035,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reorderIndexText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '900',
     color: COLORS.primary,
@@ -2996,16 +3045,19 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   reorderCustomerName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   reorderAddress: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
   reorderLoanInfo: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     color: COLORS.textMuted,
     fontWeight: '600',
@@ -3054,6 +3106,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   sectionHeaderText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: COLORS.primary,
@@ -3061,6 +3114,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   sectionHeaderCount: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -3077,11 +3131,13 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   allDoneTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
     fontWeight: '800',
     color: '#15803D',
   },
   allDoneSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     color: '#166534',
     marginTop: 2,
@@ -3101,11 +3157,13 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   completedSectionTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12.5,
     fontWeight: '800',
     color: '#334155',
   },
   completedToggleText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     fontWeight: '700',
     color: COLORS.primary,
@@ -3148,6 +3206,7 @@ const styles = StyleSheet.create({
     borderColor: '#FECACA',
   },
   orderStopNumber: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.primary,
@@ -3156,6 +3215,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   customerNameBold: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -3168,6 +3228,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   freqTagSoftText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9.5,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -3180,12 +3241,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addressSubText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '500',
     flex: 1,
   },
   remainingBalanceText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '600',
@@ -3198,6 +3261,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   statusMiniBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9.5,
     fontWeight: '800',
   },
@@ -3219,6 +3283,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnCobrarPrimarioText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
     fontWeight: '800',
     color: '#FFFFFF',
@@ -3258,16 +3323,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   completedStopNum: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: COLORS.textSecondary,
   },
   completedCustName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: '#334155',
   },
   completedSubDetail: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     color: '#64748B',
     marginTop: 1,
@@ -3286,6 +3354,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   btnAbonoExtraText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#1D4ED8',
@@ -3313,6 +3382,7 @@ const styles = StyleSheet.create({
     maxWidth: 160,
   },
   adminRouteBadgeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#1D4ED8',

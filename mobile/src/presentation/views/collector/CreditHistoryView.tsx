@@ -626,6 +626,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backButtonText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.primary,

@@ -21,7 +21,7 @@ import {
 } from '../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
 import {
   Landmark,
@@ -1218,12 +1218,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: -0.4,
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -1256,18 +1258,21 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   splitLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
     letterSpacing: 0.4,
   },
   splitValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 19,
     fontWeight: '900',
     letterSpacing: -0.5,
     marginTop: 4,
   },
   splitSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '600',
     color: COLORS.textSecondary,
@@ -1289,6 +1294,7 @@ const styles = StyleSheet.create({
   },
   cardHeaderTitle: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -1311,11 +1317,13 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   barLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
     color: COLORS.textSecondary,
   },
   barAmount: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -1349,6 +1357,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   floatingInternalLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -1358,6 +1367,7 @@ const styles = StyleSheet.create({
   input: {
     height: 36,
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: -0.5,
@@ -1366,6 +1376,7 @@ const styles = StyleSheet.create({
   justificationInput: {
     height: 52,
     textAlignVertical: 'top',
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '600',
     color: COLORS.textPrimary,
@@ -1384,6 +1395,7 @@ const styles = StyleSheet.create({
   },
   balancedText: {
     color: COLORS.success,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1400,6 +1412,7 @@ const styles = StyleSheet.create({
   },
   unbalancedText: {
     color: COLORS.danger,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1417,12 +1430,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   syncTicketTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '900',
     color: COLORS.textPrimary,
     letterSpacing: 0.3,
   },
   syncTicketSubtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
     color: COLORS.textMuted,
@@ -1435,17 +1450,20 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   ticketLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textSecondary,
   },
   ticketLabelSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.textMuted,
     paddingLeft: 8,
   },
   ticketValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -1462,6 +1480,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.microBorder,
   },
   verificationHashText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textSecondary,
@@ -1492,6 +1511,7 @@ const styles = StyleSheet.create({
   },
   syncExportBtnText: {
     color: COLORS.primary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -1508,6 +1528,7 @@ const styles = StyleSheet.create({
   },
   syncFilePickBtnText: {
     color: COLORS.purple,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -1524,6 +1545,7 @@ const styles = StyleSheet.create({
   },
   syncImportToggleText: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -1537,6 +1559,7 @@ const styles = StyleSheet.create({
   },
   importJsonInput: {
     height: 60,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textPrimary,
     marginTop: 4,
@@ -1550,6 +1573,7 @@ const styles = StyleSheet.create({
   },
   applyImportBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1564,6 +1588,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.microBorder,
   },
   resetDemoBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -1584,6 +1609,7 @@ const styles = StyleSheet.create({
   },
   confirmBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '800',
   },
@@ -1610,6 +1636,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   postCloseTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 19,
     fontWeight: '900',
     color: '#15803D',
@@ -1618,6 +1645,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   postCloseSubtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#166534',
     textAlign: 'center',
@@ -1638,6 +1666,7 @@ const styles = StyleSheet.create({
   },
   folioBadgeText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 0.5,
@@ -1654,6 +1683,7 @@ const styles = StyleSheet.create({
   },
   sealedStatusText: {
     color: '#15803D',
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.5,
@@ -1667,6 +1697,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   receiptHeaderCompany: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '900',
     color: COLORS.textPrimary,
@@ -1674,6 +1705,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   receiptSubHeader: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -1696,25 +1728,30 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   receiptLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
   receiptLabelSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textMuted,
   },
   receiptValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textPrimary,
     fontWeight: '600',
   },
   receiptValueSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '600',
   },
   receiptValueBold: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textPrimary,
     fontWeight: '900',
@@ -1728,12 +1765,14 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.warning,
   },
   receiptJustificationLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: COLORS.textSecondary,
     marginBottom: 2,
   },
   receiptJustificationText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textPrimary,
     fontWeight: '600',
@@ -1753,6 +1792,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   phoneLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textSecondary,
@@ -1763,6 +1803,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgSecondary,
     borderRadius: 10,
     paddingHorizontal: 12,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.textPrimary,
@@ -1785,6 +1826,7 @@ const styles = StyleSheet.create({
   },
   sendWhatsAppMainBtnText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.2,
@@ -1806,6 +1848,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   secondaryActionText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.textPrimary,
@@ -1820,6 +1863,7 @@ const styles = StyleSheet.create({
   },
   finishAndContinueBtnText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
   },

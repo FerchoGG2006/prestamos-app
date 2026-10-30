@@ -16,7 +16,7 @@ import {
 import { OfficeCompanyConfig, Route, User } from '../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getLocalTodayStr } from '../../core/domain/calculator';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import {
   localStore,
   DEFAULT_OFFICE_CONFIG,
@@ -1836,11 +1836,13 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primaryBorder,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     fontWeight: '600',
@@ -1871,6 +1873,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.primary,
   },
   tabText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textMuted,
@@ -1888,11 +1891,13 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   sectionHeaderTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   sectionHeaderSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     marginBottom: 4,
@@ -1905,11 +1910,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   inputLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   inputHelp: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     color: COLORS.textMuted,
     fontWeight: '500',
@@ -1922,6 +1929,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.inputBorder,
     paddingHorizontal: 12,
     paddingVertical: 9,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textPrimary,
     fontWeight: '600',
@@ -1950,11 +1958,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   switchTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12.5,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   switchSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     color: COLORS.textSecondary,
     fontWeight: '500',
@@ -1976,6 +1986,7 @@ const styles = StyleSheet.create({
   },
   newRouteBtnText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     fontWeight: '800',
   },
@@ -1989,6 +2000,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   newRouteCardTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12.5,
     fontWeight: '800',
     color: '#0F766E',
@@ -2004,6 +2016,7 @@ const styles = StyleSheet.create({
   },
   createRouteSubmitText: {
     color: '#FFFFFF',
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -2029,10 +2042,12 @@ const styles = StyleSheet.create({
   },
   routeBadgeText: {
     color: '#0D9488',
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
   },
   routeItemTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -2045,11 +2060,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.success,
   },
   activeStatusText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '700',
     color: COLORS.success,
   },
   routeCollectorName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     color: COLORS.textSecondary,
   },
@@ -2066,6 +2083,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   credLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9.5,
     fontWeight: '800',
     color: '#64748B',
@@ -2082,6 +2100,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   routeItemFooterHint: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     color: COLORS.textMuted,
     fontStyle: 'italic',
@@ -2107,6 +2126,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.microBorder,
   },
   resetBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -2122,6 +2142,7 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
     fontWeight: '800',
   },
@@ -2135,6 +2156,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   backupHeaderTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 15,
     fontWeight: '800',
     color: '#1d4ed8',
@@ -2142,6 +2164,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   backupHeaderSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: '#3b82f6',
     textAlign: 'center',
@@ -2163,11 +2186,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backupStatNumber: {
+    fontFamily: FONT_FAMILY,
     fontSize: 18,
     fontWeight: '900',
     color: COLORS.textPrimary,
   },
   backupStatLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -2185,6 +2210,7 @@ const styles = StyleSheet.create({
   },
   exportBackupBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
   },
@@ -2194,12 +2220,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   restoreSectionTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.textPrimary,
     marginBottom: 4,
   },
   restoreSectionSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11.5,
     color: COLORS.textSecondary,
     marginBottom: 10,
@@ -2230,6 +2258,7 @@ const styles = StyleSheet.create({
   },
   restoreBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 12.5,
     fontWeight: '800',
   },
@@ -2246,18 +2275,21 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   capFormulaBadge: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '900',
     color: '#38BDF8',
     letterSpacing: 0.5,
   },
   capFormulaTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '900',
     color: '#FFFFFF',
     marginBottom: 6,
   },
   capFormulaDescription: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: '#94A3B8',
     lineHeight: 16,
@@ -2270,6 +2302,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   capGlobalTitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '800',
     color: '#475569',
@@ -2291,22 +2324,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   capGlobalLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9.5,
     fontWeight: '800',
     color: '#475569',
     marginBottom: 4,
   },
   capGlobalValue: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12.5,
     fontWeight: '900',
     color: '#0F172A',
   },
   capGlobalHint: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     color: '#64748B',
     marginTop: 2,
   },
   capGlobalOperator: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '900',
     color: '#94A3B8',
@@ -2331,6 +2368,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   routeCapName: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '800',
     color: COLORS.textPrimary,
@@ -2342,11 +2380,13 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   routeCapPillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: '#2563EB',
   },
   routeCapCollector: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -2366,22 +2406,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   routeCapTriadColLabel: {
+    fontFamily: FONT_FAMILY,
     fontSize: 9,
     fontWeight: '800',
     color: '#64748B',
     marginBottom: 2,
   },
   routeCapTriadColVal: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '900',
     color: '#0F172A',
   },
   routeCapTriadColSub: {
+    fontFamily: FONT_FAMILY,
     fontSize: 8.5,
     color: '#94A3B8',
     marginTop: 1,
   },
   routeCapTriadOp: {
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: '900',
     color: '#94A3B8',
@@ -2402,6 +2446,7 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
   },
   presetPillText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10.5,
     fontWeight: '700',
     color: '#334155',
@@ -2416,6 +2461,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   routeCapSaveBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',

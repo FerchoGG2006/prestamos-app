@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { localStore } from '../../infrastructure/storage/local-store';
 import { formatCOP } from '../../core/config/business-rules';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { Fuel, X } from 'lucide-react-native';
 
 interface ExpenseModalProps {
@@ -242,11 +242,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: '800',
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -260,6 +262,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: {
+    fontFamily: FONT_FAMILY,
     fontSize: 10,
     fontWeight: '800',
     color: COLORS.textMuted,
@@ -275,6 +278,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   amountInput: {
+    fontFamily: FONT_FAMILY,
     fontSize: 22,
     fontWeight: '900',
     color: COLORS.textPrimary,
@@ -298,6 +302,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.dockBg,
   },
   catChipText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -313,6 +318,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.inputBorder,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textPrimary,
   },
@@ -329,6 +335,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceSoft,
   },
   cancelBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.textSecondary,
@@ -343,6 +350,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.dockBg,
   },
   saveBtnText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: '#FFFFFF',
@@ -357,6 +365,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   highExpenseNoticeText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     color: '#92400E',

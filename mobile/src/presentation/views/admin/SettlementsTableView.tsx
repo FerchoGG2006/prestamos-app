@@ -9,7 +9,7 @@ import {
 import { DailySettlement, Route, User } from '../../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../../core/config/business-rules';
-import { COLORS } from '../../theme/colors';
+import { COLORS, FONT_FAMILY } from '../../theme/colors';
 import { Landmark, Calendar, AlertTriangle, CheckCircle, Filter, ArrowLeft } from 'lucide-react-native';
 
 interface SettlementsTableViewProps {
@@ -253,6 +253,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   backButtonText: {
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.primary,
@@ -264,11 +265,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 22,
     fontWeight: 'bold',
     color: COLORS.textPrimary,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     color: COLORS.textSecondary,
     marginTop: 2,
@@ -283,6 +286,7 @@ const styles = StyleSheet.create({
   },
   newSettlementBtnText: {
     color: '#ffffff',
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: 'bold',
   },
@@ -301,6 +305,7 @@ const styles = StyleSheet.create({
   },
   consolidatedTitle: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: 'bold',
     letterSpacing: 0.5,
@@ -319,18 +324,21 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
   },
   metricVal: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 18,
     fontWeight: 'bold',
     marginTop: 4,
   },
   metricSub: {
     color: COLORS.textMuted,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     marginTop: 2,
   },
@@ -341,6 +349,7 @@ const styles = StyleSheet.create({
   },
   filterLabel: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -359,6 +368,7 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -367,6 +377,7 @@ const styles = StyleSheet.create({
   },
   historyTitle: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 12,
@@ -386,11 +397,13 @@ const styles = StyleSheet.create({
   },
   settlementDate: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 16,
     fontWeight: 'bold',
   },
   collectorName: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     marginTop: 2,
   },
@@ -402,6 +415,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     color: COLORS.success,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: 'bold',
   },
@@ -417,11 +431,13 @@ const styles = StyleSheet.create({
   },
   bLabel: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     textTransform: 'uppercase',
   },
   bVal: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
     fontWeight: 'bold',
     marginTop: 2,
@@ -438,6 +454,7 @@ const styles = StyleSheet.create({
   },
   balancedText: {
     color: COLORS.success,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: 'bold',
   },
@@ -450,6 +467,7 @@ const styles = StyleSheet.create({
   },
   unbalancedText: {
     color: COLORS.danger,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: 'bold',
   },
@@ -461,11 +479,13 @@ const styles = StyleSheet.create({
   },
   justificationLabel: {
     color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY,
     fontSize: 11,
     fontWeight: '600',
   },
   justificationText: {
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontStyle: 'italic',
     marginTop: 2,
@@ -478,6 +498,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: COLORS.textMuted,
+    fontFamily: FONT_FAMILY,
     fontSize: 14,
   },
 });

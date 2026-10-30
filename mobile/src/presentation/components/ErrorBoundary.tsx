@@ -1,6 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
-import { COLORS } from '../theme/colors';
+import { COLORS, FONT_FAMILY } from '../theme/colors';
 
 interface Props {
   children: ReactNode;
@@ -124,9 +124,11 @@ const styles = StyleSheet.create({
     borderColor: '#FEE2E2',
   },
   icon: {
+    fontFamily: FONT_FAMILY,
     fontSize: 28,
   },
   title: {
+    fontFamily: FONT_FAMILY,
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
@@ -134,6 +136,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   subtitle: {
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
     color: '#64748B',
     textAlign: 'center',
@@ -173,6 +176,7 @@ const styles = StyleSheet.create({
   btnPrimaryText: {
     color: '#FFFFFF',
     fontWeight: '700',
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
   },
   btnSecondary: {
@@ -183,6 +187,7 @@ const styles = StyleSheet.create({
   btnSecondaryText: {
     color: '#334155',
     fontWeight: '700',
+    fontFamily: FONT_FAMILY,
     fontSize: 13.5,
   },
 });
