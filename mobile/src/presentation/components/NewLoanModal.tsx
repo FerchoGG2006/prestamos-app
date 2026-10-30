@@ -157,12 +157,12 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     defaultCount: number;
     options: number[];
   }> = [
-      { key: 'FIXED_DATE', label: 'Fecha Fija', shortLabel: '📅 Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
-      { key: 'DAILY', label: 'Diario', shortLabel: '☀️ Pago Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
-      { key: 'WEEKLY', label: 'Semanal', shortLabel: '📆 Pago Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
-      { key: 'BIWEEKLY', label: 'Quincenal', shortLabel: '🗓️ Pago Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
-      { key: 'MONTHLY', label: 'Mensual', shortLabel: '🏛️ Pago Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
-    ];
+    { key: 'DAILY', label: 'Diario', shortLabel: '☀️ Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
+    { key: 'WEEKLY', label: 'Semanal', shortLabel: '📆 Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
+    { key: 'BIWEEKLY', label: 'Quincenal', shortLabel: '🗓️ Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
+    { key: 'MONTHLY', label: 'Mensual', shortLabel: '🏛️ Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
+    { key: 'FIXED_DATE', label: 'Fecha Fija', shortLabel: '📅 Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
+  ];
 
   const currentFreqConfig = frequencies.find((f) => f.key === frequency) || frequencies[0];
 
@@ -1259,8 +1259,8 @@ const styles = StyleSheet.create({
   },
   modalitySingleLineBtn: {
     paddingHorizontal: 14,
-    height: 38,
-    borderRadius: 9999,
+    height: 36,
+    borderRadius: 20,
     backgroundColor: '#F1F5F9',
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -1270,12 +1270,17 @@ const styles = StyleSheet.create({
   modalitySingleLineBtnActive: {
     backgroundColor: '#2563EB',
     borderColor: '#1D4ED8',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
   modalitySingleLineBtnText: {
     fontFamily: FONT_FAMILY,
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#334155',
+    color: '#475569',
   },
   modalitySingleLineBtnTextActive: {
     color: '#FFFFFF',

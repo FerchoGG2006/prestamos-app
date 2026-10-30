@@ -132,11 +132,11 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const quickPrincipals = [150000, 200000, 300000, 500000];
 
   const frequencies: Array<{ key: LoanFrequency; label: string; defaultCount: number }> = [
-    { key: 'DAILY', label: 'Diario', defaultCount: 30 },
-    { key: 'WEEKLY', label: 'Semanal', defaultCount: 4 },
-    { key: 'BIWEEKLY', label: 'Quincenal', defaultCount: 2 },
-    { key: 'MONTHLY', label: 'Mensual', defaultCount: 1 },
-    { key: 'FIXED_DATE', label: 'Fecha Fija', defaultCount: 1 },
+    { key: 'DAILY', label: '☀️ Diario', defaultCount: 30 },
+    { key: 'WEEKLY', label: '📆 Semanal', defaultCount: 4 },
+    { key: 'BIWEEKLY', label: '🗓️ Quincenal', defaultCount: 2 },
+    { key: 'MONTHLY', label: '🏛️ Mensual', defaultCount: 1 },
+    { key: 'FIXED_DATE', label: '📅 Fecha Fija', defaultCount: 1 },
   ];
 
   const handleSelectFrequency = (freq: LoanFrequency, defaultCount: number) => {
@@ -1329,9 +1329,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   freqBtn: {
-    paddingHorizontal: 16,
-    height: 38,
-    borderRadius: 9999,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#F1F5F9',
