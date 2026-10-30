@@ -94,6 +94,7 @@ import { NotificationsModal } from './src/presentation/components/NotificationsM
 import { formatAccountStatementReminder, openWhatsAppReceipt } from './src/core/utils/whatsapp-receipt';
 import { LoginView } from './src/presentation/views/auth/LoginView';
 import { safeStorage } from './src/infrastructure/storage/local-store';
+import { checkAndDownloadUpdate } from './src/presentation/utils/appUpdates';
 import {
   Users,
   Landmark,
@@ -461,6 +462,8 @@ function MainApp({
           backgroundTimestamp = null;
         }
         resetTimer();
+        // Verificación silenciosa en segundo plano al regresar a la aplicación
+        checkAndDownloadUpdate(true);
       }
     };
 
@@ -628,6 +631,8 @@ function MainApp({
     const unsubscribe = localStore.subscribe(() => {
       syncFromStore();
     });
+    // Verificación de actualizaciones OTA en el arranque de la app
+    checkAndDownloadUpdate(true);
     return () => unsubscribe();
   }, []);
 
@@ -1725,6 +1730,22 @@ function MainApp({
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.operationMenuItem, { borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 4, paddingTop: 10 }]}
+                  onPress={() => {
+                    checkAndDownloadUpdate(false);
+                  }}
+                >
+                  <View style={[styles.operationMenuIcon, { backgroundColor: '#EFF6FF' }]}>
+                    <RefreshCw size={18} color="#2563EB" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>🔄 Buscar Actualizaciones</Text>
+                    <Text style={styles.operationMenuSubtitle}>Consultar mejoras y descargar nueva versión (v1.2.1)</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
               </>
             ) : (
               <>
@@ -1777,6 +1798,22 @@ function MainApp({
                   <View style={{ flex: 1 }}>
                     <Text style={styles.operationMenuTitle}>📋 Comprobantes de mi Ruta</Text>
                     <Text style={styles.operationMenuSubtitle}>Recibos y abonos cobrados en mi ruta</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.operationMenuItem, { borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 4, paddingTop: 10 }]}
+                  onPress={() => {
+                    checkAndDownloadUpdate(false);
+                  }}
+                >
+                  <View style={[styles.operationMenuIcon, { backgroundColor: '#EFF6FF' }]}>
+                    <RefreshCw size={18} color="#2563EB" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>🔄 Buscar Actualizaciones</Text>
+                    <Text style={styles.operationMenuSubtitle}>Consultar mejoras y descargar nueva versión (v1.2.1)</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
