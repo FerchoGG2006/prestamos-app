@@ -2,7 +2,7 @@ import * as Updates from 'expo-updates';
 import { Alert, Platform, Linking } from 'react-native';
 
 export const CURRENT_APP_VERSION = '1.2.1';
-export const CURRENT_VERSION_CODE = 4;
+export const CURRENT_VERSION_CODE = 5;
 
 export interface AppVersionInfo {
   status?: string;
