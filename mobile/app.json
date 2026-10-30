@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kredia",
     "slug": "cartera-movil",
-    "version": "1.2.1",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -51,9 +51,7 @@
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 5000
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.2.0",
     "extra": {
       "eas": {
         "projectId": "f6311b34-505c-4645-854b-b40e739cfb66"
