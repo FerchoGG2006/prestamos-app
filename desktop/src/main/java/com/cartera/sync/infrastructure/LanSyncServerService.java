@@ -70,6 +70,8 @@ public class LanSyncServerService {
 
             server.createContext("/api/sync/status", this::handleStatus);
             server.createContext("/api/sync/package", this::handlePackage);
+            server.createContext("/api/v1/app-version", this::handleAppVersion);
+            server.createContext("/api/v1/download-apk", this::handleDownloadApk);
             server.setExecutor(Executors.newCachedThreadPool(r -> {
                 Thread t = new Thread(r, "lan-sync-http-worker");
                 t.setDaemon(true);
@@ -255,6 +257,90 @@ public class LanSyncServerService {
         } finally {
             exchange.close();
         }
+    }
+
+    private void handleAppVersion(HttpExchange exchange) throws IOException {
+        addCorsHeaders(exchange);
+        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+            return;
+        }
+
+        // Si existe un archivo app-version.json personalizado en el directorio, devolverlo directamente
+        java.nio.file.Path configPath = resolveFilePath("app-version.json");
+        if (configPath != null && java.nio.file.Files.isRegularFile(configPath)) {
+            try {
+                String customJson = java.nio.file.Files.readString(configPath, StandardCharsets.UTF_8);
+                sendJsonResponse(exchange, 200, customJson);
+                return;
+            } catch (Exception ignored) {}
+        }
+
+        ObjectNode node = mapper.createObjectNode();
+        node.put("status", "OK");
+        node.put("app_name", "Kredia");
+        node.put("min_version", "1.2.0");
+        node.put("latest_version", "1.2.1");
+        node.put("version_code", 4);
+        node.put("apk_url", "/api/v1/download-apk");
+        node.put("force_update", false);
+        node.put("release_notes", "• Selección rápida de modalidades de pago con pastillas ergonómicas.\n• Selector de fecha fija con calendario integrado.\n• Modo privacidad aislado por sesión y recordar contraseña.\n• Sincronización ultrarrápida bidireccional por Wi-Fi local sin internet.");
+
+        sendJsonResponse(exchange, 200, mapper.writeValueAsString(node));
+    }
+
+    private void handleDownloadApk(HttpExchange exchange) throws IOException {
+        addCorsHeaders(exchange);
+        if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+            return;
+        }
+
+        java.nio.file.Path apkPath = resolveFilePath("kredia.apk");
+        if (apkPath == null || !java.nio.file.Files.isRegularFile(apkPath)) {
+            sendErrorResponse(exchange, 404, "El archivo instalador kredia.apk no se encuentra disponible en el servidor.");
+            return;
+        }
+
+        long fileSize = java.nio.file.Files.size(apkPath);
+        exchange.getResponseHeaders().set("Content-Type", "application/vnd.android.package-archive");
+        exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"kredia.apk\"");
+        exchange.getResponseHeaders().set("Content-Length", String.valueOf(fileSize));
+
+        if ("HEAD".equalsIgnoreCase(exchange.getRequestMethod())) {
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+            return;
+        }
+
+        exchange.sendResponseHeaders(200, fileSize);
+        try (OutputStream os = exchange.getResponseBody();
+             java.io.InputStream is = java.nio.file.Files.newInputStream(apkPath)) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                os.write(buffer, 0, read);
+            }
+            os.flush();
+        } finally {
+            exchange.close();
+        }
+    }
+
+    private java.nio.file.Path resolveFilePath(String fileName) {
+        java.nio.file.Path direct = java.nio.file.Path.of(fileName);
+        if (java.nio.file.Files.exists(direct)) return direct;
+
+        java.nio.file.Path parent = java.nio.file.Path.of("..", fileName);
+        if (java.nio.file.Files.exists(parent)) return parent;
+
+        String userDir = System.getProperty("user.dir", ".");
+        java.nio.file.Path inUserDir = java.nio.file.Path.of(userDir, fileName);
+        if (java.nio.file.Files.exists(inUserDir)) return inUserDir;
+
+        return null;
     }
 
     private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {

@@ -22,6 +22,7 @@ import {
   DEFAULT_OFFICE_CONFIG,
 } from '../../infrastructure/storage/local-store';
 import { formatCOP } from '../../core/config/business-rules';
+import { checkAllUpdates, CURRENT_APP_VERSION } from '../utils/appUpdates';
 import {
   Building2,
   X,
@@ -40,6 +41,9 @@ import {
   Landmark,
   Layers,
   Calculator,
+  RefreshCw,
+  Wifi,
+  Smartphone,
 } from 'lucide-react-native';
 
 interface OfficeConfigModalProps {
@@ -726,6 +730,80 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   <Text style={styles.inputHelp}>
                     Este mensaje se imprime al final de los recibos de WhatsApp y tirillas.
                   </Text>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>URL Servidor LAN / Sede Principal</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={officeServerUrl}
+                    onChangeText={setOfficeServerUrl}
+                    placeholder="http://192.168.1.10:8765"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <Text style={styles.inputHelp}>
+                    Dirección IP del computador de escritorio para sincronización Wi-Fi y actualización de instaladores APK.
+                  </Text>
+                </View>
+
+                {/* Sección de Actualizaciones del Sistema */}
+                <View
+                  style={{
+                    marginTop: 12,
+                    padding: 14,
+                    backgroundColor: '#F8FAFC',
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 6,
+                    }}
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.navy }}>
+                      Actualizaciones del Sistema
+                    </Text>
+                    <View
+                      style={{
+                        backgroundColor: '#EEF2FF',
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.primary }}>
+                        v{CURRENT_APP_VERSION}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginBottom: 10, lineHeight: 16 }}>
+                    Consulta parches OTA silenciosos en la nube y nuevas versiones de instalador APK en la oficina.
+                  </Text>
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: COLORS.primary,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                      gap: 6,
+                    }}
+                    onPress={() => checkAllUpdates({ silent: false, serverUrl: officeServerUrl })}
+                    activeOpacity={0.8}
+                  >
+                    <RefreshCw size={15} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                      Comprobar Actualizaciones Ahora
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}

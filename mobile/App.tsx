@@ -94,7 +94,14 @@ import { NotificationsModal } from './src/presentation/components/NotificationsM
 import { formatAccountStatementReminder, openWhatsAppReceipt } from './src/core/utils/whatsapp-receipt';
 import { LoginView } from './src/presentation/views/auth/LoginView';
 import { safeStorage } from './src/infrastructure/storage/local-store';
-import { checkAndDownloadUpdate } from './src/presentation/utils/appUpdates';
+import {
+  checkAndDownloadUpdate,
+  checkAllUpdates,
+  checkApkVersion,
+  AppVersionInfo,
+  CURRENT_APP_VERSION,
+} from './src/presentation/utils/appUpdates';
+import { AppUpdateModal } from './src/presentation/components/AppUpdateModal';
 import {
   Users,
   Landmark,
@@ -378,6 +385,29 @@ function MainApp({
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
   const [nonPaymentVisits, setNonPaymentVisits] = useState<NonPaymentVisit[]>([]);
 
+  // Escenario C: Auto-actualizador in-app para paquetes .APK
+  const [apkUpdateInfo, setApkUpdateInfo] = useState<AppVersionInfo | null>(null);
+  const [isApkForceUpdate, setIsApkForceUpdate] = useState<boolean>(false);
+  const [showApkUpdateModal, setShowApkUpdateModal] = useState<boolean>(false);
+
+  const performAppUpdatesCheck = async (silent: boolean = true) => {
+    try {
+      const officeCfg = localStore.getOfficeConfig();
+      const serverUrl = officeCfg.officeServerUrl || 'http://192.168.1.10:8765';
+      await checkAllUpdates({
+        silent,
+        serverUrl,
+        onApkUpdateFound: (info, isForce) => {
+          setApkUpdateInfo(info);
+          setIsApkForceUpdate(isForce);
+          setShowApkUpdateModal(true);
+        },
+      });
+    } catch (err) {
+      console.warn('[Updates] Error verificando actualizaciones:', err);
+    }
+  };
+
   // Opciones completas de cliente y filtros en sección Clientes
   const [customerOptionsModalData, setCustomerOptionsModalData] = useState<{
     visible: boolean;
@@ -462,8 +492,8 @@ function MainApp({
           backgroundTimestamp = null;
         }
         resetTimer();
-        // Verificación silenciosa en segundo plano al regresar a la aplicación
-        checkAndDownloadUpdate(true);
+        // Verificación silenciosa en segundo plano (OTA + APK) al regresar a la aplicación
+        performAppUpdatesCheck(true);
       }
     };
 
@@ -631,8 +661,8 @@ function MainApp({
     const unsubscribe = localStore.subscribe(() => {
       syncFromStore();
     });
-    // Verificación de actualizaciones OTA en el arranque de la app
-    checkAndDownloadUpdate(true);
+    // Verificación de actualizaciones (OTA y nuevo instalador APK) en el arranque de la app
+    performAppUpdatesCheck(true);
     return () => unsubscribe();
   }, []);
 
@@ -1734,7 +1764,8 @@ function MainApp({
                 <TouchableOpacity
                   style={[styles.operationMenuItem, { borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 4, paddingTop: 10 }]}
                   onPress={() => {
-                    checkAndDownloadUpdate(false);
+                    setOperationsMenuVisible(false);
+                    performAppUpdatesCheck(false);
                   }}
                 >
                   <View style={[styles.operationMenuIcon, { backgroundColor: '#EFF6FF' }]}>
@@ -1742,7 +1773,7 @@ function MainApp({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>🔄 Buscar Actualizaciones</Text>
-                    <Text style={styles.operationMenuSubtitle}>Consultar mejoras y descargar nueva versión (v1.2.1)</Text>
+                    <Text style={styles.operationMenuSubtitle}>Consultar parches OTA e instalador APK (v{CURRENT_APP_VERSION})</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
@@ -1805,7 +1836,8 @@ function MainApp({
                 <TouchableOpacity
                   style={[styles.operationMenuItem, { borderTopWidth: 1, borderTopColor: '#F1F5F9', marginTop: 4, paddingTop: 10 }]}
                   onPress={() => {
-                    checkAndDownloadUpdate(false);
+                    setOperationsMenuVisible(false);
+                    performAppUpdatesCheck(false);
                   }}
                 >
                   <View style={[styles.operationMenuIcon, { backgroundColor: '#EFF6FF' }]}>
@@ -1813,7 +1845,7 @@ function MainApp({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>🔄 Buscar Actualizaciones</Text>
-                    <Text style={styles.operationMenuSubtitle}>Consultar mejoras y descargar nueva versión (v1.2.1)</Text>
+                    <Text style={styles.operationMenuSubtitle}>Consultar parches OTA e instalador APK (v{CURRENT_APP_VERSION})</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
@@ -2023,6 +2055,15 @@ function MainApp({
           setDetailCustomer(cust);
         }}
         onQuickWhatsApp={handleQuickWhatsAppAlert}
+      />
+
+      {/* Escenario C: Modal In-App de Actualización de APK */}
+      <AppUpdateModal
+        visible={showApkUpdateModal}
+        versionInfo={apkUpdateInfo}
+        isForceUpdate={isApkForceUpdate}
+        serverUrl={localStore.getOfficeConfig().officeServerUrl}
+        onClose={() => setShowApkUpdateModal(false)}
       />
 
       {/* Pilar 1: Modal de Bloqueo Automático por Inactividad / Segundo Plano */}
