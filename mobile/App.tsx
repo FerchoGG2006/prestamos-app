@@ -85,7 +85,7 @@ import { NewLoanModal } from './src/presentation/components/NewLoanModal';
 import { NonPaymentModal } from './src/presentation/components/NonPaymentModal';
 import { ExpenseModal } from './src/presentation/components/ExpenseModal';
 import { OfficeConfigModal } from './src/presentation/components/OfficeConfigModal';
-import { RecaudoModal } from './src/presentation/components/RecaudoModal';
+import { RecaudoModal, RecaudoModalTab } from './src/presentation/components/RecaudoModal';
 import { CustomerOptionsModal } from './src/presentation/components/CustomerOptionsModal';
 import { EditCustomerModal } from './src/presentation/components/EditCustomerModal';
 import { ErrorBoundary } from './src/presentation/components/ErrorBoundary';
@@ -401,6 +401,12 @@ function MainApp({
   const [newLoanModalVisible, setNewLoanModalVisible] = useState(false);
   const [expenseModalVisible, setExpenseModalVisible] = useState(false);
   const [recaudoModalVisible, setRecaudoModalVisible] = useState(false);
+  const [recaudoModalTab, setRecaudoModalTab] = useState<RecaudoModalTab>('RETIRO');
+
+  const openRecaudoModal = (tab: RecaudoModalTab = 'RETIRO') => {
+    setRecaudoModalTab(tab);
+    setRecaudoModalVisible(true);
+  };
   const [officeConfigVisible, setOfficeConfigVisible] = useState(false);
   const [officeConfigInitialTab, setOfficeConfigInitialTab] = useState<
     'EMPRESA' | 'CAPITAL' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP'
@@ -873,7 +879,7 @@ function MainApp({
     onViewCustomerDetail: (customer: Customer) => setDetailCustomer(customer),
     onOpenNewLoan: () => setNewLoanModalVisible(true),
     onOpenExpense: () => setExpenseModalVisible(true),
-    onOpenRecaudo: userRole === 'ADMIN' ? () => setRecaudoModalVisible(true) : undefined,
+    onOpenRecaudo: userRole === 'ADMIN' ? () => openRecaudoModal('RETIRO') : undefined,
     onOpenSettlement: userRole === 'ADMIN' ? () => setSettlementModalVisible(true) : undefined,
     onOpenDailyReport: () => setCollectorCuadreModalVisible(true),
     onNonPaymentCustomer: (customer: Customer, loan: Loan) =>
@@ -948,7 +954,7 @@ function MainApp({
               <Text style={styles.brandSub} numberOfLines={1}>
                 {userRole === 'ADMIN'
                   ? `🛡️ Supervisión • ${activeRouteLabel}`
-                  : `🛵 ${activeRouteLabel} • ${currentUser?.name || 'En Calle'}`}
+                  : `${activeRouteLabel} • ${currentUser?.name || 'Cobrador'}`}
               </Text>
             </View>
           </TouchableOpacity>
@@ -971,14 +977,14 @@ function MainApp({
                   </>
                 ) : (
                   <>
-                    <Text style={styles.rolePillToggleTextCollector}>🛵 Ver Cobrador</Text>
+                    <Text style={styles.rolePillToggleTextCollector}>Ver Cobrador</Text>
                     <RefreshCw size={9} color="#166534" style={{ marginLeft: 4 }} />
                   </>
                 )}
               </TouchableOpacity>
             ) : (
               <View style={[styles.rolePillToggle, styles.rolePillToggleCollector]}>
-                <Text style={styles.rolePillToggleTextCollector}>🛵 Cobrador</Text>
+                <Text style={styles.rolePillToggleTextCollector}>Cobrador</Text>
               </View>
             )}
 
@@ -1776,7 +1782,7 @@ function MainApp({
                   <View style={styles.operationMenuIcon}><Landmark size={18} color="#0D9488" /></View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.operationMenuTitle}>💼 Administrativo, Cartera y Base</Text>
-                    <Text style={styles.operationMenuSubtitle}>Techo de capital, cartera en calle y base en mano por ruta</Text>
+                    <Text style={styles.operationMenuSubtitle}>Techo de capital, cartera y base en mano por ruta</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
@@ -1815,8 +1821,8 @@ function MainApp({
               </>
             ) : (
               <>
-                <Text style={styles.operationsTitle}>🛵 Centro Operativo del Cobrador</Text>
-                <Text style={styles.operationsSubtitle}>Arqueo de mi ruta y comprobantes de calle</Text>
+                <Text style={styles.operationsTitle}>Centro Operativo del Cobrador</Text>
+                <Text style={styles.operationsSubtitle}>Arqueo y comprobantes de mi ruta</Text>
 
                 <TouchableOpacity
                   style={styles.operationMenuItem}
@@ -1936,7 +1942,7 @@ function MainApp({
         collectorId={currentUser?.id}
         onClose={() => setCollectorCuadreModalVisible(false)}
         onSuccess={syncFromStore}
-        onOpenRecaudo={() => setRecaudoModalVisible(true)}
+        onOpenRecaudo={() => openRecaudoModal('RETIRO')}
       />
 
       <SettlementModal

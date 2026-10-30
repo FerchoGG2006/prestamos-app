@@ -1171,6 +1171,24 @@ class LocalStore {
       )
       .reduce((sum, cm) => sum + cm.amount, 0);
 
+    const capitalInjectedToday = scopedCashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'INCOME' &&
+          cm.category === 'CAPITAL_INJECTION' &&
+          cm.createdAt.startsWith(todayStr)
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const paperworkRetiradoToday = scopedCashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          cm.category === 'RETIRO_PAPELERIA' &&
+          cm.createdAt.startsWith(todayStr)
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
     // Base disponible en caja de la ruta:
     // Dinero Total fijado a la ruta (Administrativo) - Cartera colocada en calle
     // + Efectivo cobrado hoy - Desembolsos netos en efectivo hoy - Gastos de ruta hoy - Retiros a oficina
@@ -1216,7 +1234,9 @@ class LocalStore {
           activeCapitalInStreet -
           collectedDigitalToday -
           expensesToday -
-          recaudoRetiradoToday
+          recaudoRetiradoToday -
+          paperworkRetiradoToday +
+          capitalInjectedToday
       );
     } else {
       // MODELO B: La ruta no tiene un Administrativo tope fijado o está en transición
@@ -1224,10 +1244,12 @@ class LocalStore {
       cashAvailableInHand = Math.max(
         0,
         initialBase +
-          collectedCashToday -
+          collectedCashToday +
+          capitalInjectedToday -
           salidasNetCashDisbursed -
           expensesToday -
-          recaudoRetiradoToday
+          recaudoRetiradoToday -
+          paperworkRetiradoToday
       );
 
       // El Administrativo es la suma del patrimonio vivo: Cartera en Calle + Base en Mano + Cobros Digitales
@@ -1254,6 +1276,8 @@ class LocalStore {
       disbursedToday,
       expensesToday,
       recaudoRetiradoToday,
+      capitalInjectedToday,
+      paperworkRetiradoToday,
       cashAvailableInHand,
       totalAdministrativeCapital,
       visitedCustomersCount: visitedCustomerIds.size,
@@ -1431,6 +1455,9 @@ class LocalStore {
     routeId?: string;
     collectorId?: string;
     orderIndex?: number;
+    photoUri?: string;
+    videoUri?: string;
+    mediaType?: 'PHOTO' | 'VIDEO' | 'NONE';
     todayStr: string;
   }): Promise<Customer> {
     if (!params.fullName.trim() || !params.documentNumber.trim()) {
@@ -1637,6 +1664,9 @@ class LocalStore {
     isCardMigration?: boolean;
     paidInstallmentNumbers?: number[];
     startDate?: string;
+    photoUri?: string;
+    videoUri?: string;
+    mediaType?: 'PHOTO' | 'VIDEO' | 'NONE';
   }): Promise<{ loan: Loan; installments: Installment[]; paperworkFee: number }> {
     const customer = this.customers.find((c) => c.id === params.customerId);
     if (!customer) throw new Error('Cliente no encontrado');
@@ -2022,10 +2052,203 @@ class LocalStore {
       createdAt: `${dateStamp}T${new Date().toTimeString().split(' ')[0]}`,
     };
 
+        this.cashMovements.unshift(movement);
+    await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
+    this.notify();
+    return movement;
+  }
+
+  /**
+   * Registrar Inyección de Capital a la Base / Ruta
+   */
+  public async recordCapitalInjection(params: {
+    amount: number;
+    sourceOrReason?: string;
+    routeId?: string;
+    authorizedBy?: string;
+    todayStr?: string;
+    increaseTargetAdmin?: boolean;
+  }): Promise<CashMovement> {
+    if (params.amount <= 0) {
+      throw new Error('El monto a inyectar debe ser mayor a cero.');
+    }
+
+    const dateStamp = params.todayStr || this.activeSession?.date || getLocalTodayStr();
+    const effectiveRouteId =
+      params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined;
+    const session = this.activeSession;
+    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || 'route-norte';
+
+    const movement: CashMovement = {
+      id: "csm-inj-" + Date.now(),
+      routeId: targetRouteId,
+      collectorId: params.authorizedBy || session?.collectorId || 'usr-admin-1',
+      sessionId: session?.id,
+      type: 'INCOME',
+      category: 'CAPITAL_INJECTION',
+      amount: params.amount,
+      description: params.sourceOrReason || 'Inyección de capital a la base',
+      createdAt: dateStamp + "T" + new Date().toTimeString().split(' ')[0],
+    };
+
+    this.cashMovements.unshift(movement);
+
+    if (params.increaseTargetAdmin) {
+      const routeIdx = this.routes.findIndex((r) => r.id === targetRouteId);
+      if (routeIdx >= 0) {
+        this.routes[routeIdx] = {
+          ...this.routes[routeIdx],
+          targetAdministrative: (this.routes[routeIdx].targetAdministrative || 20000000) + params.amount,
+        };
+        await safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
+      }
+    }
+
+    await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
+    this.notify();
+    return movement;
+  }
+
+  /**
+   * Registrar Retiro de Papelería hacia la Oficina Central
+   */
+  public async recordPaperworkWithdrawal(params: {
+    amount: number;
+    destinationOrReason?: string;
+    routeId?: string;
+    authorizedBy?: string;
+    todayStr?: string;
+  }): Promise<CashMovement> {
+    if (params.amount <= 0) {
+      throw new Error('El monto a retirar de papelería debe ser mayor a cero.');
+    }
+
+    const dateStamp = params.todayStr || this.activeSession?.date || getLocalTodayStr();
+    const effectiveRouteId =
+      params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined;
+    const session = this.activeSession;
+    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || 'route-norte';
+
+    const movement: CashMovement = {
+      id: "csm-pap-" + Date.now(),
+      routeId: targetRouteId,
+      collectorId: params.authorizedBy || session?.collectorId || 'usr-admin-1',
+      sessionId: session?.id,
+      type: 'EXPENSE',
+      category: 'RETIRO_PAPELERIA',
+      amount: params.amount,
+      description: params.destinationOrReason || 'Retiro de utilidad por papelería a oficina',
+      createdAt: dateStamp + "T" + new Date().toTimeString().split(' ')[0],
+    };
+
     this.cashMovements.unshift(movement);
     await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
     this.notify();
     return movement;
+  }
+
+  /**
+   * Obtener Historial de Papelería (Cobrada en préstamos/renovaciones y retirada con fecha)
+   */
+  public getPaperworkHistory(routeId?: string): Array<{
+    id: string;
+    date: string;
+    type: 'NUEVO_PRESTAMO' | 'RENOVACION' | 'RETIRO_PAPELERIA';
+    customerName?: string;
+    loanNumber?: string;
+    amount: number;
+    notes?: string;
+    routeId: string;
+  }> {
+    const isFilter = Boolean(routeId && routeId !== 'ALL');
+    const items: Array<{
+      id: string;
+      date: string;
+      type: 'NUEVO_PRESTAMO' | 'RENOVACION' | 'RETIRO_PAPELERIA';
+      customerName?: string;
+      loanNumber?: string;
+      amount: number;
+      notes?: string;
+      routeId: string;
+    }> = [];
+
+    const isPaperworkEnabled = this.officeConfig.paperworkFeeEnabled ?? true;
+    const pRate = this.officeConfig.paperworkRate || 5000;
+
+    // 1. Préstamos nuevos con papelería
+    this.loans.forEach((l) => {
+      if (isFilter && l.routeId !== routeId) return;
+      if (l.status === 'CANCELLED') return;
+      if (l.notes && l.notes.startsWith('Migrado de cartulina')) return;
+      const fee = isPaperworkEnabled ? calculatePaperworkFee(l.principal, { rate: pRate, base: 100000, calculationMode: 'PROPORTIONAL' }) : 0;
+      if (fee > 0) {
+        const cust = this.customers.find((c) => c.id === l.customerId);
+        items.push({
+          id: "pap-loan-" + l.id,
+          date: l.createdAt,
+          type: 'NUEVO_PRESTAMO',
+          customerName: cust ? cust.fullName : 'Cliente',
+          loanNumber: l.loanNumber,
+          amount: fee,
+          notes: "Papelería en crédito nuevo de $" + l.principal.toLocaleString('es-CO'),
+          routeId: l.routeId,
+        });
+      }
+    });
+
+    // 2. Renovaciones con papelería
+    this.renewals.forEach((r) => {
+      const assocLoan = this.loans.find((l) => l.id === r.newLoanId);
+      const rRouteId = assocLoan ? assocLoan.routeId : (this.routes[0] ? this.routes[0].id : 'route-norte');
+      if (isFilter && rRouteId !== routeId) return;
+      if (r.paperworkDeducted > 0) {
+        const cust = this.customers.find((c) => c.id === r.customerId);
+        items.push({
+          id: "pap-ren-" + r.id,
+          date: r.createdAt,
+          type: 'RENOVACION',
+          customerName: cust ? cust.fullName : 'Cliente',
+          loanNumber: assocLoan ? assocLoan.loanNumber : '#Renovación',
+          amount: r.paperworkDeducted,
+          notes: "Papelería en renovación de $" + r.newPrincipal.toLocaleString('es-CO'),
+          routeId: rRouteId,
+        });
+      }
+    });
+
+    // 3. Retiros de papelería
+    this.cashMovements.forEach((cm) => {
+      if (cm.category === 'RETIRO_PAPELERIA') {
+        if (isFilter && cm.routeId !== routeId) return;
+        items.push({
+          id: cm.id,
+          date: cm.createdAt,
+          type: 'RETIRO_PAPELERIA',
+          amount: cm.amount,
+          notes: cm.description,
+          routeId: cm.routeId,
+        });
+      }
+    });
+
+    return items.sort((a, b) => (b.date > a.date ? 1 : -1));
+  }
+
+  /**
+   * Obtener Historial de Movimientos de Recaudo e Inyecciones con fecha
+   */
+  public getRecaudoHistory(routeId?: string): CashMovement[] {
+    const isFilter = Boolean(routeId && routeId !== 'ALL');
+    return this.cashMovements
+      .filter((cm) => {
+        if (isFilter && cm.routeId !== routeId) return false;
+        return (
+          cm.category === 'RECAUDO_OFICINA' ||
+          cm.category === 'CAPITAL_INJECTION' ||
+          cm.category === 'RETIRO_PAPELERIA'
+        );
+      })
+      .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
   }
 
   /**

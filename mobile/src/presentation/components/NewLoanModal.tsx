@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Customer, Loan, LoanFrequency } from '../../core/domain/types';
+import { ClientMediaAttachment, ClientMediaValue } from './ClientMediaAttachment';
 import { formatCOP, addDays as addDaysToDate } from '../../core/config/business-rules';
 import {
   calculateLoanSummary,
@@ -81,6 +82,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     String(Math.round((localStore.getOfficeConfig().defaultInterestRate || 0.2) * 100))
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mediaAttachment, setMediaAttachment] = useState<ClientMediaValue | null>(null);
 
   useEffect(() => {
     if (visible) {

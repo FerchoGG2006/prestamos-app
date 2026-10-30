@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -46,6 +46,18 @@ import {
   Smartphone,
 } from 'lucide-react-native';
 
+const OFFICE_TABS: Array<{
+  key: 'EMPRESA' | 'CAPITAL' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP';
+  label: string;
+}> = [
+  { key: 'EMPRESA', label: '1. Sede' },
+  { key: 'CAPITAL', label: '2. Capital' },
+  { key: 'CREDITO', label: '3. Crédito' },
+  { key: 'PERMISOS', label: '4. Permisos' },
+  { key: 'RUTAS', label: '5. Rutas' },
+  { key: 'BACKUP', label: '6. Respaldo' },
+];
+
 interface OfficeConfigModalProps {
   visible: boolean;
   onClose: () => void;
@@ -61,6 +73,23 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'EMPRESA' | 'CAPITAL' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP'>('EMPRESA');
+  const tabScrollRef = useRef<ScrollView>(null);
+  const bodyScrollRef = useRef<ScrollView>(null);
+  const tabLayouts = useRef<Record<string, { x: number; width: number }>>({});
+
+  const scrollToTab = (tabKey: string) => {
+    const layout = tabLayouts.current[tabKey];
+    if (layout && tabScrollRef.current) {
+      const targetX = Math.max(0, layout.x - 100);
+      tabScrollRef.current.scrollTo({ x: targetX, animated: true });
+    }
+  };
+
+  const handleSelectTab = (tabKey: 'EMPRESA' | 'CAPITAL' | 'CREDITO' | 'PERMISOS' | 'RUTAS' | 'BACKUP') => {
+    setActiveTab(tabKey);
+    scrollToTab(tabKey);
+    bodyScrollRef.current?.scrollTo({ y: 0, animated: false });
+  };
   const [restoreJsonInput, setRestoreJsonInput] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
 
@@ -126,9 +155,12 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
   useEffect(() => {
     if (visible) {
-      if (initialTab) {
-        setActiveTab(initialTab);
-      }
+      const targetTab = initialTab || 'EMPRESA';
+      setActiveTab(targetTab);
+      const timer = setTimeout(() => {
+        scrollToTab(targetTab);
+        bodyScrollRef.current?.scrollTo({ y: 0, animated: false });
+      }, 100);
       const cfg = localStore.getOfficeConfig();
       setCompanyName(cfg.companyName || '');
       setTaxId(cfg.taxId || '');
@@ -172,6 +204,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         setAdminPassEdit(adm.password || '');
       }
       setEditingRouteId(null);
+      return () => clearTimeout(timer);
     }
   }, [visible, initialTab]);
 
@@ -561,13 +594,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={[styles.overlay, { paddingTop: Math.max(insets.top, 12) }]}
       >
         <View
           style={[
             styles.sheet,
-            { paddingBottom: Math.max(insets.bottom, 12) + 8, flexShrink: 1 },
+            { paddingBottom: Math.max(insets.bottom, 12) + 4 },
           ]}
         >
           <View style={styles.sheetHandle} />
@@ -590,70 +623,46 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Barra de 6 Tabs Operativas */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.tabBarScroll}
-            contentContainerStyle={styles.tabBar}
-          >
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'EMPRESA' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('EMPRESA')}
+          {/* Barra de 6 Tabs Operativas Segura y Auto-Desplazable */}
+          <View style={styles.tabBarWrapper}>
+            <ScrollView
+              ref={tabScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tabBarScroll}
+              contentContainerStyle={styles.tabBar}
             >
-              <Text style={[styles.tabText, activeTab === 'EMPRESA' && styles.tabTextActive]}>
-                1. Sede
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'CAPITAL' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('CAPITAL')}
-            >
-              <Text style={[styles.tabText, activeTab === 'CAPITAL' && styles.tabTextActive]}>
-                💼 2. Administrativo & Base
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'CREDITO' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('CREDITO')}
-            >
-              <Text style={[styles.tabText, activeTab === 'CREDITO' && styles.tabTextActive]}>
-                3. Crédito & Cobro
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'PERMISOS' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('PERMISOS')}
-            >
-              <Text style={[styles.tabText, activeTab === 'PERMISOS' && styles.tabTextActive]}>
-                4. Permisos Ruta
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'RUTAS' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('RUTAS')}
-            >
-              <Text style={[styles.tabText, activeTab === 'RUTAS' && styles.tabTextActive]}>
-                5. Credenciales
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabBtn, activeTab === 'BACKUP' && styles.tabBtnActive]}
-              onPress={() => setActiveTab('BACKUP')}
-            >
-              <Text style={[styles.tabText, activeTab === 'BACKUP' && styles.tabTextActive]}>
-                6. Respaldo
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
+              {OFFICE_TABS.map((tab) => {
+                const isActive = activeTab === tab.key;
+                return (
+                  <TouchableOpacity
+                    key={tab.key}
+                    onLayout={(e) => {
+                      tabLayouts.current[tab.key] = e.nativeEvent.layout;
+                      if (activeTab === tab.key) {
+                        scrollToTab(tab.key);
+                      }
+                    }}
+                    style={[styles.tabBtn, isActive && styles.tabBtnActive]}
+                    onPress={() => handleSelectTab(tab.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[styles.tabText, isActive && styles.tabTextActive]}
+                      numberOfLines={1}
+                    >
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           <ScrollView
+            ref={bodyScrollRef}
             style={styles.body}
+            contentContainerStyle={styles.bodyContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -1798,7 +1807,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgPrimary,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '92%',
+    height: Platform.OS === 'web' ? '90%' : '92%',
+    maxHeight: '94%',
+    flexDirection: 'column',
+    overflow: 'hidden',
   },
   sheetHandle: {
     width: 36,
@@ -1856,35 +1868,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  tabBarWrapper: {
+    backgroundColor: '#F8FAFC',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  tabBarScroll: {
+    maxHeight: 52,
+  },
   tabBar: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.microBorder,
-    backgroundColor: COLORS.bgSecondary,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
   },
   tabBtn: {
-    flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
     alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    justifyContent: 'center',
   },
   tabBtnActive: {
-    borderBottomColor: COLORS.primary,
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
   },
   tabText: {
     fontFamily: FONT_FAMILY,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: COLORS.textMuted,
+    color: '#475569',
+    includeFontPadding: false,
   },
   tabTextActive: {
-    color: COLORS.primary,
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   body: {
+    flex: 1,
+    minHeight: 0,
+  },
+  bodyContent: {
     paddingHorizontal: 20,
     paddingTop: 14,
+    paddingBottom: 48,
   },
   sectionContainer: {
     gap: 12,
@@ -2262,12 +2293,7 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '800',
   },
-  tabBarScroll: {
-    maxHeight: 46,
-    backgroundColor: COLORS.bgSecondary,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.microBorder,
-  },
+
   capFormulaCard: {
     backgroundColor: '#0F172A',
     borderRadius: 14,

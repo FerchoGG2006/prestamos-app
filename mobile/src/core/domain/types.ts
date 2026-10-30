@@ -68,6 +68,9 @@ export interface Customer {
   routeId: string;
   assignedCollectorId: string;
   orderIndex?: number;    // Secuencia de orden de cobro en ruta (1, 2, 3...)
+  photoUri?: string;
+  videoUri?: string;
+  mediaType?: 'PHOTO' | 'VIDEO' | 'NONE';
   createdAt: string;
   updatedAt: string;
 }
@@ -251,6 +254,8 @@ export interface CashMovement {
     | 'EXPENSE'
     | 'ADJUSTMENT'
     | 'RECAUDO_OFICINA'
+    | 'CAPITAL_INJECTION'
+    | 'RETIRO_PAPELERIA'
     | 'PAYMENT_REVERSAL'
     | 'LOAN_CANCELLATION';
   amount: number;
@@ -288,6 +293,8 @@ export interface DailyRouteMetrics {
   disbursedToday: number;        // Desembolsos de hoy (préstamos nuevos + renovaciones netas)
   expensesToday: number;         // Gastos operativos de ruta de hoy (pinchazos, datos, gasolina)
   recaudoRetiradoToday: number;  // Retiros de recaudo de la base a oficina hoy (Audio 3)
+  capitalInjectedToday?: number; // Inyecciones de capital registradas hoy
+  paperworkRetiradoToday?: number; // Retiros de papelería registrados hoy
   cashAvailableInHand: number;   // Base en efectivo físico disponible en la ruta (Audio 3)
   totalAdministrativeCapital: number; // Administrativo de la ruta: Cartera en Calle + Base en Caja (Audio 3)
   visitedCustomersCount: number;

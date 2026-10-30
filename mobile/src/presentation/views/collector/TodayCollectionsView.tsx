@@ -734,10 +734,12 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           <View style={styles.resumenGridRow}>
             {/* Tile 1: Recaudado hoy */}
             <View style={[styles.resumenTile, styles.resumenTileGreen]}>
-              <View style={styles.resumenTileIconGreen}>
-                <Wallet size={16} color="#16A34A" />
+              <View style={styles.resumenTileHeader}>
+                <View style={styles.resumenTileIconGreen}>
+                  <Wallet size={14} color="#16A34A" />
+                </View>
+                <Text style={styles.resumenTileLabel} numberOfLines={1}>Recaudado hoy</Text>
               </View>
-              <Text style={styles.resumenTileLabel}>Recaudado hoy</Text>
               <Text
                 style={[
                   styles.resumenTileAmount,
@@ -763,14 +765,16 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               styles.resumenTile,
               totalOverdueAmount > 0 ? styles.resumenTileRed : styles.resumenTileNeutral
             ]}>
-              <View style={totalOverdueAmount > 0 ? styles.resumenTileIconRed : styles.resumenTileIconNeutral}>
-                {totalOverdueAmount > 0 ? (
-                  <AlertCircle size={16} color="#DC2626" />
-                ) : (
-                  <CheckCircle2 size={16} color="#16A34A" />
-                )}
+              <View style={styles.resumenTileHeader}>
+                <View style={totalOverdueAmount > 0 ? styles.resumenTileIconRed : styles.resumenTileIconNeutral}>
+                  {totalOverdueAmount > 0 ? (
+                    <AlertCircle size={14} color="#DC2626" />
+                  ) : (
+                    <CheckCircle2 size={14} color="#16A34A" />
+                  )}
+                </View>
+                <Text style={styles.resumenTileLabel} numberOfLines={1}>En mora</Text>
               </View>
-              <Text style={styles.resumenTileLabel}>En mora</Text>
               <Text
                 style={[
                   styles.resumenTileAmount,
@@ -796,10 +800,12 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           <View style={styles.resumenGridRow}>
             {/* Tile 3: Rutas activas */}
             <View style={[styles.resumenTile, styles.resumenTileBlue]}>
-              <View style={styles.resumenTileIconBlue}>
-                <MapPin size={16} color="#0284C7" />
+              <View style={styles.resumenTileHeader}>
+                <View style={styles.resumenTileIconBlue}>
+                  <MapPin size={14} color="#0284C7" />
+                </View>
+                <Text style={styles.resumenTileLabel} numberOfLines={1}>Rutas activas</Text>
               </View>
-              <Text style={styles.resumenTileLabel}>Rutas activas</Text>
               <Text style={[styles.resumenTileAmount, { color: '#0284C7' }]} numberOfLines={1} adjustsFontSizeToFit>
                 {allRoutes.length} / {allRoutes.length}
               </Text>
@@ -808,10 +814,12 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
 
             {/* Tile 4: Liquidaciones */}
             <View style={[styles.resumenTile, styles.resumenTilePurple]}>
-              <View style={styles.resumenTileIconPurple}>
-                <Receipt size={16} color="#7C3AED" />
+              <View style={styles.resumenTileHeader}>
+                <View style={styles.resumenTileIconPurple}>
+                  <Receipt size={14} color="#7C3AED" />
+                </View>
+                <Text style={styles.resumenTileLabel} numberOfLines={1}>Liquidaciones</Text>
               </View>
-              <Text style={styles.resumenTileLabel}>Liquidaciones</Text>
               <Text style={[styles.resumenTileAmount, { color: '#7C3AED' }]} numberOfLines={1} adjustsFontSizeToFit>
                 0 pendientes
               </Text>
@@ -952,13 +960,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     >
       {/* ENCABEZADO EXCLUSIVO PARA COBRADOR */}
       <View style={styles.collectorHeaderCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-          <Text style={styles.collectorRoleBadge}>🛵 RUTA DE COBRADOR</Text>
-          <View style={styles.liveIndicator}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>EN CALLE</Text>
-          </View>
-        </View>
+        
         <Text style={styles.collectorHeaderTitle}>Mi Ruta de Cobro de Hoy</Text>
         <Text style={styles.collectorHeaderSub}>
           {activeRouteLabel || 'Ruta activa'} • {customerCardsData.length} paradas asignadas
@@ -1146,7 +1148,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         </ScrollView>
       </View>
 
-      {/* 3. SIGUIENTE COBRO EN CALLE */}
+      {/* 3. SIGUIENTE COBRO */}
       {firstPendingItem && (
         <TouchableOpacity
           style={styles.nextCollectionCard}
@@ -3666,56 +3668,58 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F3FF',
     borderColor: '#DDD6FE',
   },
+  resumenTileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 6,
+  },
   resumenTileIconGreen: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#DCFCE7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
   resumenTileIconRed: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#FEE2E2',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
   resumenTileIconNeutral: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
   resumenTileIconBlue: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#E0F2FE',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
   resumenTileIconPurple: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: '#EDE9FE',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
   resumenTileLabel: {
     fontFamily: FONT_FAMILY,
-    fontSize: 13,
+    fontSize: 12.5,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: '600',
+    flexShrink: 1,
   },
   resumenTileAmount: {
     fontFamily: FONT_FAMILY,

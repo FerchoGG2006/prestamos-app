@@ -18,6 +18,7 @@ import { LoanFrequency } from '../../core/domain/types';
 import { calculateLoanSummary, calculatePaperworkFee } from '../../core/domain/calculator';
 import { formatCOP, addDays as addDaysToDate } from '../../core/config/business-rules';
 import { UserPlus, X, Zap, Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ClientMediaAttachment, ClientMediaValue } from './ClientMediaAttachment';
 
 interface NewCustomerModalProps {
   visible: boolean;
@@ -86,6 +87,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   );
   // Ley 1581 de 2012 (SIC): Casillas premarcadas no constituyen autorización válida; debe iniciar en false
   const [dataConsentAccepted, setDataConsentAccepted] = useState(false);
+  const [mediaAttachment, setMediaAttachment] = useState<ClientMediaValue | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isFixedDate = frequency === 'FIXED_DATE';
@@ -166,6 +168,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setPaidInstallmentNums([]);
     setQuickPaidCountStr('');
     setDataConsentAccepted(false);
+    setMediaAttachment(null);
   };
 
   const handleSaveCustomerAndLoan = async () => {
@@ -482,6 +485,13 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                 />
               </View>
             </View>
+
+            {/* REGISTRO FOTOGRÁFICO O VIDEO DEL CLIENTE */}
+            <ClientMediaAttachment
+              value={mediaAttachment}
+              onChange={setMediaAttachment}
+              title="FOTO O VIDEO DEL CLIENTE"
+            />
 
             {/* SECCIÓN 2: TOGGLE DE PRÉSTAMO INMEDIATO */}
             <TouchableOpacity

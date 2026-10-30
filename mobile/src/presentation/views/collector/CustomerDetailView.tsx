@@ -11,6 +11,7 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -34,6 +35,7 @@ import {
 import { COLORS, TYPOGRAPHY, FONT_FAMILY } from '../../theme/colors';
 import {
   ArrowLeft,
+  Video,
   Phone,
   MapPin,
   Briefcase,
@@ -453,6 +455,26 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               <Text style={styles.contactText}>
                 {customer.businessName} ({customer.occupation})
               </Text>
+            </View>
+          )}
+
+          {Boolean(customer.photoUri || customer.videoUri) && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12, padding: 8, backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0' }}>
+              {customer.photoUri ? (
+                <Image source={{ uri: customer.photoUri }} style={{ width: 50, height: 50, borderRadius: 8, backgroundColor: '#E2E8F0' }} resizeMode="cover" />
+              ) : (
+                <View style={{ width: 50, height: 50, borderRadius: 8, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' }}>
+                  <Video size={24} color="#2563EB" />
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.navy }}>
+                  {customer.photoUri ? 'Fotografía Registrada del Cliente' : 'Video Registrado del Cliente'}
+                </Text>
+                <Text style={{ fontSize: 10, color: COLORS.textMuted }}>
+                  Registro audiovisual adjunto al expediente
+                </Text>
+              </View>
             </View>
           )}
 
