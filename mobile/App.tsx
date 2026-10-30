@@ -131,15 +131,10 @@ import {
   Home,
 } from 'lucide-react-native';
 import { verifyPassword } from './src/core/utils/security';
-import { useFonts } from 'expo-font';
 
 type AndroidNavMode = 'GESTURES_API35' | 'THREE_BUTTONS_API31';
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
-    Manrope: require('./assets/fonts/Manrope-Variable.ttf'),
-  });
-  const [fontSystemReady, setFontSystemReady] = useState(false);
   const { width, height } = useWindowDimensions();
   const isWideViewport = width >= 500;
   const [phoneFrameEnabled, setPhoneFrameEnabled] = useState(true);
@@ -156,46 +151,40 @@ export default function App() {
     hour12: false,
   });
 
-  // Garantiza Manrope en la web y en todos los textos nativos
+  // Tipografía nativa ejecutiva (SF Pro en iOS, Roboto en Android, Segoe UI en Windows/Web)
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const styleId = 'global-manrope-font-override';
-      if (!document.getElementById(styleId)) {
-        const style = document.createElement('style');
+      const oldStyle = document.getElementById('global-manrope-font-override');
+      if (oldStyle) oldStyle.remove();
+
+      const styleId = 'global-system-font-override';
+      let style = document.getElementById(styleId);
+      if (!style) {
+        style = document.createElement('style');
         style.id = styleId;
-        style.textContent = `
-          @font-face {
-            font-family: 'Manrope';
-            src: url('./assets/fonts/Manrope-Variable.ttf') format('truetype');
-            font-weight: 100 900;
-            font-style: normal;
-          }
-          *, *::before, *::after {
-            font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
-          }
-          body, input, textarea, button, select, option, div, span, p, a, h1, h2, h3, h4, h5, h6 {
-            font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
-          }
-        `;
         document.head.appendChild(style);
       }
+      style.textContent = `
+        *, *::before, *::after {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+        }
+        body, input, textarea, button, select, option {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+        }
+      `;
     }
 
-    if (!fontsLoaded) return;
     const TextComponent = Text as unknown as { defaultProps?: Record<string, unknown> };
     const InputComponent = TextInput as unknown as { defaultProps?: Record<string, unknown> };
     TextComponent.defaultProps = {
       ...TextComponent.defaultProps,
-      style: [{ fontFamily: 'Manrope' }, TextComponent.defaultProps?.style],
+      style: [{ fontFamily: FONT_FAMILY }, TextComponent.defaultProps?.style],
     };
     InputComponent.defaultProps = {
       ...InputComponent.defaultProps,
-      style: [{ fontFamily: 'Manrope' }, InputComponent.defaultProps?.style],
+      style: [{ fontFamily: FONT_FAMILY }, InputComponent.defaultProps?.style],
     };
-    setFontSystemReady(true);
-  }, [fontsLoaded]);
-
-  if (!fontsLoaded || !fontSystemReady) return null;
+  }, []);
 
   if (isWideViewport && phoneFrameEnabled) {
     return (

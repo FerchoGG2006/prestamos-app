@@ -101,10 +101,6 @@ public final class CarteraApplication extends Application {
 
     @Override
     public void start(Stage stage) {
-        var fontStream = getClass().getResourceAsStream("/ui/fonts/Manrope-Variable.ttf");
-        if (fontStream != null) {
-            Font.loadFonts(fontStream, 14);
-        }
         authService = context.getBean(AuthService.class);
         routeRepository = context.getBean(RouteRepository.class);
 

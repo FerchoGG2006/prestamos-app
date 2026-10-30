@@ -5,7 +5,7 @@
 
 /* Fuente tipográfica uniforme en toda la aplicación */
 * {
-    -fx-font-family: 'Manrope';
+    -fx-font-family: 'Segoe UI', 'Inter', -apple-system, 'Helvetica Neue', sans-serif;
 }
 
 .root,
@@ -49,7 +49,7 @@
 .alert,
 .scroll-pane,
 .header-panel {
-    -fx-font-family: 'Manrope';
+    -fx-font-family: 'Segoe UI', 'Inter', -apple-system, 'Helvetica Neue', sans-serif;
 }
 
 /* Fondo general de la aplicación y vistas */

@@ -1,20 +1,26 @@
-import { TextStyle } from 'react-native';
+import { Platform, TextStyle } from 'react-native';
 
 /**
  * SISTEMA TIPOGRÁFICO UNIFICADO (FINTECH DESIGN SYSTEM)
- * Escala limpia estilo Nubank / Revolut:
- * - Display: 36 / 40 bold (Patrimonio y héroes)
- * - Título: 20 bold / semibold (Secciones)
- * - Subtítulo / Tarjetas: 16-17 semibold
- * - Cuerpo: 15-16 regular/bold
- * - Caption / Metadatos: 12-13 medium (Mínimo 12px estricto)
- * - Tabular nums activado en todas las cifras monetarias
+ * - Una única familia tipográfica moderna, sobria y limpia (System Sans-serif)
+ *   (SF Pro en iOS, Roboto en Android, Segoe UI / Inter en Web).
+ * - Cero mezclas caóticas de fuentes.
+ * - Tabular nums activado en todas las cifras monetarias.
  */
 
-// Cargada desde assets por expo-font en App.tsx; variable para pesos 400–900 reales.
-export const FONT_FAMILY = 'Manrope';
+export const FONT_FAMILY = Platform.select({
+  ios: 'System',
+  android: 'Roboto',
+  web: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+  default: 'sans-serif',
+});
 
-export const FONT_FAMILY_MONO = 'monospace';
+export const FONT_FAMILY_MONO = Platform.select({
+  ios: 'Menlo',
+  android: 'monospace',
+  web: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+  default: 'monospace',
+});
 
 export const TYPOGRAPHY = {
   // Familia base consistente
