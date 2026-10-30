@@ -131,10 +131,20 @@ import {
   Home,
 } from 'lucide-react-native';
 import { verifyPassword } from './src/core/utils/security';
+import { useFonts } from 'expo-font';
 
 type AndroidNavMode = 'GESTURES_API35' | 'THREE_BUTTONS_API31';
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Manrope: require('./assets/fonts/Manrope-Variable.ttf'),
+    'Manrope-Regular': require('./assets/fonts/Manrope-Regular.ttf'),
+    'Manrope-Medium': require('./assets/fonts/Manrope-Medium.ttf'),
+    'Manrope-SemiBold': require('./assets/fonts/Manrope-SemiBold.ttf'),
+    'Manrope-Bold': require('./assets/fonts/Manrope-Bold.ttf'),
+    'Manrope-ExtraBold': require('./assets/fonts/Manrope-ExtraBold.ttf'),
+  });
+  const [fontSystemReady, setFontSystemReady] = useState(false);
   const { width, height } = useWindowDimensions();
   const isWideViewport = width >= 500;
   const [phoneFrameEnabled, setPhoneFrameEnabled] = useState(true);
@@ -151,13 +161,19 @@ export default function App() {
     hour12: false,
   });
 
-  // Tipografía nativa ejecutiva (SF Pro en iOS, Roboto en Android, Segoe UI en Windows/Web)
+  // Tipografía unificada Manrope (Google Fonts oficial con renderizado nítido)
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const oldStyle = document.getElementById('global-manrope-font-override');
-      if (oldStyle) oldStyle.remove();
+      const linkId = 'google-font-manrope';
+      if (!document.getElementById(linkId)) {
+        const link = document.createElement('link');
+        link.id = linkId;
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap';
+        document.head.appendChild(link);
+      }
 
-      const styleId = 'global-system-font-override';
+      const styleId = 'global-manrope-font-override';
       let style = document.getElementById(styleId);
       if (!style) {
         style = document.createElement('style');
@@ -166,25 +182,32 @@ export default function App() {
       }
       style.textContent = `
         *, *::before, *::after {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+          font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
         }
         body, input, textarea, button, select, option {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+          font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         }
       `;
     }
+
+    if (!fontsLoaded && Platform.OS !== 'web') return;
 
     const TextComponent = Text as unknown as { defaultProps?: Record<string, unknown> };
     const InputComponent = TextInput as unknown as { defaultProps?: Record<string, unknown> };
     TextComponent.defaultProps = {
       ...TextComponent.defaultProps,
-      style: [{ fontFamily: FONT_FAMILY }, TextComponent.defaultProps?.style],
+      style: [{ fontFamily: 'Manrope' }, TextComponent.defaultProps?.style],
     };
     InputComponent.defaultProps = {
       ...InputComponent.defaultProps,
-      style: [{ fontFamily: FONT_FAMILY }, InputComponent.defaultProps?.style],
+      style: [{ fontFamily: 'Manrope' }, InputComponent.defaultProps?.style],
     };
-  }, []);
+    setFontSystemReady(true);
+  }, [fontsLoaded]);
+
+  if ((!fontsLoaded && Platform.OS !== 'web') || !fontSystemReady) return null;
 
   if (isWideViewport && phoneFrameEnabled) {
     return (

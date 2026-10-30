@@ -8,12 +8,7 @@ import { Platform, TextStyle } from 'react-native';
  * - Tabular nums activado en todas las cifras monetarias.
  */
 
-export const FONT_FAMILY = Platform.select({
-  ios: 'System',
-  android: 'Roboto',
-  web: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
-  default: 'sans-serif',
-});
+export const FONT_FAMILY = 'Manrope';
 
 export const FONT_FAMILY_MONO = Platform.select({
   ios: 'Menlo',

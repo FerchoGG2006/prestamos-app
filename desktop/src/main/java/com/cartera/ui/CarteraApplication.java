@@ -101,6 +101,20 @@ public final class CarteraApplication extends Application {
 
     @Override
     public void start(Stage stage) {
+        // Registrar tipografía oficial Manrope con todos sus pesos en JavaFX
+        String[] fontResources = {
+            "/ui/fonts/Manrope-Regular.ttf",
+            "/ui/fonts/Manrope-Medium.ttf",
+            "/ui/fonts/Manrope-SemiBold.ttf",
+            "/ui/fonts/Manrope-Bold.ttf",
+            "/ui/fonts/Manrope-ExtraBold.ttf"
+        };
+        for (String resourcePath : fontResources) {
+            var fontStream = getClass().getResourceAsStream(resourcePath);
+            if (fontStream != null) {
+                Font.loadFont(fontStream, 14);
+            }
+        }
         authService = context.getBean(AuthService.class);
         routeRepository = context.getBean(RouteRepository.class);
 
