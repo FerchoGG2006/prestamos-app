@@ -1220,33 +1220,37 @@ class LocalStore {
     //    - El Administrativo permanece inmutable.
     // =========================================================================
 
-    // Base asignada inicial a la ruta (o cupo fijado)
-    const startingBase = totalAssignedCashBase > 0
+    // Base asignada inicial o cupo administrativo (ej: $5.000.000 COP)
+    const baseCapital = totalAssignedCashBase > 0
       ? totalAssignedCashBase
       : (totalTarget > 0 ? totalTarget : 0);
 
-    // Base de efectivo disponible en caja/oficina:
-    // Arranca en la base asignada, resta el efectivo neto desembolsado en préstamos (salidasNetCashDisbursed),
-    // suma el recaudo cobrado en efectivo hoy y las inyecciones de capital,
-    // y resta gastos de ruta, retiros a oficina y retiros de papelería.
-    const cashAvailableInHand = Math.max(
-      0,
-      startingBase +
-        collectedCashToday +
-        capitalInjectedToday -
-        salidasNetCashDisbursed -
-        expensesToday -
-        recaudoRetiradoToday -
-        paperworkRetiradoToday
+    // Interés/utilidad generada por los créditos activos en calle:
+    // Para cada crédito (ej: 200k para 240k), el interés generado es interestAmount (40k).
+    const totalActiveInterest = activeLoans.reduce(
+      (sum, l) => sum + Math.max(0, l.interestAmount || ((l.totalAgreed || 0) - (l.principal || 0))),
+      0
     );
 
     // Administrativo / Patrimonio operativo total:
-    // Suma la Cartera viva en la calle ($240.000) + la Base de oficina en mano ($4.800.000) + Dinero digital en banco.
-    // En el ejemplo de una base de 5.000.000 y préstamo de 200k para 240k:
-    // Base = 4.800.000, Cartera = 240.000 -> Administrativo = 5.040.000 (subió exactamente los $40.000).
+    // Arranca en el capital base y SUBE únicamente los intereses generados (ej: 5.000.000 + 40.000 = 5.040.000).
+    // NO se suma la cartera completa al patrimonio porque los préstamos salen de la misma base.
     const totalAdministrativeCapital = Math.max(
-      totalTarget,
-      activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
+      baseCapital,
+      baseCapital + totalActiveInterest - expensesToday - recaudoRetiradoToday
+    );
+
+    // Base en oficina / efectivo en mano:
+    // Los préstamos colocados en la calle SE DESCUENTAN DE LA BASE.
+    // Base = Administrativo - Cartera en calle - Cobros digitales en banco.
+    // En el ejemplo de 5.000.000 de base y 200k para 240k:
+    // Administrativo = 5.040.000, Cartera = 240.000 -> Base = 4.800.000 (descontó exactamente los $200k prestados).
+    // Con $808.000 en calle, los $808.000 quedan descontados de la base de oficina.
+    const cashAvailableInHand = Math.max(
+      0,
+      totalAdministrativeCapital -
+        activeCapitalInStreet -
+        collectedDigitalToday
     );
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
