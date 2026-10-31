@@ -3,6 +3,8 @@ import { Alert, Platform, Linking } from 'react-native';
 
 export const CURRENT_APP_VERSION = '1.2.1';
 export const CURRENT_VERSION_CODE = 5;
+export const CLOUD_VERSION_URL =
+  'https://raw.githubusercontent.com/FerchoGG2006/prestamos-app/feat/ui-ux-audit-handoff/version.json';
 
 export interface AppVersionInfo {
   status?: string;
@@ -109,8 +111,9 @@ export async function checkAndDownloadUpdate(silent: boolean = true): Promise<bo
 }
 
 /**
- * Escenario C: Consulta el endpoint de versionado del servidor para instaladores completos (.APK).
- * Compara la versión local contra min_version y latest_version.
+ * Escenario C: Consulta el endpoint de versionado para instaladores completos (.APK).
+ * Intenta primero consultar la nube (GitHub raw) para que funcione en calle con datos móviles (4G/5G).
+ * Si la nube no responde, hace fallback al servidor LAN de la oficina.
  */
 export async function checkApkVersion(
   serverUrl: string = 'http://192.168.1.10:8765',
@@ -120,31 +123,43 @@ export async function checkApkVersion(
     return { needsUpdate: false, isForce: false };
   }
 
+  const fetchVersionJson = async (url: string): Promise<AppVersionInfo | null> => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (res.ok) {
+        return (await res.json()) as AppVersionInfo;
+      }
+    } catch {
+      // Ignorar y permitir fallback
+    }
+    return null;
+  };
+
   try {
-    const cleanBaseUrl = serverUrl.replace(/\/+$/, '');
-    const endpoint = `${cleanBaseUrl}/api/v1/app-version`;
+    // 1. Intentar primero con la URL de versiones en la nube (accesible desde 4G/5G en calle)
+    let data = await fetchVersionJson(CLOUD_VERSION_URL);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // 2. Fallback al servidor LAN de la oficina si la nube no responde
+    if (!data) {
+      const cleanBaseUrl = serverUrl.replace(/\/+$/, '');
+      const endpoint = `${cleanBaseUrl}/api/v1/app-version`;
+      data = await fetchVersionJson(endpoint);
+    }
 
-    const response = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-
-    if (!response.ok) {
+    if (!data) {
       return {
         needsUpdate: false,
         isForce: false,
-        error: `Servidor respondió con código ${response.status}`,
+        error: 'No se pudo contactar el servidor de versiones (nube ni LAN)',
       };
     }
-
-    const data: AppVersionInfo = await response.json();
 
     // Verificación 1: ¿Versión menor que la mínima requerida? => Actualización obligatoria
     const belowMinVersion = compareSemver(CURRENT_APP_VERSION, data.min_version) < 0;
@@ -165,7 +180,6 @@ export async function checkApkVersion(
       versionInfo: data,
     };
   } catch (err: any) {
-    // Si estamos offline o el servidor LAN no está encendido, silenciar error
     return {
       needsUpdate: false,
       isForce: false,
