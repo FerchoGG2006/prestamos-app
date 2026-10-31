@@ -65,24 +65,17 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={() => {
-        if (!isForceUpdate) {
-          onClose();
-        }
-      }}
+      onRequestClose={onClose}
     >
       <View style={styles.overlay}>
         <View style={styles.card}>
           {/* Botón de cierre superior (solo si no es forzada) */}
-          {!isForceUpdate && (
-            <TouchableOpacity
-              style={styles.closeBtn}
+          <TouchableOpacity style={styles.closeBtn}
               onPress={onClose}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
               <X size={20} color={COLORS.navy} />
             </TouchableOpacity>
-          )}
 
           <ScrollView
             showsVerticalScrollIndicator={false}
@@ -197,16 +190,13 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
               )}
             </TouchableOpacity>
 
-            {!isForceUpdate && (
-              <TouchableOpacity
-                style={styles.cancelBtn}
+            <TouchableOpacity style={styles.cancelBtn}
                 onPress={onClose}
                 disabled={isProcessing}
                 activeOpacity={0.7}
               >
                 <Text style={styles.cancelBtnText}>Más tarde</Text>
               </TouchableOpacity>
-            )}
           </View>
         </View>
       </View>
