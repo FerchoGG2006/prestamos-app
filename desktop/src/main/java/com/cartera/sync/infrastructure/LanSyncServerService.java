@@ -281,8 +281,8 @@ public class LanSyncServerService {
         node.put("status", "OK");
         node.put("app_name", "Kredia");
         node.put("min_version", "1.2.0");
-        node.put("latest_version", "1.2.1");
-        node.put("version_code", 5);
+        node.put("latest_version", "1.2.2");
+        node.put("version_code", 6);
         node.put("apk_url", "/api/v1/download-apk");
         node.put("force_update", false);
         node.put("release_notes", "• Selección rápida de modalidades de pago con pastillas ergonómicas.\n• Selector de fecha fija con calendario integrado.\n• Modo privacidad aislado por sesión y recordar contraseña.\n• Sincronización ultrarrápida bidireccional por Wi-Fi local sin internet.");
