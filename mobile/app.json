@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kredia",
     "slug": "cartera-movil",
-    "version": "1.2.2",
+    "version": "1.2.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.cartera.movil",
-      "versionCode": 6,
+      "versionCode": 7,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW",
@@ -51,9 +51,7 @@
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 5000
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.2.0",
     "extra": {
       "eas": {
         "projectId": "f6311b34-505c-4645-854b-b40e739cfb66"
