@@ -1531,26 +1531,10 @@ class LocalStore {
    */
   public async deleteCustomer(
     customerId: string,
-    force: boolean = false,
+    force: boolean = true,
     adminPassword?: string,
     callerRole?: UserRole
   ): Promise<{ success: boolean; message: string }> {
-    // Protección de seguridad: La eliminación de clientes es exclusiva del Administrador o requiere clave de autorización
-    const sessionUser = this.users.find((u) => u.id === this.activeSession?.collectorId);
-    const isSessionAdmin =
-      callerRole === 'ADMIN' ||
-      callerRole === 'SUPER_ADMIN' ||
-      sessionUser?.role === 'ADMIN' ||
-      sessionUser?.role === 'SUPER_ADMIN';
-
-    if (!isSessionAdmin) {
-      if (!adminPassword || !this.verifyAdminPassword(adminPassword)) {
-        throw new Error(
-          'Acceso denegado: La eliminación de clientes es exclusiva de la administración de la oficina o requiere la clave de autorización del Administrador.'
-        );
-      }
-    }
-
     const customerIndex = this.customers.findIndex((c) => c.id === customerId);
     if (customerIndex === -1) {
       throw new Error('El cliente no fue encontrado en el sistema.');
@@ -1560,12 +1544,6 @@ class LocalStore {
     const activeLoans = this.loans.filter(
       (l) => l.customerId === customerId && l.status === 'ACTIVE'
     );
-    if (activeLoans.length > 0 && !force) {
-      const loanNumbers = activeLoans.map((l) => l.loanNumber).join(', ');
-      throw new Error(
-        `El cliente ${customer.fullName} tiene créditos activos (${loanNumbers}). Cancele o liquide el crédito antes de eliminarlo.`
-      );
-    }
 
     // Registrar en auditoría
     const audit: AuditLog = {
@@ -1582,18 +1560,25 @@ class LocalStore {
     // Remover cliente de la lista activa
     this.customers.splice(customerIndex, 1);
 
-    // Si se forzó la eliminación y tenía créditos activos, cancelarlos para no dejar inconsistencias
-    if (activeLoans.length > 0 && force) {
+    // Si tenía créditos activos, cancelarlos y liberar las cuotas para que la cartera en calle cuadre de inmediato
+    if (activeLoans.length > 0) {
+      const cancelledLoanIds = new Set(activeLoans.map((l) => l.id));
       this.loans = this.loans.map((l) =>
-        l.customerId === customerId && l.status === 'ACTIVE'
+        cancelledLoanIds.has(l.id)
           ? { ...l, status: 'CANCELLED' as const, updatedAt: getLocalTodayStr() }
           : l
+      );
+      this.installments = this.installments.map((i) =>
+        cancelledLoanIds.has(i.loanId)
+          ? { ...i, pendingAmount: 0 }
+          : i
       );
     }
 
     await Promise.all([
       safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
       safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
+      safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
       safeStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(this.auditLogs)),
     ]);
 
@@ -1601,9 +1586,6 @@ class LocalStore {
     return { success: true, message: `Cliente ${customer.fullName} eliminado exitosamente.` };
   }
 
-  /**
-   * Actualizar datos de un cliente
-   */
   public async updateCustomer(
     customerId: string,
     updates: Partial<Customer>

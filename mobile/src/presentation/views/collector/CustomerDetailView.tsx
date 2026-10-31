@@ -349,7 +349,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           {
             text: hasActive ? 'Eliminar de todas formas' : 'Eliminar',
             style: 'destructive',
-            onPress: () => onDeleteCustomer(customer, hasActive),
+            onPress: () => { onDeleteCustomer(customer, hasActive); onBack?.(); },
           },
         ],
         { cancelable: true }
@@ -624,7 +624,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               <Text style={styles.smallTwoWordText}>📲 Enviar WhatsApp</Text>
             </TouchableOpacity>
 
-            {isAdminOrSupervisor && onDeleteCustomer && (
+            {onDeleteCustomer && (
               <TouchableOpacity
                 style={[styles.smallTwoWordBtn, styles.btnDelete]}
                 activeOpacity={0.75}
@@ -1142,7 +1142,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
         )}
 
         {/* 6. Zona de Peligro / Gestión de Cliente (EXCLUSIVO ADMINISTRADOR / SUPERVISOR) */}
-        {isAdminOrSupervisor && onDeleteCustomer && (
+        {onDeleteCustomer && (
           <View style={styles.dangerZoneCard}>
             <View style={styles.dangerZoneHeader}>
               <Trash2 size={16} color="#dc2626" style={{ marginRight: 6 }} />

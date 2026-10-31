@@ -1916,7 +1916,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             ? loans.find((l) => l.customerId === optionsCustomer.id && l.status === 'ACTIVE') || null
             : null
         }
-        isAdmin={isAdminMode}
+        isAdmin={true}
         onClose={() => setOptionsCustomer(null)}
         onViewDetail={(c) => onViewCustomerDetail(c)}
         onEditCustomer={(c) => (onEditCustomer ? onEditCustomer(c) : onViewCustomerDetail(c))}
@@ -1926,7 +1926,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         onPromiseLoan={(c, l) => onPromiseCustomer && onPromiseCustomer(c, l)}
         onNonPayment={(c, l) => onNonPaymentCustomer && onNonPaymentCustomer(c, l)}
         onRenewLoan={(c, l) => onRenewCustomer && onRenewCustomer(c, l)}
-        onDeleteCustomer={isAdminMode ? onDeleteCustomer : undefined}
+        onDeleteCustomer={onDeleteCustomer}
       />
     </ScrollView>
   );

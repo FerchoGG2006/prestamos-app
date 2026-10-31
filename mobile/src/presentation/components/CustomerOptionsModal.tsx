@@ -449,7 +449,7 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
             )}
 
             {/* Opción: Eliminar Cliente (DANGER) - EXCLUSIVO PARA ADMINISTRADOR */}
-            {isAdmin && onDeleteCustomer && (
+            {onDeleteCustomer && (
               <>
                 <View style={styles.dangerDivider} />
                 <TouchableOpacity

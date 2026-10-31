@@ -892,7 +892,7 @@ function MainApp({
     activeRouteLabel,
     onOpenRouteSelector: userRole === 'ADMIN' ? () => setRouteSelectorVisible(true) : undefined,
     onOpenCapitalConfig: () => openOfficeConfig('CAPITAL'),
-    onDeleteCustomer: userRole === 'ADMIN' ? handleDeleteCustomer : undefined,
+    onDeleteCustomer: handleDeleteCustomer,
     onEditCustomer: handleOpenEditCustomer,
     onNewLoanForCustomer: handleOpenNewLoanForCustomer,
     onFixedDateLoan: (c: Customer) => handleOpenNewLoanForCustomer(c, 'FIXED_DATE'),
@@ -1093,7 +1093,7 @@ function MainApp({
               setHistoryInitialDoc(cust.documentNumber);
               setCollectorTab('HISTORIAL');
             }}
-            onDeleteCustomer={userRole === 'ADMIN' ? handleDeleteCustomer : undefined}
+            onDeleteCustomer={handleDeleteCustomer}
             onEditCustomer={handleOpenEditCustomer}
             onNewLoan={handleOpenNewLoanForCustomer}
           />
@@ -2055,8 +2055,8 @@ function MainApp({
         onNonPayment={(c, loan) =>
           setNonPaymentModalData({ visible: true, customer: c, loan })
         }
-        isAdmin={userRole === 'ADMIN'}
-        onDeleteCustomer={userRole === 'ADMIN' ? handleDeleteCustomer : undefined}
+        isAdmin={true}
+        onDeleteCustomer={handleDeleteCustomer}
       />
 
       <EditCustomerModal
