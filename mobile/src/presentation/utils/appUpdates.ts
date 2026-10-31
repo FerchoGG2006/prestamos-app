@@ -1,8 +1,8 @@
 import * as Updates from 'expo-updates';
 import { Alert, Platform, Linking } from 'react-native';
 
-export const CURRENT_APP_VERSION = '1.2.1';
-export const CURRENT_VERSION_CODE = 5;
+export const CURRENT_APP_VERSION = '1.2.2';
+export const CURRENT_VERSION_CODE = 6;
 export const CLOUD_VERSION_URL =
   'https://raw.githubusercontent.com/FerchoGG2006/prestamos-app/feat/ui-ux-audit-handoff/version.json';
 
@@ -188,17 +188,88 @@ export async function checkApkVersion(
   }
 }
 
+const FLAG_GRANT_READ_URI_PERMISSION = 0x00000001;
+const FLAG_ACTIVITY_NEW_TASK = 0x10000000;
+
+/**
+ * Descarga el APK dentro de la app (cacheDirectory) y abre el instalador nativo de Android
+ * mediante un content:// URI del FileProvider de expo-file-system (evita FileUriExposedException).
+ * Requiere el permiso REQUEST_INSTALL_PACKAGES declarado en app.json.
+ *
+ * Los módulos se cargan de forma diferida: en APK antiguos que no los incluyen,
+ * la función devuelve false y se usa la descarga por navegador.
+ */
+export async function downloadAndInstallApk(
+  apkUrl: string,
+  onProgress?: (fraction: number) => void
+): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+
+  let FileSystem: typeof import('expo-file-system/legacy');
+  let IntentLauncher: typeof import('expo-intent-launcher');
+  try {
+    FileSystem = require('expo-file-system/legacy');
+    IntentLauncher = require('expo-intent-launcher');
+  } catch {
+    return false; // Binario sin módulos nativos de instalación
+  }
+
+  const target = `${FileSystem.cacheDirectory}kredia-update.apk`;
+  await FileSystem.deleteAsync(target, { idempotent: true });
+
+  const task = FileSystem.createDownloadResumable(apkUrl, target, {}, (p) => {
+    if (p.totalBytesExpectedToWrite > 0) {
+      onProgress?.(p.totalBytesWritten / p.totalBytesExpectedToWrite);
+    }
+  });
+  const result = await task.downloadAsync();
+  if (!result || result.status !== 200) {
+    throw new Error(`Descarga fallida (HTTP ${result?.status ?? 'sin respuesta'})`);
+  }
+
+  const contentUri = await FileSystem.getContentUriAsync(result.uri);
+  try {
+    await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+      data: contentUri,
+      type: 'application/vnd.android.package-archive',
+      flags: FLAG_GRANT_READ_URI_PERMISSION | FLAG_ACTIVITY_NEW_TASK,
+    });
+  } catch {
+    // Android 8+: si Kredia no tiene permiso para instalar apps, abrir el switch
+    // "Permitir desde esta fuente" y pedir al usuario que vuelva a tocar Instalar.
+    await IntentLauncher.startActivityAsync(
+      IntentLauncher.ActivityAction.MANAGE_UNKNOWN_APP_SOURCES,
+      { data: 'package:com.cartera.movil' }
+    );
+    Alert.alert(
+      'Permiso necesario',
+      'Activa "Permitir desde esta fuente" para Kredia, regresa y toca otra vez "Descargar e instalar".'
+    );
+  }
+  return true;
+}
+
 /**
  * Dispara la descarga e instalación del archivo .APK.
- * En Android, Linking.openURL invoca el gestor de descargas/navegador que descarga el APK
- * y abre el diálogo nativo del sistema: "¿Deseas instalar una actualización de esta aplicación?".
+ * Primero intenta la instalación interna (descarga + instalador nativo). Si el binario no
+ * la soporta, usa Linking.openURL para que el navegador descargue el APK.
  */
-export async function openApkDownload(apkUrl: string, serverUrl?: string): Promise<boolean> {
+export async function openApkDownload(
+  apkUrl: string,
+  serverUrl?: string,
+  onProgress?: (fraction: number) => void
+): Promise<boolean> {
   try {
     let targetUrl = apkUrl;
     if (apkUrl.startsWith('/')) {
       const base = (serverUrl || 'http://192.168.1.10:8765').replace(/\/+$/, '');
       targetUrl = `${base}${apkUrl}`;
+    }
+
+    try {
+      if (await downloadAndInstallApk(targetUrl, onProgress)) return true;
+    } catch (installErr) {
+      console.warn('[Updates] Instalación interna falló, usando navegador:', installErr);
     }
 
     const supported = await Linking.canOpenURL(targetUrl);

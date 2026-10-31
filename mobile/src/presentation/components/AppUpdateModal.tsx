@@ -37,6 +37,7 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
   onClose,
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
 
   if (!versionInfo) return null;
 
@@ -48,12 +49,14 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
 
   const handleInstallPress = async () => {
     setIsProcessing(true);
+    setProgress(null);
     try {
-      await openApkDownload(versionInfo.apk_url, serverUrl);
+      await openApkDownload(versionInfo.apk_url, serverUrl, (f) => setProgress(f));
     } finally {
       setTimeout(() => {
         setIsProcessing(false);
-      }, 2000);
+        setProgress(null);
+      }, 1500);
     }
   };
 
@@ -180,7 +183,11 @@ export const AppUpdateModal: React.FC<AppUpdateModalProps> = ({
               {isProcessing ? (
                 <View style={styles.processingRow}>
                   <ActivityIndicator size="small" color="#FFFFFF" />
-                  <Text style={styles.installBtnText}>Abriendo instalador...</Text>
+                  <Text style={styles.installBtnText}>
+                    {progress !== null && progress < 1
+                      ? `Descargando ${Math.round(progress * 100)}%`
+                      : 'Abriendo instalador...'}
+                  </Text>
                 </View>
               ) : (
                 <View style={styles.processingRow}>
