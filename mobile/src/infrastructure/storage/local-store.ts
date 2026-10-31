@@ -56,11 +56,11 @@ import {
 } from '../../core/utils/security';
 
 export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
-  companyName: 'Inversiones FBV',
-  taxId: '901.458.789-1',
+  companyName: '',
+  taxId: '',
   city: 'Barranquilla',
-  address: 'Calle 72 # 48-25, Oficina 302',
-  supportPhone: '+57 300 123 4567',
+  address: '',
+  supportPhone: '',
   receiptFooterMessage: 'Gracias por su puntualidad • Conserve este comprobante',
   defaultInterestRate: 0.20,
   defaultInstallmentsCount: 30,
@@ -76,7 +76,7 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   allowRouteReorder: false,
   allowPartialPayments: true,
   officeServerUrl: 'http://192.168.1.10:8765',
-  isSetupCompleted: true,
+  isSetupCompleted: false,
 };
 
 const STORAGE_KEYS = {
@@ -229,54 +229,32 @@ class LocalStore {
         needInitialSeed = true;
       }
 
-      const adminPass = hashPassword('123456');
-      const colPass = hashPassword('123456');
-
-      const seedAllData = async () => {
-        this.officeConfig = { ...DEFAULT_OFFICE_CONFIG };
-        const adminUser: User = {
-          id: 'usr-admin-1',
-          name: 'Administrador FBV',
-          username: 'admin',
-          password: adminPass,
-          email: 'admin@inversionesfbv.com',
-          role: 'ADMIN',
-          phone: '+57 300 123 4567',
-          assignedRouteIds: [],
-          isActive: true,
-          createdAt: getLocalTodayStr(),
-        };
-        const colUser: User = {
-          id: 'usr-col-1',
-          name: 'Carlos Cobrador (Ruta 1)',
-          username: 'cobrador',
-          password: colPass,
-          email: 'cobrador@inversionesfbv.com',
-          role: 'COBRADOR',
-          phone: '3001234567',
-          assignedRouteIds: ['route-norte'],
+      if (needInitialSeed) {
+        // Inicialización limpia para operación real en producción (sin datos demo ni claves predeterminadas)
+        this.users = [];
+        this.customers = [];
+        this.loans = [];
+        this.installments = [];
+        this.cashMovements = [];
+        this.activeSession = {
+          id: `ses-${getLocalTodayStr()}`,
           routeId: 'route-norte',
-          isActive: true,
-          createdAt: getLocalTodayStr(),
+          date: getLocalTodayStr(),
+          collectorId: 'usr-col-1',
+          status: 'OPEN',
+          startTime: '07:30:00',
+          expectedCollection: 0,
+          collectedAmount: 0,
+          expectedCustomersCount: 0,
+          visitedCustomersCount: 0,
+          notes: 'Inicio de operación limpia',
         };
-        this.users = [adminUser, colUser];
-        this.routes = [...INITIAL_ROUTES];
-        this.customers = [...INITIAL_CUSTOMERS];
-        this.loans = [...INITIAL_LOANS];
-        this.installments = [...INITIAL_INSTALLMENTS];
-        this.activeSession = { ...INITIAL_SESSION };
-        this.cashMovements = [...INITIAL_CASH_MOVEMENTS];
-        this.promises = [...INITIAL_PROMISES];
+        this.promises = [];
         this.payments = [];
         this.renewals = [];
         this.settlements = [];
-        this.nonPaymentVisits = [];
-        this.auditLogs = [];
-
         await Promise.all([
-          safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig)),
           safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
-          safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
           safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
           safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
           safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
@@ -285,10 +263,6 @@ class LocalStore {
           safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
           safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments)),
         ]);
-      };
-
-      if (needInitialSeed) {
-        await seedAllData();
       } else {
         if (savedUsers) this.users = JSON.parse(savedUsers);
         if (savedRoutes) this.routes = JSON.parse(savedRoutes);
@@ -392,29 +366,34 @@ class LocalStore {
           this.routes.length === 0 ||
           this.routes.some((r) => r.targetAdministrative === undefined || r.targetAdministrative === null);
 
-        // Auto-sanación: Si la oficina está incompleta o sin usuarios o sin clientes, auto-cargar Inversiones FBV
-        if (!this.officeConfig.companyName || !this.officeConfig.isSetupCompleted || this.users.length === 0 || this.customers.length === 0) {
-          await seedAllData();
-        } else {
-          const hasAdmin = this.users.some(
-            (u) => (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') && Boolean(u.password?.trim())
-          );
-          if (!hasAdmin) {
-            const adminUser: User = {
-              id: 'usr-admin-1',
-              name: 'Administrador FBV',
-              username: 'admin',
-              password: adminPass,
-              email: 'admin@inversionesfbv.com',
-              role: 'ADMIN',
-              phone: '+57 300 123 4567',
-              assignedRouteIds: [],
-              isActive: true,
-              createdAt: getLocalTodayStr(),
-            };
-            this.users = [adminUser, ...this.users];
-            safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
-          }
+        if (this.officeConfig.isSetupCompleted && (!validAdmin || routesNeedMigration)) {
+          // Desbloquear automáticamente la configuración para que el asistente v2 configure dinero total y claves
+          this.officeConfig.isSetupCompleted = false;
+          safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
+        }
+
+        // Si la cartera aún contiene clientes o préstamos demo de prueba antiguos ('cust-1'), limpiarla para inicio real
+        if (this.customers.some((c) => c.id === 'cust-1' || c.fullName?.includes('Ana María Gómez'))) {
+          this.customers = [];
+          this.loans = [];
+          this.installments = [];
+          this.payments = [];
+          this.renewals = [];
+          this.settlements = [];
+          this.promises = [];
+          this.cashMovements = [];
+          this.nonPaymentVisits = [];
+          await Promise.all([
+            safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify([])),
+            safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify([])),
+          ]);
         }
       }
 

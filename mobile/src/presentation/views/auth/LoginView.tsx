@@ -73,8 +73,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
     officeConfig.isSetupCompleted && officeConfig.companyName?.trim()
   );
 
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('123456');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberPassword, setRememberPassword] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -90,9 +90,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
           if (creds.password) setPassword(creds.password);
           setRememberPassword(true);
         } catch {}
-      } else {
-        setUsername('admin');
-        setPassword('123456');
       }
     });
   }, []);
@@ -563,38 +560,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
               )}
               <Text style={styles.submitBtnText}>Iniciar Jornada</Text>
             </TouchableOpacity>
-
-            {/* Botón de Acceso Rápido Administrador */}
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#EFF6FF',
-                borderColor: '#BFDBFE',
-                borderWidth: 1,
-                borderRadius: 10,
-                paddingVertical: 10,
-                paddingHorizontal: 12,
-                marginTop: 10,
-              }}
-              activeOpacity={0.8}
-              onPress={() => {
-                setUsername('admin');
-                setPassword('123456');
-                setTimeout(() => {
-                  const allUsers = localStore.getUsers();
-                  const admin = allUsers.find((u) => u.username === 'admin');
-                  if (admin) onLoginSuccess(admin, true);
-                  else handleLogin();
-                }, 50);
-              }}
-            >
-              <ShieldCheck size={15} color="#2563EB" style={{ marginRight: 6 }} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#1D4ED8', fontFamily: FONT_FAMILY }}>
-                ⚡ Entrar como Administrador (Inversiones FBV)
-              </Text>
-            </TouchableOpacity>
           </View>
 
           {/* Botón para Registrar o Configurar Oficina y Credenciales */}
@@ -622,39 +587,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 : 'Registrar mi oficina y crear credenciales'}
             </Text>
           </TouchableOpacity>
-
-          <View style={{ marginTop: 22, alignItems: 'center', paddingBottom: 16 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: '#F1F5F9',
-                paddingVertical: 5,
-                paddingHorizontal: 14,
-                borderRadius: 20,
-              }}
-            >
-              <View
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 4,
-                  backgroundColor: '#10B981',
-                  marginRight: 6,
-                }}
-              />
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '700',
-                  color: '#334155',
-                  fontFamily: FONT_FAMILY,
-                }}
-              >
-                Kredia v1.2.1 • Compilación 5 (Sistema al Día)
-              </Text>
-            </View>
-          </View>
         </View>
       </ScrollView>
 
