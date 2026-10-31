@@ -1204,61 +1204,50 @@ class LocalStore {
     // =========================================================================
     // CÁLCULO DE BASE EN EFECTIVO Y CAPITAL ADMINISTRATIVO TOTAL
     //
-    // Reglas Financieras Inmutables:
-    // 1. Un pago de cuota ($30k en efectivo):
-    //    - Se RESTA ÚNICAMENTE de la Cartera (disminuye la deuda en calle de los clientes).
-    //    - Se SUMA a la Base en mano (ingresa dinero físico al bolsillo del cobrador).
-    //    - El Administrativo NO SE RESTA (el patrimonio total de la ruta permanece inmutable).
-    // 2. Si la ruta tiene Dinero Total Asignado (totalTarget > 0):
-    //    - Administrativo Total = totalTarget (constante fijada por la oficina).
-    //    - Base en Mano = totalTarget - activeCapitalInStreet - collectedDigitalToday - expensesToday - recaudoRetiradoToday
-    // 3. Si la ruta NO tiene Dinero Total Asignado aún (totalTarget <= 0):
-    //    - Base en Mano = Base Inicial + collectedCashToday - salidasNetCashDisbursed - expensesToday - recaudoRetiradoToday
-    //    - Administrativo Total = activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
+    // Reglas Financieras Inmutables (Ajustadas a Operación Real):
+    // 1. Desembolso de un préstamo (ej: préstamo de $200.000 para cobrar $240.000):
+    //    - La Base de la oficina/mano RESTA los $200.000 prestados (principal desembolsado en efectivo).
+    //    - La Cartera en calle SE MANTIENE en los $240.000 (total a cobrar a los clientes).
+    //    - El Administrativo/Patrimonio operativo SUBE los $40.000 de interés/utilidad generada.
+    //      (Patrimonio Operativo = Cartera en Calle + Base en Mano/Oficina + Recaudo Digital en Banco).
+    // 2. Un pago de cuota ($30.000 en efectivo):
+    //    - Se RESTA de la Cartera en calle (disminuye la deuda de los clientes de $240k a $210k).
+    //    - Se SUMA a la Base en mano (ingresa dinero físico a la oficina/bolsillo).
+    //    - El Administrativo NO CAMBIA (el patrimonio total permanece inmutable).
+    // 3. Un pago de cuota ($30.000 por Nequi / Transferencia):
+    //    - Se RESTA de la Cartera en calle.
+    //    - Se SUMA al Recaudo Digital (banco).
+    //    - El Administrativo permanece inmutable.
     // =========================================================================
 
-    let cashAvailableInHand = 0;
-    let totalAdministrativeCapital = 0;
+    // Base asignada inicial a la ruta (o cupo fijado)
+    const startingBase = totalAssignedCashBase > 0
+      ? totalAssignedCashBase
+      : (totalTarget > 0 ? totalTarget : 0);
 
-    if (hasTargetAdmin && totalTarget > 0 && totalTarget >= activeCapitalInStreet) {
-      // MODELO A: La ruta tiene fijado un Dinero Total Administrado (ej: $10.000.000)
-      totalAdministrativeCapital = totalTarget;
+    // Base de efectivo disponible en caja/oficina:
+    // Arranca en la base asignada, resta el efectivo neto desembolsado en préstamos (salidasNetCashDisbursed),
+    // suma el recaudo cobrado en efectivo hoy y las inyecciones de capital,
+    // y resta gastos de ruta, retiros a oficina y retiros de papelería.
+    const cashAvailableInHand = Math.max(
+      0,
+      startingBase +
+        collectedCashToday +
+        capitalInjectedToday -
+        salidasNetCashDisbursed -
+        expensesToday -
+        recaudoRetiradoToday -
+        paperworkRetiradoToday
+    );
 
-      // Base = Dinero Total de la ruta - Cartera en la calle
-      // ajustado por transferencias digitales (dinero en banco), gastos de hoy y retiros a oficina de hoy.
-      // Cuando un cliente abona 30k en efectivo:
-      // activeCapitalInStreet BAJA 30k -> (totalTarget - activeCapitalInStreet) SUBE 30k directamente a la Base.
-      cashAvailableInHand = Math.max(
-        0,
-        totalTarget -
-          activeCapitalInStreet -
-          collectedDigitalToday -
-          expensesToday -
-          recaudoRetiradoToday -
-          paperworkRetiradoToday +
-          capitalInjectedToday
-      );
-    } else {
-      // MODELO B: La ruta no tiene un Administrativo tope fijado o está en transición
-      const initialBase = totalAssignedCashBase;
-      cashAvailableInHand = Math.max(
-        0,
-        initialBase +
-          collectedCashToday +
-          capitalInjectedToday -
-          salidasNetCashDisbursed -
-          expensesToday -
-          recaudoRetiradoToday -
-          paperworkRetiradoToday
-      );
-
-      // El Administrativo es la suma del patrimonio vivo: Cartera en Calle + Base en Mano + Cobros Digitales
-      // Como un abono de 30k resta 30k a Cartera y suma 30k a Base, el Administrativo permanece EXACTAMENTE IGUAL.
-      totalAdministrativeCapital = Math.max(
-        totalTarget,
-        activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
-      );
-    }
+    // Administrativo / Patrimonio operativo total:
+    // Suma la Cartera viva en la calle ($240.000) + la Base de oficina en mano ($4.800.000) + Dinero digital en banco.
+    // En el ejemplo de una base de 5.000.000 y préstamo de 200k para 240k:
+    // Base = 4.800.000, Cartera = 240.000 -> Administrativo = 5.040.000 (subió exactamente los $40.000).
+    const totalAdministrativeCapital = Math.max(
+      totalTarget,
+      activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
+    );
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
 

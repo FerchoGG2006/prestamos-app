@@ -3,6 +3,7 @@ import {
   View,
   Text,
   ScrollView,
+  Modal,
   TouchableOpacity,
   StyleSheet,
   TextInput,
@@ -31,6 +32,7 @@ import {
 import { CustomerOptionsModal } from '../../components/CustomerOptionsModal';
 import {
   Search,
+  Check,
   CheckCircle,
   CheckCircle2,
   Clock,
@@ -166,6 +168,43 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   const dockScrollClearance = insets.bottom + 140;
   const [activeFilter, setActiveFilter] = useState<FilterType>(initialFilter);
   const [searchQuery, setSearchQuery] = useState('');
+  const [summaryPeriodFilter, setSummaryPeriodFilter] = useState<'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'ALL'>('TODAY');
+  const [showSummaryFilterModal, setShowSummaryFilterModal] = useState<boolean>(false);
+
+  const summaryFilterLabel = React.useMemo(() => {
+    switch (summaryPeriodFilter) {
+      case 'TODAY': return 'Hoy';
+      case 'YESTERDAY': return 'Ayer';
+      case 'WEEK': return '7 días';
+      case 'MONTH': return 'Este mes';
+      case 'ALL': return 'Histórico';
+      default: return 'Hoy';
+    }
+  }, [summaryPeriodFilter]);
+
+  const yesterdayStr = React.useMemo(() => {
+    try {
+      const parts = todayStr.split('-').map(Number);
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      d.setDate(d.getDate() - 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    } catch {
+      return '';
+    }
+  }, [todayStr]);
+
+  const sevenDaysAgoStr = React.useMemo(() => {
+    try {
+      const parts = todayStr.split('-').map(Number);
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      d.setDate(d.getDate() - 7);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    } catch {
+      return '';
+    }
+  }, [todayStr]);
+
+  const monthPrefixStr = React.useMemo(() => todayStr.slice(0, 7), [todayStr]);
 
   // Modo anti-miradas (ocultar montos): aislado por sesión de usuario y rol (nunca compartido globalmente)
   const privacyStorageKey = currentUserId
@@ -591,35 +630,6 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* 1. HEADER COMPACTO: BRAND + CENTRO DE CONTROL + NOTIFICACIONES */}
-        <View style={styles.adminHeaderRow}>
-          {/* Logo Cuadra */}
-          <View style={styles.adminBrandBox}>
-            <View style={styles.adminBrandLogoBg}>
-              <Shield size={20} color="#FFFFFF" strokeWidth={2.4} />
-            </View>
-            <Text style={styles.adminBrandTitle}>Cuadra</Text>
-          </View>
-
-          {/* Centro de Control / Administrador General */}
-          <View style={styles.adminHeaderCenter}>
-            <Text style={styles.adminMainTitle} numberOfLines={1}>Centro de Control</Text>
-            <Text style={styles.adminSubtitle} numberOfLines={1}>Administrador General</Text>
-          </View>
-
-          {/* Campana de Notificaciones */}
-          <TouchableOpacity
-            style={styles.adminBellBtn}
-            activeOpacity={0.7}
-            onPress={onOpenNotifications}
-          >
-            <Bell size={22} color={COLORS.textPrimary} strokeWidth={1.8} />
-            {(unreadNotificationsCount || 0) > 0 && (
-              <View style={styles.adminBellBadgeDot} />
-            )}
-          </TouchableOpacity>
-        </View>
-
         {/* 2. FILA DE FILTRO DISCRETO: SELECTOR DE RUTA + EN LÍNEA */}
         <View style={styles.adminFilterBarContainer}>
           {onOpenRouteSelector ? (
@@ -738,7 +748,9 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 <View style={styles.resumenTileIconGreen}>
                   <Wallet size={14} color="#16A34A" />
                 </View>
-                <Text style={styles.resumenTileLabel} numberOfLines={1}>Recaudado hoy</Text>
+                <Text style={styles.resumenTileLabel} numberOfLines={1}>
+                  {summaryPeriodFilter === 'TODAY' ? 'Recaudado hoy' : `Recaudado (${summaryFilterLabel})`}
+                </Text>
               </View>
               <Text
                 style={[
@@ -958,15 +970,6 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      {/* ENCABEZADO EXCLUSIVO PARA COBRADOR */}
-      <View style={styles.collectorHeaderCard}>
-        
-        <Text style={styles.collectorHeaderTitle}>Mi Ruta de Cobro de Hoy</Text>
-        <Text style={styles.collectorHeaderSub}>
-          {activeRouteLabel || 'Ruta activa'} • {customerCardsData.length} paradas asignadas
-        </Text>
-      </View>
-
       {/* 1. HERO FINTECH LIMPIO: COBRO PLENO DE LA RUTA */}
       <View style={styles.cleanHeroCard}>
         <View style={styles.cleanHeroTopRow}>
@@ -1848,6 +1851,63 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       </View>
 
       {/* MODAL DE OPCIONES 360 DEL CLIENTE (Elimina la sobrecarga de 6 botones en cada tarjeta) */}
+      {/* MODAL DE FILTRADO PARA RESUMEN DE HOY / PERIODOS */}
+      <Modal
+        visible={showSummaryFilterModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSummaryFilterModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.filterModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowSummaryFilterModal(false)}
+        >
+          <View style={styles.filterModalCard}>
+            <View style={styles.filterModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Calendar size={18} color={COLORS.primary} />
+                <Text style={styles.filterModalTitle}>Filtrar Resumen</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowSummaryFilterModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <X size={20} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.filterModalOptionsList}>
+              {[
+                { key: 'TODAY', label: 'Hoy', desc: 'Recaudo y balance de la jornada de hoy' },
+                { key: 'YESTERDAY', label: 'Ayer', desc: 'Recaudo consolidado del día anterior' },
+                { key: 'WEEK', label: 'Últimos 7 días', desc: 'Recaudo acumulado en la última semana' },
+                { key: 'MONTH', label: 'Este mes', desc: 'Todo el recaudo del mes en curso' },
+                { key: 'ALL', label: 'Histórico consolidado', desc: 'Total acumulado de toda la cartera' },
+              ].map((opt) => {
+                const isSelected = summaryPeriodFilter === opt.key;
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    style={[styles.filterModalOptionItem, isSelected && styles.filterModalOptionItemSelected]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setSummaryPeriodFilter(opt.key as any);
+                      setShowSummaryFilterModal(false);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.filterModalOptionLabel, isSelected && styles.filterModalOptionLabelSelected]}>
+                        {opt.label}
+                      </Text>
+                      <Text style={styles.filterModalOptionDesc}>{opt.desc}</Text>
+                    </View>
+                    {isSelected && <Check size={18} color="#2563EB" strokeWidth={2.5} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <CustomerOptionsModal
         visible={!!optionsCustomer}
         customer={optionsCustomer}
@@ -3615,6 +3675,74 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0F172A',
     letterSpacing: -0.3,
+  },
+  filterModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  filterModalCard: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  filterModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: 12,
+  },
+  filterModalTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  filterModalOptionsList: {
+    gap: 8,
+  },
+  filterModalOptionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  filterModalOptionItemSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#93C5FD',
+  },
+  filterModalOptionLabel: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1E293B',
+  },
+  filterModalOptionLabelSelected: {
+    color: '#1D4ED8',
+    fontWeight: '700',
+  },
+  filterModalOptionDesc: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
   },
   datePickerPill: {
     flexDirection: 'row',
