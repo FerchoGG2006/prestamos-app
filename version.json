@@ -1,10 +1,10 @@
 {
   "status": "success",
   "app_name": "Kredia",
-  "min_version": "1.2.3",
-  "latest_version": "1.2.3",
-  "version_code": 7,
+  "min_version": "1.0.0",
+  "latest_version": "1.2.2",
+  "version_code": 6,
   "apk_url": "https://expo.dev/artifacts/eas/ZJ_rMSxsF7ebnoIu4ZfzOYqMVoHzh2TBkIYy1FJF5Ws.apk",
-  "force_update": true,
-  "release_notes": "Actualización v1.2.3 (Build 7): Corrección integral de fórmula financiera (descuento de préstamos de la base, patrimonio con intereses ganados), activación de filtro por fechas y limpieza estética completa de encabezados."
+  "force_update": false,
+  "release_notes": "Actualización v1.2.3: Corrección de fórmulas financieras y mejoras visuales."
 }
