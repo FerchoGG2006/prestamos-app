@@ -42,10 +42,6 @@
       "hidden": false,
       "translucent": false
     },
-    "androidNavigationBar": {
-      "barStyle": "dark-content",
-      "backgroundColor": "#F6F4EE"
-    },
     "web": {
       "favicon": "./assets/favicon.png"
     },

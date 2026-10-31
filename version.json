@@ -1,10 +1,10 @@
 {
   "status": "success",
   "app_name": "Kredia",
-  "min_version": "1.2.1",
-  "latest_version": "1.2.1",
-  "version_code": 5,
-  "apk_url": "https://expo.dev/artifacts/eas/-Oe6roMd24yspm7fgL5lFx1mFHHSp7nIrJzoNYYhAF4.apk",
+  "min_version": "1.2.2",
+  "latest_version": "1.2.2",
+  "version_code": 6,
+  "apk_url": "https://expo.dev/artifacts/eas/QHzCKVs02KYIMRcohPXFceZ-YjIYo2NB_3RvvvcCnJ0.apk",
   "force_update": true,
-  "release_notes": "Actualización v1.2.1: Inyección de capital, historial de recaudo y papelería con fechas, adjunto de foto/video de cliente, menú de oficina en una sola línea y títulos de cards de resumen alineados."
+  "release_notes": "Actualización v1.2.2 (Build 6): Instalador nativo in-app mediante FileProvider, permiso REQUEST_INSTALL_PACKAGES, pantalla puente para versiones previas, inyección de capital, historial de recaudo y adjunto de clientes."
 }
