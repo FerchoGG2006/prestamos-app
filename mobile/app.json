@@ -55,9 +55,7 @@
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 5000
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.2.0",
     "extra": {
       "eas": {
         "projectId": "f6311b34-505c-4645-854b-b40e739cfb66"
