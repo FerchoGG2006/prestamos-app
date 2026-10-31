@@ -103,6 +103,7 @@ import {
 } from './src/presentation/utils/appUpdates';
 import { AppUpdateModal } from './src/presentation/components/AppUpdateModal';
 import {
+  FileText,
   Users,
   Landmark,
   Wifi,
@@ -879,7 +880,7 @@ function MainApp({
     onViewCustomerDetail: (customer: Customer) => setDetailCustomer(customer),
     onOpenNewLoan: () => setNewLoanModalVisible(true),
     onOpenExpense: () => setExpenseModalVisible(true),
-    onOpenRecaudo: userRole === 'ADMIN' ? () => openRecaudoModal('RETIRO') : undefined,
+    onOpenRecaudo: () => openRecaudoModal('RETIRO'),
     onOpenSettlement: userRole === 'ADMIN' ? () => setSettlementModalVisible(true) : undefined,
     onOpenDailyReport: () => setCollectorCuadreModalVisible(true),
     onNonPaymentCustomer: (customer: Customer, loan: Loan) =>
@@ -1771,6 +1772,24 @@ function MainApp({
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setOperationsMenuVisible(false);
+                    setTimeout(() => {
+                      openRecaudoModal('HISTORIAL_PAPELERIA');
+                    }, Platform.OS === 'ios' ? 250 : 50);
+                  }}
+                >
+                  <View style={[styles.operationMenuIcon, { backgroundColor: '#ECFDF5' }]}>
+                    <FileText size={18} color="#059669" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>📑 Recaudo y Gestión de Papelerías</Text>
+                    <Text style={styles.operationMenuSubtitle}>Historial de cobros, saldo y retiros de papelería</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
 
                 <TouchableOpacity
                   style={styles.operationMenuItem}
@@ -1837,6 +1856,24 @@ function MainApp({
                   <View style={{ flex: 1 }}>
                     <Text style={styles.operationMenuTitle}>📊 Mi Cuadre de Hoy</Text>
                     <Text style={styles.operationMenuSubtitle}>Resumen de recaudo, dinero a entregar y arqueo</Text>
+                  </View>
+                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.operationMenuItem}
+                  onPress={() => {
+                    setOperationsMenuVisible(false);
+                    setTimeout(() => {
+                      openRecaudoModal('HISTORIAL_PAPELERIA');
+                    }, Platform.OS === 'ios' ? 250 : 50);
+                  }}
+                >
+                  <View style={[styles.operationMenuIcon, { backgroundColor: '#ECFDF5' }]}>
+                    <FileText size={18} color="#059669" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.operationMenuTitle}>📑 Recaudo y Gestión de Papelerías</Text>
+                    <Text style={styles.operationMenuSubtitle}>Adelantos a oficina, saldo e historial de papelería</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
@@ -2055,6 +2092,7 @@ function MainApp({
         todayStr={todayStr}
         routeId={effectiveRouteFilter}
         authorizedBy={currentUser?.id}
+        initialTab={recaudoModalTab}
         onClose={() => setRecaudoModalVisible(false)}
         onSuccess={syncFromStore}
       />
