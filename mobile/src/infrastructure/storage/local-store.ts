@@ -1225,27 +1225,37 @@ class LocalStore {
       ? totalAssignedCashBase
       : (totalTarget > 0 ? totalTarget : 0);
 
-    // Interés/utilidad generada por los créditos activos en calle:
-    // Para cada crédito (ej: 200k para 240k), el interés generado es interestAmount (40k).
-    const totalActiveInterest = activeLoans.reduce(
+    // Préstamos válidos colocados en la ruta (activos y cancelados por pago completo; excluye anulados)
+    const validLoans = scopedLoans.filter((l) => l.status === 'ACTIVE' || l.status === 'PAID');
+
+    // Interés/utilidad pactada y generada por todos los créditos colocados:
+    // Permanece en el patrimonio tanto mientras el crédito está activo como cuando ya se pagó por completo.
+    // Nunca se borra al pagar la última cuota.
+    const totalEarnedInterest = validLoans.reduce(
       (sum, l) => sum + Math.max(0, l.interestAmount || ((l.totalAgreed || 0) - (l.principal || 0))),
       0
     );
 
     // Administrativo / Patrimonio operativo total:
-    // Arranca en el capital base y SUBE únicamente los intereses generados (ej: 5.000.000 + 40.000 = 5.040.000).
-    // NO se suma la cartera completa al patrimonio porque los préstamos salen de la misma base.
+    // Arranca en el capital base y SUBE únicamente con los intereses generados (+ inyecciones de capital).
+    // NO baja jamás al cobrar cuotas; el administrativo permanece intacto.
     const totalAdministrativeCapital = Math.max(
       baseCapital,
-      baseCapital + totalActiveInterest - expensesToday - recaudoRetiradoToday
+      baseCapital +
+        totalEarnedInterest +
+        capitalInjectedToday -
+        expensesToday -
+        recaudoRetiradoToday -
+        paperworkRetiradoToday
     );
 
     // Base en oficina / efectivo en mano:
-    // Los préstamos colocados en la calle SE DESCUENTAN DE LA BASE.
+    // Toda cuota cobrada (sea capital o rédito/interés) ingresa íntegra a la base disponible.
     // Base = Administrativo - Cartera en calle - Cobros digitales en banco.
-    // En el ejemplo de 5.000.000 de base y 200k para 240k:
-    // Administrativo = 5.040.000, Cartera = 240.000 -> Base = 4.800.000 (descontó exactamente los $200k prestados).
-    // Con $808.000 en calle, los $808.000 quedan descontados de la base de oficina.
+    // Al cobrar una cuota:
+    // 1. Cartera en calle baja en el valor total de la cuota.
+    // 2. Base en mano sube exactamente en ese mismo valor total.
+    // 3. El Administrativo se mantiene 100% inalterado.
     const cashAvailableInHand = Math.max(
       0,
       totalAdministrativeCapital -
