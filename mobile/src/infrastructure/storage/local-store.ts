@@ -1275,8 +1275,10 @@ class LocalStore {
       ? totalAssignedCashBase
       : (totalTarget > 0 ? totalTarget : 0);
 
-    // Préstamos válidos colocados en la ruta (activos y cancelados por pago completo; excluye anulados)
-    const validLoans = scopedLoans.filter((l) => l.status === 'ACTIVE' || l.status === 'PAID');
+    // Préstamos válidos colocados en la ruta (activos, cancelados por pago completo y renovados; excluye anulados)
+    const validLoans = scopedLoans.filter(
+      (l) => l.status === 'ACTIVE' || l.status === 'PAID' || l.status === 'RENEWED' || l.status === 'DEFAULTED'
+    );
 
     // Interés/utilidad pactada y generada por todos los créditos colocados:
     // Permanece en el patrimonio tanto mientras el crédito está activo como cuando ya se pagó por completo.
