@@ -142,8 +142,8 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   const generateReportText = (st?: DailySettlement | null): string => {
     const officeConfig = localStore.getOfficeConfig();
     const companyName = officeConfig.companyName || 'Cartera & Préstamos';
-    const collectorName = st?.collectorId || activeSession.collectorId || collectorId || 'Cobrador de Ruta';
-    const reportRouteId = st?.routeId || activeSession.routeId || routeId || 'Ruta Principal';
+    const collectorName = localStore.getCollectorDisplayName(st?.collectorId || activeSession.collectorId || collectorId);
+    const reportRouteName = localStore.getRouteDisplayName(st?.routeId || activeSession.routeId || routeId);
     const reportDate = st?.date || activeSession.date || todayStr;
     const isSealed = Boolean(st);
 
@@ -164,7 +164,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
       `${isSealed ? '🔒 *ESTADO: CUADRE CERRADO Y SELLADO*' : '⚠️ *ESTADO: BORRADOR EN RUTA*'}`,
       st ? `🔖 *Folio Liquidación:* #${st.id.toUpperCase()}` : '',
       `📅 *Fecha de Cobro:* ${reportDate}`,
-      `👤 *Cobrador:* ${collectorName} • *Ruta:* ${routeId}`,
+      `👤 *Cobrador:* ${collectorName} • *Ruta:* ${reportRouteName}`,
       st
         ? `⏰ *Hora de Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
             hour: '2-digit',
@@ -286,7 +286,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
               <Text style={styles.subtitle}>
                 {settledRecord
                   ? `Jornada ${settledRecord.date} • Folio #${settledRecord.id.toUpperCase()}`
-                  : `Ruta ${activeSession.routeId} • Cobro ${activeSession.date}`}
+                  : `${localStore.getRouteDisplayName(activeSession.routeId)} • Cobro ${activeSession.date}`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -337,7 +337,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                   <View style={styles.receiptRow}>
                     <Text style={styles.receiptLabel}>Cobrador / Ruta:</Text>
                     <Text style={styles.receiptValue}>
-                      {settledRecord.collectorId} • {settledRecord.routeId}
+                      {localStore.getCollectorDisplayName(settledRecord.collectorId)} • {localStore.getRouteDisplayName(settledRecord.routeId)}
                     </Text>
                   </View>
                   <View style={styles.receiptRow}>

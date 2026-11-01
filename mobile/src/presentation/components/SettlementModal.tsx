@@ -379,8 +379,8 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   const generateOfficialReportText = (st?: DailySettlement | null): string => {
     const officeConfig = localStore.getOfficeConfig();
     const companyName = officeConfig.companyName || 'Cartera & Préstamos';
-    const collectorName = st?.collectorId || session?.collectorId || 'Cobrador de Ruta';
-    const routeId = st?.routeId || session?.routeId || 'Ruta Principal';
+    const collectorName = localStore.getCollectorDisplayName(st?.collectorId || session?.collectorId || collectorId);
+    const routeName = localStore.getRouteDisplayName(st?.routeId || session?.routeId || routeId);
     const reportDate = st?.date || session?.date || todayStr;
     const isSealed = Boolean(st);
 
@@ -402,7 +402,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       `${isSealed ? '🔒 *ESTADO: SELLADO Y LIQUIDADO*' : '⚠️ *ESTADO: PREVIO AL CIERRE*'}`,
       st ? `🔖 *Folio Liquidación:* #${st.id.toUpperCase()}` : '',
       `📅 *Fecha:* ${reportDate}`,
-      `👤 *Cobrador:* ${collectorName} • *Ruta:* ${routeId}`,
+      `👤 *Cobrador:* ${collectorName} • *Ruta:* ${routeName}`,
       st
         ? `⏰ *Hora Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
             hour: '2-digit',
@@ -528,7 +528,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               <Text style={styles.subtitle}>
                 {settledRecord
                   ? `Jornada ${settledRecord.date} • Folio #${settledRecord.id.toUpperCase()}`
-                  : `Capital General • Ruta ${activeSession.routeId} • Cartera.db`}
+                  : `Capital General • ${localStore.getRouteDisplayName(activeSession.routeId)} • Cartera.db`}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -580,7 +580,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   <View style={styles.receiptRow}>
                     <Text style={styles.receiptLabel}>Cobrador / Ruta:</Text>
                     <Text style={styles.receiptValue}>
-                      {settledRecord.collectorId} • {settledRecord.routeId}
+                      {localStore.getCollectorDisplayName(settledRecord.collectorId)} • {localStore.getRouteDisplayName(settledRecord.routeId)}
                     </Text>
                   </View>
                   <View style={styles.receiptRow}>
@@ -1060,7 +1060,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 </Text>
               </View>
               <Text style={styles.syncTicketSubtitle}>
-                Ruta: {activeSession.routeId} • Jornada: {todayStr} • {activeSession.status}
+                Ruta: {localStore.getRouteDisplayName(activeSession.routeId)} • Jornada: {todayStr} • {activeSession.status}
               </Text>
 
               <View style={styles.dashedDivider} />

@@ -1952,6 +1952,7 @@ function MainApp({
         loan={renewalModalData.loan}
         installments={installments}
         todayStr={todayStr}
+        isAdmin={userRole === 'ADMIN'}
         onClose={() =>
           setRenewalModalData({ visible: false, customer: null, loan: null })
         }

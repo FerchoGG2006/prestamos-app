@@ -521,6 +521,56 @@ class LocalStore {
   // --- GETTERS ---
   public getUsers(): User[] { return this.users; }
   public getRoutes(): Route[] { return this.routes; }
+
+  /**
+   * Obtiene el nombre legible de una ruta para comprobantes, arqueos y vistas.
+   * Si no tiene nombre comercial o tiene ID técnico, asigna secuencialmente 'Ruta 1', 'Ruta 2', etc.
+   */
+  public getRouteDisplayName(routeId?: string): string {
+    if (!routeId) return 'Ruta 1';
+    const idx = this.routes.findIndex((r) => r.id === routeId);
+    if (idx !== -1) {
+      const r = this.routes[idx];
+      const name = (r.name || '').trim();
+      if (name && !name.toLowerCase().startsWith('route-')) {
+        return name;
+      }
+      return `Ruta ${idx + 1}`;
+    }
+    const matchNum = routeId.match(/\d+/);
+    if (matchNum) {
+      return `Ruta ${matchNum[0]}`;
+    }
+    if (routeId.toLowerCase() === 'route-norte') {
+      return 'Ruta 1';
+    }
+    return routeId.replace(/^route-/, 'Ruta ');
+  }
+
+  /**
+   * Obtiene el nombre comercial/humano del cobrador en vez de IDs crudos como 'usr-col-1'.
+   */
+  public getCollectorDisplayName(collectorId?: string): string {
+    if (!collectorId) return 'Cobrador';
+    const user = this.users.find((u) => u.id === collectorId);
+    if (user && user.name && user.name.trim() !== '') {
+      return user.name.trim();
+    }
+    if (user && user.username && user.username.trim() !== '') {
+      return user.username.trim();
+    }
+    const route = this.routes.find((r) => r.collectorId === collectorId);
+    if (route && route.collectorName && route.collectorName.trim() !== '') {
+      return route.collectorName.trim();
+    }
+    if (collectorId === 'usr-col-1' || collectorId === 'col-1') {
+      return 'Cobrador 1';
+    }
+    if (collectorId === 'usr-admin-1') {
+      return 'Administrador';
+    }
+    return collectorId;
+  }
   public getCustomers(): Customer[] { return this.customers; }
   public getLoans(): Loan[] { return this.loans; }
   public getInstallments(): Installment[] { return this.installments; }
@@ -1818,6 +1868,7 @@ class LocalStore {
     newPrincipal: number;
     interestRate?: number;
     installmentCount?: number;
+    frequency?: LoanFrequency;
     collectorId: string;
     todayStr: string;
     paperworkFee?: number;
@@ -1857,7 +1908,7 @@ class LocalStore {
       updatedAt: params.todayStr,
     };
 
-    const effectiveFrequency = prevLoan.frequency || 'DAILY';
+    const effectiveFrequency = params.frequency || prevLoan.frequency || 'DAILY';
     const isFixedDate = effectiveFrequency === 'FIXED_DATE';
     const effectiveInstallmentCount = isFixedDate
       ? 1

@@ -876,7 +876,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                   >
                     {/* Fila Superior: Cuota, Vencimiento y Monto */}
                     <View style={styles.instCardTopRow}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, minWidth: 0, marginRight: 8 }}>
                         <View
                           style={[
                             styles.instNumBadge,
@@ -894,12 +894,13 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                             #{inst.installmentNumber}
                           </Text>
                         </View>
-                        <Text style={styles.instCardDueDate}>
+                        <Text style={styles.instCardDueDate} numberOfLines={1}>
                           Vence: <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{inst.dueDate}</Text>
                         </Text>
                       </View>
 
                       <Text
+                        numberOfLines={1}
                         style={[
                           styles.instCardAmount,
                           details.isPaid && { color: '#15803d' },
@@ -1940,7 +1941,8 @@ const styles = StyleSheet.create({
   instCardItem: {
     backgroundColor: COLORS.surfaceSoft,
     borderRadius: 14,
-    padding: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderWidth: 1,
     borderColor: COLORS.microBorder,
   },
@@ -1978,14 +1980,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: COLORS.textSecondary,
-    flex: 1,
-    marginLeft: 8,
+    flexShrink: 1,
   },
   instCardAmount: {
     fontFamily: FONT_FAMILY,
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.textPrimary,
+    flexShrink: 0,
+    textAlign: 'right',
   },
   instPaymentMetaBox: {
     flexDirection: 'row',
