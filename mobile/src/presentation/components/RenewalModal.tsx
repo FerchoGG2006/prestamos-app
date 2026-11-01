@@ -445,81 +445,95 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                 <Text style={styles.errorText}>{calculationError}</Text>
               </View>
             ) : (
-              <>
-                {/* 4. TOTAL DE LA DEUDA PROMINENTE */}
-                {newSummary && (
-                  <View style={styles.totalDebtCard}>
-                    <View style={styles.totalDebtHeader}>
-                      <DollarSign size={16} color={COLORS.purple} />
-                      <Text style={styles.totalDebtHeaderTitle}>TOTAL DE LA DEUDA A COBRAR</Text>
-                    </View>
-                    <Text style={styles.totalDebtAmount}>
-                      {formatCOP(newSummary.totalAgreed)}
-                    </Text>
-                    <View style={styles.totalDebtDetailsRow}>
-                      <Text style={styles.totalDebtDetailText}>
-                        Capital: <Text style={{ fontWeight: '800' }}>{formatCOP(newPrincipal)}</Text>
-                      </Text>
-                      <Text style={styles.totalDebtDetailText}>
-                        + Interés ({Math.round(effectiveInterestRate * 100)}%):{' '}
-                        <Text style={{ fontWeight: '800', color: COLORS.purple }}>
-                          +{formatCOP(newSummary.interestAmount)}
-                        </Text>
-                      </Text>
-                    </View>
-                    <View style={styles.totalDebtCuotaBadge}>
-                      <Text style={styles.totalDebtCuotaBadgeText}>
-                        {newSummary.installmentCount} cuotas de{' '}
-                        <Text style={{ fontWeight: '900' }}>
-                          {formatCOP(newSummary.installmentAmount)}
-                        </Text>{' '}
-                        cada {currentFreqConfig.unitLabel.replace(/s$/, '')}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                {/* 5. TICKET DE DESEMBOLSO NETO */}
-                <View style={styles.ticketCard}>
-                  <Text style={styles.ticketTitle}>DESGLOSE DE DESEMBOLSO NETO EN MANO</Text>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>Nuevo capital aprobado:</Text>
-                    <Text style={styles.infoVal}>{formatCOP(newPrincipal)}</Text>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>(-) Saliente (Saldo anterior):</Text>
-                    <Text style={[styles.infoVal, { color: COLORS.danger }]}>
-                      - {formatCOP(renewalCalc.previousBalanceDeducted)}
-                    </Text>
-                  </View>
-                  <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>
-                      {isPaperworkEnabled
-                        ? `(-) Papelería (${formatCOP(effectivePaperworkRate)} / $100k):`
-                        : '(-) Papelería (Exento):'}
-                    </Text>
-                    <Text style={[styles.infoVal, { color: COLORS.warning }]}>
-                      - {formatCOP(renewalCalc.paperworkDeducted)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.dashedDivider} />
-
-                  <View style={styles.infoRow}>
-                    <Text
-                      style={[
-                        styles.infoLabel,
-                        { fontWeight: '800', color: COLORS.textPrimary },
-                      ]}
-                    >
-                      Efectivo Neto a Entregar Hoy:
-                    </Text>
-                    <Text style={styles.netAmountText}>
-                      {formatCOP(renewalCalc.actualCashDisbursed)}
-                    </Text>
-                  </View>
+              /* TICKET UNIFICADO DE LIQUIDACIÓN Y DEUDA */
+              <View style={styles.ticketCard}>
+                <Text style={styles.ticketTitle}>DESGLOSE DE DESEMBOLSO NETO EN MANO</Text>
+                
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Nuevo capital aprobado:</Text>
+                  <Text style={styles.infoVal}>{formatCOP(newPrincipal)}</Text>
                 </View>
-              </>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>(-) Saliente (Saldo anterior):</Text>
+                  <Text style={[styles.infoVal, { color: COLORS.danger }]}>
+                    - {formatCOP(renewalCalc.previousBalanceDeducted)}
+                  </Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>
+                    {isPaperworkEnabled
+                      ? `(-) Papelería (${formatCOP(effectivePaperworkRate)} / $100k):`
+                      : '(-) Papelería (Exento):'}
+                  </Text>
+                  <Text style={[styles.infoVal, { color: COLORS.warning }]}>
+                    - {formatCOP(renewalCalc.paperworkDeducted)}
+                  </Text>
+                </View>
+
+                <View style={styles.dashedDivider} />
+
+                <View style={styles.infoRow}>
+                  <Text
+                    style={[
+                      styles.infoLabel,
+                      { fontWeight: '800', color: COLORS.textPrimary },
+                    ]}
+                  >
+                    Efectivo Neto a Entregar Hoy:
+                  </Text>
+                  <Text style={styles.netAmountText}>
+                    {formatCOP(renewalCalc.actualCashDisbursed)}
+                  </Text>
+                </View>
+
+                {newSummary && (
+                  <>
+                    <View style={styles.dashedDivider} />
+
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>
+                        (+) Interés ({Math.round(effectiveInterestRate * 100)}%):
+                      </Text>
+                      <Text style={[styles.infoVal, { color: COLORS.purple }]}>
+                        +{formatCOP(newSummary.interestAmount)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                      <Text
+                        style={[
+                          styles.infoLabel,
+                          { fontWeight: '800', color: COLORS.textPrimary },
+                        ]}
+                      >
+                        Total de la Deuda a Cobrar:
+                      </Text>
+                      <Text
+                        style={[
+                          styles.infoVal,
+                          { fontSize: 16, fontWeight: '900', color: COLORS.purple },
+                        ]}
+                      >
+                        {formatCOP(newSummary.totalAgreed)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>
+                        Valor a Cobrar ({newSummary.installmentCount} cuotas):
+                      </Text>
+                      <Text
+                        style={[
+                          styles.infoVal,
+                          { fontWeight: '800', color: COLORS.primary },
+                        ]}
+                      >
+                        {formatCOP(newSummary.installmentAmount)} / {currentFreqConfig.unitLabel.replace(/s$/, '')}
+                      </Text>
+                    </View>
+                  </>
+                )}
+              </View>
             )}
           </ScrollView>
 
