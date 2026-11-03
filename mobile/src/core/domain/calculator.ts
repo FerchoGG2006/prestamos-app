@@ -408,7 +408,23 @@ export function calculateDelinquencyMetrics(
 /**
  * Utilidades de fecha para control operativo y renovación automática a las 00:00 horas
  */
+export const APP_TIMEZONE = 'America/Bogota';
+
 export function getLocalTodayStr(date: Date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: APP_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const y = parts.find((p) => p.type === 'year')?.value;
+    const m = parts.find((p) => p.type === 'month')?.value;
+    const d = parts.find((p) => p.type === 'day')?.value;
+    if (y && m && d) return y + '-' + m + '-' + d;
+  } catch {
+    // Fallback al reloj local
+  }
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -421,7 +437,22 @@ export const getLocalDateStr = getLocalTodayStr;
 
 export function getMsUntilNextMidnight(): number {
   const now = new Date();
-  const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
-  return Math.max(1000, nextMidnight.getTime() - now.getTime());
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: APP_TIMEZONE,
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    }).formatToParts(now);
+    const h = Number(parts.find((p) => p.type === 'hour')?.value ?? now.getHours()) % 24;
+    const m = Number(parts.find((p) => p.type === 'minute')?.value ?? now.getMinutes());
+    const s = Number(parts.find((p) => p.type === 'second')?.value ?? now.getSeconds());
+    const elapsedMs = (h * 3600 + m * 60 + s) * 1000 + now.getMilliseconds();
+    return Math.max(1000, 86400000 - elapsedMs + 1000);
+  } catch {
+    const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1);
+    return Math.max(1000, nextMidnight.getTime() - now.getTime());
+  }
 }
 

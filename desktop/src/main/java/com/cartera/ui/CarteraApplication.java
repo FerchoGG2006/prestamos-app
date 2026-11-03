@@ -90,6 +90,7 @@ public final class CarteraApplication extends Application {
 
     @Override
     public void init() throws Exception {
+        CarteraMain.configureRegionalDefaults();
         java.nio.file.Files.createDirectories(
                 java.nio.file.Paths.get(System.getProperty("user.home"), ".sistema-cartera")
         );
@@ -635,6 +636,7 @@ public final class CarteraApplication extends Application {
     }
 
     public static void main(String[] args) {
+        CarteraMain.configureRegionalDefaults();
         Application.launch(CarteraApplication.class, args);
     }
 }

@@ -1460,7 +1460,7 @@ class LocalStore {
       amount: params.amountReceived,
       referenceId: result.payment.id,
       description: `Cobro crédito ${loan.loanNumber} (${params.paymentMethod})`,
-      createdAt: `${params.todayStr} ${new Date().toLocaleTimeString('es-CO', { hour12: false })}`,
+      createdAt: `${params.todayStr} ${new Date().toLocaleTimeString('es-CO', { hour12: false, timeZone: 'America/Bogota' })}`,
     };
     this.cashMovements.unshift(cashMov);
 
@@ -1836,7 +1836,7 @@ class LocalStore {
         amount: netDisbursed,
         referenceId: newLoan.id,
         description: `Desembolso nuevo crédito ${newLoan.loanNumber} a ${customer.fullName} (Capital: $${summary.principal}, Papelería: $${paperworkFee})`,
-        createdAt: `${params.todayStr} ${new Date().toLocaleTimeString('es-CO', { hour12: false })}`,
+        createdAt: `${params.todayStr} ${new Date().toLocaleTimeString('es-CO', { hour12: false, timeZone: 'America/Bogota' })}`,
       };
       this.cashMovements.unshift(cashMov);
     }
@@ -1983,7 +1983,7 @@ class LocalStore {
       amount: renewalCalc.actualCashDisbursed,
       referenceId: renewal.id,
       description: `Desembolso neto renovación ${prevLoan.loanNumber} -> ${newLoan.loanNumber}`,
-      createdAt: `${params.todayStr} ${new Date().toLocaleTimeString('es-CO', { hour12: false })}`,
+      createdAt: `${params.todayStr} ${new Date().toLocaleTimeString('es-CO', { hour12: false, timeZone: 'America/Bogota' })}`,
     };
 
     // Marcar cuotas del préstamo anterior como pagadas por renovación

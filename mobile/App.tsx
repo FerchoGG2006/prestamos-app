@@ -160,6 +160,7 @@ export default function App() {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+    timeZone: 'America/Bogota',
   });
 
   // Tipografía unificada Manrope (Google Fonts oficial con renderizado nítido)
@@ -2043,7 +2044,7 @@ function MainApp({
           setNewLoanInitialFrequency('FIXED_DATE');
           const defaultFixed = new Date();
           defaultFixed.setDate(defaultFixed.getDate() + 20);
-          setNewLoanInitialFixedDate(defaultFixed.toISOString().slice(0, 10));
+          setNewLoanInitialFixedDate(getLocalTodayStr(defaultFixed));
           setNewLoanModalVisible(true);
         }}
         onViewHistory={(c) => {

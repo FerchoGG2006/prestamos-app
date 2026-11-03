@@ -40,10 +40,19 @@ dependencies {
 
 application {
     mainClass = 'com.cartera.ui.CarteraMain'
+    applicationDefaultJvmArgs = [
+        '-Dfile.encoding=UTF-8',
+        '-Duser.timezone=America/Bogota',
+        '-Duser.language=es',
+        '-Duser.country=CO'
+    ]
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+    systemProperty 'user.timezone', 'America/Bogota'
+    systemProperty 'user.language', 'es'
+    systemProperty 'user.country', 'CO'
 }
 
 tasks.register('packageWindows') {
@@ -71,7 +80,10 @@ tasks.register('packageWindows') {
                     '--vendor', 'Cartera Software',
                     '--app-version', '1.0.0',
                     '--add-modules', 'java.se,jdk.unsupported,jdk.crypto.ec',
-                    '--java-options', '-Dfile.encoding=UTF-8'
+                    '--java-options', '-Dfile.encoding=UTF-8',
+                    '--java-options', '-Duser.timezone=America/Bogota',
+                    '--java-options', '-Duser.language=es',
+                    '--java-options', '-Duser.country=CO'
         }
 
         copy {
@@ -112,5 +124,3 @@ tasks.register('packageAll') {
     description = 'Generates both the portable ZIP and the official Setup EXE installer'
     group = 'distribution'
 }
-
-
