@@ -70,6 +70,8 @@ public class LanSyncServerService {
 
             server.createContext("/api/sync/status", this::handleStatus);
             server.createContext("/api/sync/package", this::handlePackage);
+            server.createContext("/api/sync/pull", this::handlePackage);
+            server.createContext("/api/sync/push", this::handlePackage);
             server.createContext("/api/v1/app-version", this::handleAppVersion);
             server.createContext("/api/v1/download-apk", this::handleDownloadApk);
             server.setExecutor(Executors.newCachedThreadPool(r -> {
