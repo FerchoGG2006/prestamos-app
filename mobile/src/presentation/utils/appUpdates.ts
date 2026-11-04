@@ -4,7 +4,7 @@ import { Alert, Platform, Linking } from 'react-native';
 export const CURRENT_APP_VERSION = '1.2.2';
 export const CURRENT_VERSION_CODE = 6;
 export const CLOUD_VERSION_URL =
-  'https://raw.githubusercontent.com/FerchoGG2006/prestamos-app/feat/ui-ux-audit-handoff/version.json';
+  'https://raw.githubusercontent.com/FerchoGG2006/prestamos-app/main/version.json';
 
 export interface AppVersionInfo {
   status?: string;
@@ -70,6 +70,14 @@ export async function checkAndDownloadUpdate(silent: boolean = true): Promise<bo
     if (check.isAvailable) {
       const fetchResult = await Updates.fetchUpdateAsync();
       if (fetchResult.isNew) {
+        if (silent) {
+          try {
+            await Updates.reloadAsync();
+          } catch {
+            // Fallback silencioso si reload falla
+          }
+          return true;
+        }
         Alert.alert(
           '🚀 Nueva Actualización Lista',
           'Se han descargado las últimas mejoras y correcciones del sistema. ¿Deseas reiniciar la aplicación ahora para aplicarlas?',
