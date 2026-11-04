@@ -1740,7 +1740,7 @@ function MainApp({
             <View style={styles.operationsHandle} />
             {userRole === 'ADMIN' ? (
               <>
-                <Text style={styles.operationsTitle}>🛡️ Centro de Control Gerencial</Text>
+                <Text style={styles.operationsTitle}>Centro de Control Gerencial</Text>
                 <Text style={styles.operationsSubtitle}>Liquidaciones multi-ruta, arqueo y administración general</Text>
 
                 <TouchableOpacity
@@ -1752,7 +1752,7 @@ function MainApp({
                 >
                   <View style={styles.operationMenuIcon}><Landmark size={18} color={COLORS.primary} /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>🏛️ Liquidaciones y Arqueos</Text>
+                    <Text style={styles.operationMenuTitle}>Liquidaciones y Arqueos</Text>
                     <Text style={styles.operationMenuSubtitle}>Auditoría de cierres diarios, consolidado y liquidar ruta</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1768,7 +1768,7 @@ function MainApp({
                 >
                   <View style={styles.operationMenuIcon}><Receipt size={18} color="#2563EB" /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>📋 Comprobantes y Auditoría</Text>
+                    <Text style={styles.operationMenuTitle}>Comprobantes y Auditoría</Text>
                     <Text style={styles.operationMenuSubtitle}>Todos los pagos y recibos de la red</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1786,7 +1786,7 @@ function MainApp({
                     <FileText size={18} color="#059669" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>📑 Recaudo y Gestión de Papelerías</Text>
+                    <Text style={styles.operationMenuTitle}>Recaudo y Gestión de Papelerías</Text>
                     <Text style={styles.operationMenuSubtitle}>Historial de cobros, saldo y retiros de papelería</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1801,7 +1801,7 @@ function MainApp({
                 >
                   <View style={styles.operationMenuIcon}><Landmark size={18} color="#0D9488" /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>💼 Administrativo, Cartera y Base</Text>
+                    <Text style={styles.operationMenuTitle}>Administrativo, Cartera y Base</Text>
                     <Text style={styles.operationMenuSubtitle}>Techo de capital, cartera y base en mano por ruta</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1816,7 +1816,7 @@ function MainApp({
                 >
                   <View style={styles.operationMenuIcon}><Settings size={18} color="#D97706" /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>⚙️ Configuración de Oficina</Text>
+                    <Text style={styles.operationMenuTitle}>Configuración de Oficina</Text>
                     <Text style={styles.operationMenuSubtitle}>Tasas de interés, rutas, cobradores y políticas</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1833,7 +1833,7 @@ function MainApp({
                     <RefreshCw size={18} color="#2563EB" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>🔄 Buscar Actualizaciones</Text>
+                    <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>Buscar Actualizaciones</Text>
                     <Text style={styles.operationMenuSubtitle}>Consultar parches OTA e instalador APK (v{CURRENT_APP_VERSION})</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1855,7 +1855,7 @@ function MainApp({
                 >
                   <View style={styles.operationMenuIcon}><Calculator size={18} color={COLORS.primary} /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>📊 Mi Cuadre de Hoy</Text>
+                    <Text style={styles.operationMenuTitle}>Mi Cuadre de Hoy</Text>
                     <Text style={styles.operationMenuSubtitle}>Resumen de recaudo, dinero a entregar y arqueo</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1873,7 +1873,7 @@ function MainApp({
                     <FileText size={18} color="#059669" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>📑 Recaudo y Gestión de Papelerías</Text>
+                    <Text style={styles.operationMenuTitle}>Recaudo y Gestión de Papelerías</Text>
                     <Text style={styles.operationMenuSubtitle}>Adelantos a oficina, saldo e historial de papelería</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1890,7 +1890,7 @@ function MainApp({
                 >
                   <View style={styles.operationMenuIcon}><Fuel size={18} color="#EA580C" /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>⛽ Registrar Gasto de Ruta</Text>
+                    <Text style={styles.operationMenuTitle}>Registrar Gasto de Ruta</Text>
                     <Text style={styles.operationMenuSubtitle}>Gasolina u otros gastos menores autorizados</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1906,7 +1906,7 @@ function MainApp({
                 >
                   <View style={styles.operationMenuIcon}><Receipt size={18} color="#059669" /></View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>📋 Comprobantes de mi Ruta</Text>
+                    <Text style={styles.operationMenuTitle}>Comprobantes de mi Ruta</Text>
                     <Text style={styles.operationMenuSubtitle}>Recibos y abonos cobrados en mi ruta</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
@@ -1923,7 +1923,7 @@ function MainApp({
                     <RefreshCw size={18} color="#2563EB" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>🔄 Buscar Actualizaciones</Text>
+                    <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>Buscar Actualizaciones</Text>
                     <Text style={styles.operationMenuSubtitle}>Consultar parches OTA e instalador APK (v{CURRENT_APP_VERSION})</Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
