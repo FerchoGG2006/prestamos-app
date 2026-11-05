@@ -1,0 +1,18 @@
+{
+  "name": "Kredia",
+  "short_name": "Kredia",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6F4EE",
+  "theme_color": "#0F172A",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

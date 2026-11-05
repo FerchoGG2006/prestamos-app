@@ -45,11 +45,17 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Publish EAS Update (OTA) on push or manual trigger
+      - name: Publish EAS Update (OTA) & iPhone WebClip Deploy on push or manual trigger
         if: github.event_name == 'push' || github.event.inputs.action == 'update'
+        env:
+          EAS_SKIP_AUTO_FINGERPRINT: '1'
         run: |
           npx eas-cli update --branch preview --environment preview --message "${{ github.event.head_commit.message || 'Manual OTA Update' }}" --non-interactive
           npx eas-cli update --branch production --environment production --message "${{ github.event.head_commit.message || 'Manual OTA Update' }}" --non-interactive
+          npx expo export -p web
+          cp public/apple-touch-icon.png dist/apple-touch-icon.png
+          cp public/manifest.json dist/manifest.json
+          npx eas-cli deploy --prod --non-interactive
 
       - name: Trigger EAS Preview APK Build
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'build-preview-apk'

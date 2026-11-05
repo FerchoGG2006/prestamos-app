@@ -102,6 +102,7 @@ import {
   CURRENT_APP_VERSION,
 } from './src/presentation/utils/appUpdates';
 import { AppUpdateModal } from './src/presentation/components/AppUpdateModal';
+import { IosInstallPrompt } from './src/presentation/components/IosInstallPrompt';
 import {
   FileText,
   Users,
@@ -2207,6 +2208,7 @@ function MainApp({
           </View>
         </View>
       </Modal>
+      <IosInstallPrompt />
     </SafeAreaView>
   );
 
@@ -2238,6 +2240,7 @@ function MainApp({
           onLoginSuccess={handleLoginSuccess}
           onDataReset={syncFromStore}
         />
+        <IosInstallPrompt />
       </SafeAreaView>
     );
 
