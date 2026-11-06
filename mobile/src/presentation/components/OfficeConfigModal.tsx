@@ -838,7 +838,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   {/* Banner Explicativo de la Fórmula Maestra */}
                   <View style={styles.capFormulaCard}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <Text style={styles.capFormulaBadge}>💡 REGLA DE ORO FINANCIERA (MODELO B: EFECTIVO EN BOLSILLO)</Text>
+                      <Text style={styles.capFormulaBadge}>REGLA DE ORO FINANCIERA (MODELO B: EFECTIVO EN BOLSILLO)</Text>
                     </View>
                     <Text style={styles.capFormulaTitle}>
                       Administrativo = Cartera en Calle + Base en Mano
@@ -852,10 +852,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
                   {/* Resumen Global Consolidado */}
                   <View style={styles.capGlobalCard}>
-                    <Text style={styles.capGlobalTitle}>📊 CONSOLIDADO GENERAL (TODAS LAS RUTAS)</Text>
+                    <Text style={styles.capGlobalTitle}>CONSOLIDADO GENERAL (TODAS LAS RUTAS)</Text>
                     <View style={styles.capGlobalGrid}>
                       <View style={styles.capGlobalCol}>
-                        <Text style={styles.capGlobalLabel}>📈 ADMINISTRATIVO</Text>
+                        <Text style={styles.capGlobalLabel}>ADMINISTRATIVO</Text>
                         <Text style={styles.capGlobalValue} numberOfLines={1} adjustsFontSizeToFit>
                           {formatCOP(displayGlobalAdmin)}
                         </Text>
@@ -863,7 +863,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       </View>
                       <Text style={styles.capGlobalOperator}>=</Text>
                       <View style={styles.capGlobalCol}>
-                        <Text style={[styles.capGlobalLabel, { color: '#0F766E' }]}>👥 CARTERA CALLE</Text>
+                        <Text style={[styles.capGlobalLabel, { color: '#0F766E' }]}>CARTERA CALLE</Text>
                         <Text style={[styles.capGlobalValue, { color: '#0F766E' }]} numberOfLines={1} adjustsFontSizeToFit>
                           {formatCOP(displayGlobalCartera)}
                         </Text>
@@ -871,7 +871,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       </View>
                       <Text style={styles.capGlobalOperator}>+</Text>
                       <View style={styles.capGlobalCol}>
-                        <Text style={[styles.capGlobalLabel, { color: '#0284C7' }]}>💵 BASE EN MANO</Text>
+                        <Text style={[styles.capGlobalLabel, { color: '#0284C7' }]}>BASE EN MANO</Text>
                         <Text style={[styles.capGlobalValue, { color: '#0284C7' }]} numberOfLines={1} adjustsFontSizeToFit>
                           {formatCOP(displayGlobalBase)}
                         </Text>
@@ -944,7 +944,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
                         {/* Input 1: Administrativo Asignado */}
                         <View style={styles.inputGroup}>
-                          <Text style={styles.inputLabel}>📈 Administrativo Asignado a esta Ruta ($ COP)</Text>
+                          <Text style={styles.inputLabel}>Administrativo Asignado a esta Ruta ($ COP)</Text>
                           <TextInput
                             style={styles.textInput}
                             value={capData.targetAdminStr}
@@ -987,7 +987,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
                         {/* Input 2: Base de Efectivo en Mano / Inicial */}
                         <View style={styles.inputGroup}>
-                          <Text style={styles.inputLabel}>💵 Base de Efectivo Asignada / Inicial ($ COP)</Text>
+                          <Text style={styles.inputLabel}>Base de Efectivo Asignada / Inicial ($ COP)</Text>
                           <TextInput
                             style={styles.textInput}
                             value={capData.cashBaseStr}
@@ -1036,7 +1036,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                         >
                           <CheckCircle size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
                           <Text style={styles.routeCapSaveBtnText}>
-                            💾 Guardar Administrativo y Base de esta Ruta
+                            Guardar Administrativo y Base de esta Ruta
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -1126,7 +1126,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   }}
                 >
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E' }}>
-                    ⚖️ Aviso de Parametrización Legal (Colombia)
+                    Aviso de Parametrización Legal (Colombia)
                   </Text>
                   <Text style={{ fontSize: 10.5, color: '#78350F', marginTop: 2, lineHeight: 14 }}>
                     La oficina operadora es responsable de parametrizar tasas remuneratorias, moratorias y cargos conforme a la modalidad legal aplicable y la certificación vigente de la Superintendencia Financiera de Colombia. Los cambios en esta plantilla aplican únicamente a operaciones nuevas y nunca recalculan contratos ya originados.
@@ -1397,7 +1397,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       </View>
                     </View>
                     <Text style={{ fontSize: 10.5, color: '#0F766E', marginBottom: 8, fontStyle: 'italic' }}>
-                      💡 La base disponible se calcula automáticamente: Administrativo - Cartera en calle de los clientes que vayas ingresando uno a uno.
+                      La base disponible se calcula automáticamente: Administrativo - Cartera en calle de los clientes que vayas ingresando uno a uno.
                     </Text>
 
                     <TouchableOpacity
@@ -1570,7 +1570,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                               >
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
-                                    📈 Administrativo Asignado:
+                                    Administrativo Asignado:
                                   </Text>
                                   <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.textPrimary }}>
                                     {formatCOP(targetAdmin)}
@@ -1578,7 +1578,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                                 </View>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
-                                    👥 Cartera en Calle ({routeLoans.length} créditos):
+                                    Cartera en Calle ({routeLoans.length} créditos):
                                   </Text>
                                   <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F766E' }}>
                                     {formatCOP(carteraCalle)}
@@ -1586,14 +1586,14 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                                 </View>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569' }}>
-                                    💵 Base Disponible para Prestar:
+                                    Base Disponible para Prestar:
                                   </Text>
                                   <Text style={{ fontSize: 12, fontWeight: '800', color: '#0284C7' }}>
                                     {formatCOP(baseDisponible)}
                                   </Text>
                                 </View>
                                 <Text style={{ fontSize: 10, color: '#64748B', marginTop: 2, fontStyle: 'italic' }}>
-                                  💡 Al ingresar los clientes uno a uno, el sistema calcula la Base automáticamente: Administrativo - Cartera en Calle.
+                                  Al ingresar los clientes uno a uno, el sistema calcula la Base automáticamente: Administrativo - Cartera en Calle.
                                 </Text>
                               </View>
                             );
@@ -1679,7 +1679,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                 >
                   <FileText size={18} color="#ffffff" style={{ marginRight: 8 }} />
                   <Text style={styles.exportBackupBtnText}>
-                    📊 Exportar Reporte Contable Excel (.csv)
+                    Exportar Reporte Contable Excel (.csv)
                   </Text>
                 </TouchableOpacity>
 
@@ -1766,7 +1766,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                 >
                   <RotateCcw size={14} color="#DC2626" style={{ marginRight: 6 }} />
                   <Text style={{ fontSize: 12, fontWeight: '800', color: '#DC2626' }}>
-                    🧹 Iniciar Cartera Limpia ($0)
+                    Iniciar Cartera Limpia ($0)
                   </Text>
                 </TouchableOpacity>
               </View>

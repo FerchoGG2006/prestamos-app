@@ -46,6 +46,34 @@ import {
   AppStateStatus,
   Modal,
 } from 'react-native';
+
+// En React Native Web, Alert.alert() no muestra diálogo por defecto; conectamos con window.alert / window.confirm
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  Alert.alert = (
+    title: string,
+    message?: string,
+    buttons?: Array<{ text?: string; onPress?: () => void; style?: string }>
+  ) => {
+    const fullText = message ? `${title}\n\n${message}` : title;
+    if (!buttons || buttons.length === 0) {
+      window.alert(fullText);
+      return;
+    }
+    if (buttons.length === 1) {
+      window.alert(fullText);
+      buttons[0]?.onPress?.();
+      return;
+    }
+    const cancelBtn = buttons.find((b) => b.style === 'cancel');
+    const confirmBtn = buttons.find((b) => b.style !== 'cancel') || buttons[buttons.length - 1];
+    const confirmed = window.confirm(fullText);
+    if (confirmed) {
+      confirmBtn?.onPress?.();
+    } else {
+      cancelBtn?.onPress?.();
+    }
+  };
+}
 import {
   SafeAreaProvider,
   SafeAreaView,
@@ -280,10 +308,9 @@ export default function App() {
               >
                 <View style={styles.androidStatusLeft}>
                   <Text style={styles.androidStatusClock}>{clockLabel}</Text>
-                  <Text style={styles.androidStatusIcons}>🔔 💬</Text>
-                </View>
+                  </View>
                 <View style={styles.androidStatusRight}>
-                  <Text style={styles.androidStatusMeta}>5G  📶  🔋 94%</Text>
+                  <Text style={styles.androidStatusMeta}>5G • 94%</Text>
                 </View>
               </View>
 
@@ -297,7 +324,7 @@ export default function App() {
               >
                 {androidNavMode === 'THREE_BUTTONS_API31' ? (
                   <View style={styles.androidThreeButtonsRow}>
-                    <Text style={styles.androidNavButtonGlyph}>◀</Text>
+                    <Text style={styles.androidNavButtonGlyph}>‹</Text>
                     <Text style={styles.androidNavButtonGlyph}>●</Text>
                     <Text style={styles.androidNavButtonGlyph}>■</Text>
                   </View>
@@ -956,7 +983,7 @@ function MainApp({
               </View>
               <Text style={styles.brandSub} numberOfLines={1}>
                 {userRole === 'ADMIN'
-                  ? `🛡️ Supervisión • ${activeRouteLabel}`
+                  ? `Supervisión • ${activeRouteLabel}`
                   : `${activeRouteLabel} • ${currentUser?.name || 'Cobrador'}`}
               </Text>
             </View>
@@ -975,7 +1002,7 @@ function MainApp({
               >
                 {userRole === 'ADMIN' ? (
                   <>
-                    <Text style={styles.rolePillToggleTextAdmin}>🛡️ Admin</Text>
+                    <Text style={styles.rolePillToggleTextAdmin}>Admin</Text>
                     <RefreshCw size={9} color="#1E40AF" style={{ marginLeft: 4 }} />
                   </>
                 ) : (
@@ -1040,7 +1067,7 @@ function MainApp({
                 onPress={onTogglePhoneFrame}
               >
                 <Text style={styles.frameToggleText}>
-                  {phoneFrameEnabled ? '📱' : '🖥️'}
+                  {phoneFrameEnabled ? 'Móvil' : 'PC'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -1440,7 +1467,7 @@ function MainApp({
                                     {activeLoan
                                       ? isOverdue
                                         ? `! Mora • ${activeLoan.loanNumber}`
-                                        : `✓ Al Día • ${activeLoan.loanNumber}`
+                                        : `Al Día • ${activeLoan.loanNumber}`
                                       : '○ Libre'}
                                   </Text>
                                 </View>
@@ -2011,6 +2038,7 @@ function MainApp({
         customers={routeScopedCustomers}
         loans={routeScopedLoans}
         todayStr={todayStr}
+        defaultRouteId={effectiveRouteFilter}
         baseAvailable={routeMetrics.cashAvailableInHand}
         preselectedCustomerId={preselectedLoanCustomerId}
         initialFrequency={newLoanInitialFrequency}

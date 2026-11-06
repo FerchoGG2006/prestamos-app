@@ -107,7 +107,7 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
   const handleDeletePress = () => {
     const hasActive = !!activeLoan;
     const alertTitle = hasActive
-      ? '⚠️ Cliente con Crédito Activo'
+      ? 'Cliente con Crédito Activo'
       : 'Eliminar Cliente';
     const alertMessage = hasActive
       ? `El cliente ${customer.fullName} tiene un crédito activo (${activeLoan?.loanNumber || 'en curso'}). Si lo elimina, el crédito se archivará como cancelado. ¿Desea continuar de todas formas?`
@@ -300,7 +300,7 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
                 <Calendar size={20} color="#15803d" />
               </View>
               <View style={styles.optionTextBox}>
-                <Text style={styles.optionTitle}>📅 Fecha Fija (1 Cuota a Plazo)</Text>
+                <Text style={styles.optionTitle}>Fecha Fija (1 Cuota a Plazo)</Text>
                 <Text style={styles.optionSubtitle}>
                   Crédito a cancelar en una fecha fija convenida
                 </Text>
@@ -461,7 +461,7 @@ export const CustomerOptionsModal: React.FC<CustomerOptionsModalProps> = ({
                     <Trash2 size={20} color="#dc2626" />
                   </View>
                   <View style={styles.optionTextBox}>
-                    <Text style={styles.dangerOptionTitle}>🗑️ Eliminar Cliente</Text>
+                    <Text style={styles.dangerOptionTitle}>Eliminar Cliente</Text>
                     <Text style={styles.dangerOptionSubtitle}>
                       Remover cliente del directorio y la ruta (Requiere permisos de Administrador)
                     </Text>

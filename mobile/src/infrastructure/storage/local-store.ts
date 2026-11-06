@@ -1283,10 +1283,12 @@ class LocalStore {
     // Interés/utilidad pactada y generada por todos los créditos colocados:
     // Permanece en el patrimonio tanto mientras el crédito está activo como cuando ya se pagó por completo.
     // Nunca se borra al pagar la última cuota.
-    const totalEarnedInterest = validLoans.reduce(
-      (sum, l) => sum + Math.max(0, l.interestAmount || ((l.totalAgreed || 0) - (l.principal || 0))),
-      0
-    );
+    const totalEarnedInterest = validLoans
+      .filter((l) => !isMigratedCardLoan(l))
+      .reduce(
+        (sum, l) => sum + Math.max(0, l.interestAmount || ((l.totalAgreed || 0) - (l.principal || 0))),
+        0
+      );
 
     // Administrativo / Patrimonio operativo total:
     // Arranca en el capital base y SUBE únicamente con los intereses generados (+ inyecciones de capital).
@@ -3263,7 +3265,7 @@ class LocalStore {
   }
 
   /**
-   * Ítem 6: Reordenar cliente hacia arriba o abajo en su ruta (⬆ / ⬇)
+   * Ítem 6: Reordenar cliente hacia arriba o abajo en su ruta (/)
    */
   public async reorderRouteCustomer(
     customerId: string,

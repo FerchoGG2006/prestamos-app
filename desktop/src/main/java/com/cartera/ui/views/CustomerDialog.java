@@ -299,7 +299,7 @@ public class CustomerDialog extends Stage {
 
         HBox rCapital = makeSummaryRow("Capital Solicitado:", lblSummaryPrincipal, "#0f172a", false);
         HBox rCartulina = makeSummaryRow("Cartulina / Papelería:", lblSummaryCartulina, "#dc2626", false);
-        HBox rNeto = makeSummaryRow("💵 EFECTIVO NETO A ENTREGAR:", lblSummaryNetDisbursed, "#059669", true);
+        HBox rNeto = makeSummaryRow("EFECTIVO NETO A ENTREGAR:", lblSummaryNetDisbursed, "#059669", true);
         HBox rTotal = makeSummaryRow("Total a Recaudar:", lblSummaryTotal, "#0f172a", false);
         HBox rCuota = makeSummaryRow("Valor Cuota Pactada:", lblSummaryCuota, "#2563eb", true);
 

@@ -193,7 +193,7 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
                   Supervisión y auditoría de todas las zonas de cobranza
                 </Text>
                 <Text style={styles.routeMetricsText}>
-                  👥 {allStats.customersCount} clientes • 💼 {allStats.activeLoansCount} créditos activos
+                  {allStats.customersCount} clientes • {allStats.activeLoansCount} créditos activos
                 </Text>
               </View>
 
@@ -273,7 +273,7 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
                       </View>
 
                       <Text style={styles.routeMetricsText}>
-                        👥 {stats.customersCount} clientes • 💼 {stats.activeLoansCount} créditos activos
+                        {stats.customersCount} clientes • {stats.activeLoansCount} créditos activos
                       </Text>
                     </View>
 

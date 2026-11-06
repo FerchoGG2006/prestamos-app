@@ -1,7 +1,6 @@
 import { Linking, Share, Alert, Platform } from 'react-native';
 import { Customer, Loan, Installment, Payment } from '../domain/types';
-import { formatCOP, getFrequencyLabel } from '../config/business-rules';
-import { maskDocumentNumber } from './security';
+import { formatCOP } from '../config/business-rules';
 
 export interface ReceiptFormatContext {
   companyConfig?: any;
@@ -41,7 +40,7 @@ export function normalizeWhatsAppPhone(phone: string): string {
 }
 
 /**
- * Formatea un Recibo Digital de Abono listo para enviar por WhatsApp (SIN tecnicismos ni texto innecesario).
+ * Formatea un Recibo Digital de Abono listo para enviar por WhatsApp (SIN tecnicismos ni datos personales innecesarios).
  */
 export function formatDigitalPaymentReceipt(ctx: ReceiptFormatContext): string {
   const isPaidOff = ctx.remainingBalance <= 0 || ctx.loan.status === 'PAID';
@@ -67,81 +66,46 @@ export function formatDigitalPaymentReceipt(ctx: ReceiptFormatContext): string {
   }
 
   const lines: string[] = [
-    '🧾 *COMPROBANTE DE PAGO*',
-    `📅 *Fecha:* ${ctx.payment.createdAt}`,
-    `👤 *Cliente:* ${ctx.customer.fullName} (${maskDocumentNumber(ctx.customer.documentNumber)})`,
-    `💵 *Pagó:* ${formatCOP(ctx.payment.amountReceived)}`,
-    `💰 *Queda debiendo:* ${formatCOP(Math.max(0, ctx.remainingBalance))}`,
-    `🔢 *Cuota que va:* ${currentInstLabel} de ${totalCount}`,
-    `💵 *Valor cuota:* ${formatCOP(ctx.loan.installmentAmount)}`,
+    '*COMPROBANTE DE PAGO*',
+    `*Fecha:* ${ctx.payment.createdAt}`,
+    `*Pagó:* ${formatCOP(ctx.payment.amountReceived)}`,
+    `*Queda debiendo:* ${formatCOP(Math.max(0, ctx.remainingBalance))}`,
+    `*Cuota que va:* ${currentInstLabel} de ${totalCount}`,
+    `*Valor cuota:* ${formatCOP(ctx.loan.installmentAmount)}`,
   ];
 
   if (isPaidOff) {
-    lines.push('✨ *¡Crédito totalmente cancelado! Gracias por su pago.*');
+    lines.push('*¡Crédito totalmente cancelado! Gracias por su pago.*');
   }
 
   return lines.join('\n');
 }
 
 /**
- * Formatea un Estado de Cuenta / Recordatorio de Pago para enviar por WhatsApp al cliente.
+ * Formatea un Resumen corto de Crédito para enviar por WhatsApp al cliente (sin datos personales).
  */
 export function formatAccountStatementReminder(ctx: AccountStatementContext): string {
-  const company = (
-    ctx.companyName ||
-    ctx.companyConfig?.companyName ||
-    'CARTERA & PRÉSTAMOS'
-  ).toUpperCase();
   const sortedInsts = [...ctx.installments].sort(
     (a, b) => a.installmentNumber - b.installmentNumber
   );
   const paidCount = sortedInsts.filter((i) => i.pendingAmount <= 0).length;
   const totalCount = sortedInsts.length || ctx.loan.installmentCount || 1;
-  const nextPending = sortedInsts.find((i) => i.pendingAmount > 0);
   const currentRemaining =
     ctx.remainingBalance !== undefined
       ? ctx.remainingBalance
       : sortedInsts.reduce((sum, i) => sum + i.pendingAmount, 0);
-  const totalPaid = Math.max(0, ctx.loan.totalAgreed - currentRemaining);
   const hasOverdue = (ctx.overdueDays || 0) > 0 && (ctx.overdueAmount || 0) > 0;
-  const supportPhone =
-    ctx.supportPhone ||
-    ctx.companyConfig?.supportPhone ||
-    ctx.companyConfig?.companyPhone;
 
   const lines: string[] = [
-    '━━━━━━━━━━━━━━━━━━━━━━━━━',
-    `📊 *${company}*`,
-    '📋 *ESTADO DE CUENTA DE CRÉDITO*',
-    '━━━━━━━━━━━━━━━━━━━━━━━━━',
-    `👤 *Cliente:* ${ctx.customer.fullName}`,
-    `🪪 *Documento:* ${maskDocumentNumber(ctx.customer.documentNumber) || 'CC ••••'}`,
-    `🔖 *Crédito:* ${ctx.loan.loanNumber} (${getFrequencyLabel(ctx.loan.frequency)})`,
-    '━━━━━━━━━━━━━━━━━━━━━━━━━',
-    `💼 *Total Pactado:* ${formatCOP(ctx.loan.totalAgreed)}`,
-    `✅ *Total Abonado:* ${formatCOP(totalPaid)} (${paidCount}/${totalCount} cuotas)`,
-    `💰 *SALDO PENDIENTE:* *${formatCOP(Math.max(0, currentRemaining))}*`,
-    `💵 *Valor Cuota:* ${formatCOP(ctx.loan.installmentAmount)}`,
+    '*RESUMEN DE TU CRÉDITO*',
+    `*Valor cuota:* ${formatCOP(ctx.loan.installmentAmount)}`,
+    `*Cuotas pagadas:* ${paidCount} de ${totalCount}`,
+    `*Saldo pendiente:* *${formatCOP(Math.max(0, currentRemaining))}*`,
   ];
 
-  if (nextPending) {
-    lines.push(`📆 *Próximo Vencimiento:* ${nextPending.dueDate} (${formatCOP(nextPending.pendingAmount)})`);
-  }
-
   if (hasOverdue) {
-    lines.push(
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `⚠️ *MORA REGISTRADA:* *${formatCOP(ctx.overdueAmount || 0)}* (${ctx.overdueDays} día(s) de atraso)`,
-      'Le invitamos cordialmente a ponerse al día con su cuota.'
-    );
-  } else {
-    lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━', '✨ *Estado:* Al día. ¡Gracias por su excelente cumplimiento!');
+    lines.push(`*Mora:* ${formatCOP(ctx.overdueAmount || 0)} (${ctx.overdueDays} día(s))`);
   }
-
-  if (supportPhone) {
-    lines.push(`📞 *Atención Oficina:* ${supportPhone}`);
-  }
-  lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   return lines.join('\n');
 }

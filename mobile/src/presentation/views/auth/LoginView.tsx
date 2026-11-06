@@ -668,8 +668,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       ]}
                     >
                       {isSetupUnlocked
-                        ? '✓ Administrador Autorizado'
-                        : '🔒 Autorización de Administrador Requerida'}
+                        ? 'Administrador Autorizado'
+                        : 'Autorización de Administrador Requerida'}
                     </Text>
                     <View
                       style={[
@@ -862,7 +862,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     </View>
                   </View>
                   <Text style={{ fontSize: 10, color: '#0F766E', marginTop: 3, fontStyle: 'italic' }}>
-                    💡 Base disponible = Dinero Total de la ruta - Cartera en calle de los clientes que pases uno a uno.
+                    Base disponible = Dinero Total de la ruta - Cartera en calle de los clientes que pases uno a uno.
                   </Text>
                 </View>
               ))}

@@ -214,11 +214,14 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
         customer,
         loan: activeLoan,
         installments: activeInstallments,
+        remainingBalance: currentRemainingBalance,
+        overdueDays: delinquency.overdueDays,
+        overdueAmount: delinquency.overdueAmount,
         todayStr,
       });
       await openWhatsAppReceipt(waPhone, msg);
     } else {
-      const msg = `Hola *${customer.fullName}*, le escribimos de *${companyConfig.companyName}*. Actualmente su cuenta se encuentra a paz y salvo.`;
+      const msg = 'Tu cuenta se encuentra a paz y salvo.';
       await openWhatsAppReceipt(waPhone, msg);
     }
   };
@@ -299,7 +302,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           todayStr,
         });
         Alert.alert(
-          '↩ Abono Anulado',
+          'Abono Anulado',
           'El abono fue revertido de las cuotas y se registró el movimiento compensatorio en caja y auditoría.'
         );
       } else if (auditModalState.mode === 'CANCEL_LOAN' && auditModalState.targetLoan) {
@@ -311,7 +314,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           todayStr,
         });
         Alert.alert(
-          '🚫 Crédito Anulado',
+          'Crédito Anulado',
           'El crédito fue marcado como CANCELLED y su desembolso fue reintegrado a la base de caja con registro en auditoría.'
         );
       }
@@ -329,7 +332,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
     if (!onDeleteCustomer) return;
     const hasActive = !!activeLoan;
     const alertTitle = hasActive
-      ? '⚠️ Cliente con Crédito Activo'
+      ? 'Cliente con Crédito Activo'
       : 'Eliminar Cliente';
     const alertMessage = hasActive
       ? `El cliente ${customer.fullName} tiene un crédito activo (${activeLoan?.loanNumber || 'en curso'}). Si lo elimina, el crédito se archivará como cancelado. ¿Desea continuar de todas formas?`
@@ -387,7 +390,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
             >
               {delinquency.hasDelinquency
                 ? `Mora ${delinquency.overdueDays}d`
-                : '✓ Al día'}
+                : 'Al día'}
             </Text>
           </View>
           {onEditCustomer && (
@@ -543,7 +546,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               activeOpacity={0.75}
               onPress={() => setCalendarModalVisible(true)}
             >
-              <Text style={[styles.smallTwoWordText, { color: '#1D4ED8' }]}>📅 Fecha Fija</Text>
+              <Text style={[styles.smallTwoWordText, { color: '#1D4ED8' }]}>Fecha Fija</Text>
             </TouchableOpacity>
 
             {onNewLoan && (
@@ -552,7 +555,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.75}
                 onPress={() => onNewLoan(customer, 'DAILY')}
               >
-                <Text style={styles.smallTwoWordText}>➕ Nuevo Crédito</Text>
+                <Text style={styles.smallTwoWordText}>Nuevo Crédito</Text>
               </TouchableOpacity>
             )}
 
@@ -562,7 +565,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.75}
                 onPress={() => onPayLoan(customer, activeLoan)}
               >
-                <Text style={styles.smallTwoWordText}>💵 Pagar Cuota</Text>
+                <Text style={styles.smallTwoWordText}>Pagar Cuota</Text>
               </TouchableOpacity>
             )}
 
@@ -572,7 +575,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.75}
                 onPress={() => onPromiseLoan(customer, activeLoan)}
               >
-                <Text style={styles.smallTwoWordText}>⏳ Pactar Promesa</Text>
+                <Text style={styles.smallTwoWordText}>Pactar Promesa</Text>
               </TouchableOpacity>
             )}
 
@@ -582,7 +585,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.75}
                 onPress={() => onNonPayment(customer, activeLoan)}
               >
-                <Text style={styles.smallTwoWordText}>⚠️ Reportar No-Pago</Text>
+                <Text style={styles.smallTwoWordText}>Reportar No-Pago</Text>
               </TouchableOpacity>
             )}
 
@@ -592,7 +595,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.75}
                 onPress={() => onRenewLoan(customer, activeLoan)}
               >
-                <Text style={styles.smallTwoWordText}>🔄 Renovar Crédito</Text>
+                <Text style={styles.smallTwoWordText}>Renovar Crédito</Text>
               </TouchableOpacity>
             )}
 
@@ -602,7 +605,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.75}
                 onPress={() => onOpenCreditHistory(customer)}
               >
-                <Text style={styles.smallTwoWordText}>📋 Ver Historial</Text>
+                <Text style={styles.smallTwoWordText}>Ver Historial</Text>
               </TouchableOpacity>
             )}
 
@@ -612,7 +615,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.75}
                 onPress={() => onEditCustomer(customer)}
               >
-                <Text style={styles.smallTwoWordText}>✏️ Editar Datos</Text>
+                <Text style={styles.smallTwoWordText}>Editar Datos</Text>
               </TouchableOpacity>
             )}
 
@@ -621,7 +624,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               activeOpacity={0.75}
               onPress={handleWhatsApp}
             >
-              <Text style={styles.smallTwoWordText}>📲 Enviar WhatsApp</Text>
+              <Text style={styles.smallTwoWordText}>Enviar WhatsApp</Text>
             </TouchableOpacity>
 
             {onDeleteCustomer && (
@@ -630,7 +633,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.75}
                 onPress={handleDeletePress}
               >
-                <Text style={[styles.smallTwoWordText, { color: '#DC2626' }]}>🗑️ Eliminar Cliente</Text>
+                <Text style={[styles.smallTwoWordText, { color: '#DC2626' }]}>Eliminar Cliente</Text>
               </TouchableOpacity>
             )}
           </ScrollView>
@@ -713,7 +716,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                     onPress={() => onPromiseLoan(customer, activeLoan)}
                   >
                     <Clock size={13} color={COLORS.navy} />
-                    <Text style={styles.secondaryActionText}>⏳ Promesa</Text>
+                    <Text style={styles.secondaryActionText}>Promesa</Text>
                   </TouchableOpacity>
                 )}
 
@@ -807,7 +810,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               >
                 <MessageCircle size={14} color="#16a34a" style={{ marginRight: 6 }} />
                 <Text style={{ fontSize: 12, fontWeight: '800', color: '#15803d' }}>
-                  📲 Enviar Estado de Cuenta por WhatsApp
+                  Enviar Estado de Cuenta por WhatsApp
                 </Text>
               </TouchableOpacity>
 
@@ -829,7 +832,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 >
                   <Ban size={14} color="#dc2626" style={{ marginRight: 5 }} />
                   <Text style={{ fontSize: 12, fontWeight: '800', color: '#dc2626' }}>
-                    🚫 Anular Crédito
+                    Anular Crédito
                   </Text>
                 </TouchableOpacity>
               )}
@@ -925,18 +928,18 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                           <View style={styles.delayBadge}>
                             <Clock size={11} color="#b45309" style={{ marginRight: 3 }} />
                             <Text style={styles.delayBadgeText}>
-                              ⚠️ {details.delayDays} {details.delayDays === 1 ? 'día' : 'días'} de retraso
+                              {details.delayDays} {details.delayDays === 1 ? 'día' : 'días'} de retraso
                             </Text>
                           </View>
                         ) : details.isEarly ? (
                           <View style={styles.earlyBadge}>
                             <Text style={styles.earlyBadgeText}>
-                              ⚡ Adelantada ({Math.abs(details.delayDays)}d antes)
+                              Adelantada ({Math.abs(details.delayDays)}d antes)
                             </Text>
                           </View>
                         ) : (
                           <View style={styles.onTimeBadge}>
-                            <Text style={styles.onTimeBadgeText}>✓ A tiempo</Text>
+                            <Text style={styles.onTimeBadgeText}>A tiempo</Text>
                           </View>
                         )}
                       </View>
@@ -961,7 +964,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                     ) : (
                       <View style={styles.instPendingMetaBox}>
                         <Text style={styles.instPendingText}>
-                          {inst.dueDate === todayStr ? '🔔 Cobro programado para hoy' : 'Pendiente de cobro'}
+                          {inst.dueDate === todayStr ? 'Cobro programado para hoy' : 'Pendiente de cobro'}
                         </Text>
                       </View>
                     )}
@@ -999,7 +1002,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 activeOpacity={0.8}
                 onPress={() => setCalendarModalVisible(true)}
               >
-                <Text style={styles.openCalendarSmallText}>🗓️ Calendario</Text>
+                <Text style={styles.openCalendarSmallText}>Calendario</Text>
               </TouchableOpacity>
 
               {onNewLoan && (
@@ -1008,7 +1011,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                   activeOpacity={0.8}
                   onPress={() => onNewLoan(customer, 'FIXED_DATE', selectedFixedDate)}
                 >
-                  <Text style={styles.actionNewLoanSmallText}>➕ Crear Préstamo</Text>
+                  <Text style={styles.actionNewLoanSmallText}>Crear Préstamo</Text>
                 </TouchableOpacity>
               )}
             </ScrollView>
@@ -1105,7 +1108,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                         >
                           <RotateCcw size={11} color="#dc2626" style={{ marginRight: 3 }} />
                           <Text style={{ fontSize: 11, fontWeight: '800', color: '#dc2626' }}>
-                            ↩ Anular Abono
+                            Anular Abono
                           </Text>
                         </TouchableOpacity>
                       )}
@@ -1199,8 +1202,8 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                 <ShieldAlert size={20} color="#dc2626" style={{ marginRight: 8 }} />
                 <Text style={{ fontSize: 16, fontWeight: '900', color: '#991b1b', flex: 1 }}>
                   {auditModalState.mode === 'REVERSE_PAYMENT'
-                    ? '↩ Anular Abono (Auditoría)'
-                    : '🚫 Anular Crédito (Auditoría)'}
+                    ? 'Anular Abono (Auditoría)'
+                    : 'Anular Crédito (Auditoría)'}
                 </Text>
               </View>
 
@@ -1296,7 +1299,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           <View style={styles.calendarModalCard}>
             <View style={styles.calendarModalHeader}>
               <View>
-                <Text style={styles.calendarModalTitle}>📅 Fecha Fija de Préstamo</Text>
+                <Text style={styles.calendarModalTitle}>Fecha Fija de Préstamo</Text>
                 <Text style={styles.calendarModalSubtitle}>Selecciona la fecha acordada para el cobro</Text>
               </View>
               <TouchableOpacity
@@ -1443,7 +1446,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
                   }
                 }}
               >
-                <Text style={styles.calendarConfirmBtnText}>✅ Crear Préstamo</Text>
+                <Text style={styles.calendarConfirmBtnText}>Crear Préstamo</Text>
               </TouchableOpacity>
             </View>
           </View>

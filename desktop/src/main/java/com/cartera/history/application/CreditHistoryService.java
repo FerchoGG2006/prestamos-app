@@ -54,10 +54,10 @@ public class CreditHistoryService {
     }
 
     public enum RepaymentRating {
-        BUEN_PAGADOR("★ BUEN PAGADOR / PUNTUAL", "#059669", "#ecfdf5", "#a7f3d0"),
-        REGULAR("⚠ REGULAR (CON ATRASOS)", "#d97706", "#fffbeb", "#fde68a"),
-        EN_MORA("🚨 MAL PAGADOR / EN MORA", "#dc2626", "#fef2f2", "#fecaca"),
-        SIN_HISTORIAL("ℹ CLIENTE NUEVO (SIN HISTORIAL)", "#2563eb", "#eff6ff", "#bfdbfe");
+        BUEN_PAGADOR("BUEN PAGADOR / PUNTUAL", "#059669", "#ecfdf5", "#a7f3d0"),
+        REGULAR("REGULAR (CON ATRASOS)", "#d97706", "#fffbeb", "#fde68a"),
+        EN_MORA("MAL PAGADOR / EN MORA", "#dc2626", "#fef2f2", "#fecaca"),
+        SIN_HISTORIAL("CLIENTE NUEVO (SIN HISTORIAL)", "#2563eb", "#eff6ff", "#bfdbfe");
 
         private final String label;
         private final String textColor;
@@ -290,22 +290,22 @@ public class CreditHistoryService {
                 }
             } else if (isCompleted) {
                 if (maxLoanDelayDays == 0) {
-                    behaviorVerdict = "✓ Pagó Excelente (Puntual sin demoras)";
+                    behaviorVerdict = "Pagó Excelente (Puntual sin demoras)";
                     behaviorColor = "#059669";
                 } else {
                     hasPastLoansWithDelay = true;
-                    behaviorVerdict = "⚠ Pagó con Atraso (" + maxLoanDelayDays + " días máx)";
+                    behaviorVerdict = "Pagó con Atraso (" + maxLoanDelayDays + " días máx)";
                     behaviorColor = "#d97706";
                 }
             } else if (isActive) {
                 if (overdueInstCount > 0) {
-                    behaviorVerdict = "🚨 Cuotas Vencidas (" + overdueInstCount + " en mora - " + maxLoanDelayDays + " días)";
+                    behaviorVerdict = "Cuotas Vencidas (" + overdueInstCount + " en mora - " + maxLoanDelayDays + " días)";
                     behaviorColor = "#dc2626";
                 } else if (latePaidInstCount > 0) {
-                    behaviorVerdict = "⚠ Al Día (con atraso previo de " + maxLoanDelayDays + " días)";
+                    behaviorVerdict = "Al Día (con atraso previo de " + maxLoanDelayDays + " días)";
                     behaviorColor = "#d97706";
                 } else {
-                    behaviorVerdict = "✓ Al Día (Cuotas al corriente)";
+                    behaviorVerdict = "Al Día (Cuotas al corriente)";
                     behaviorColor = "#2563eb";
                 }
             } else {

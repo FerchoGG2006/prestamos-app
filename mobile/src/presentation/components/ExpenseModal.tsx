@@ -41,11 +41,11 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const categories = [
-    { key: 'PINCHAZO', label: '🛠️ Pinchazo / Taller Moto', quickAmount: 10000 },
-    { key: 'DATOS', label: '📱 Recarga / Plan Celular', quickAmount: 5000 },
-    { key: 'GASOLINA', label: '⛽ Gasolina / Combustible', quickAmount: 15000 },
-    { key: 'PARQUEADERO', label: '🅿️ Peaje / Parqueadero', quickAmount: 3000 },
-    { key: 'OTRO', label: '💼 Otro gasto operativo', quickAmount: 10000 },
+    { key: 'PINCHAZO', label: 'Pinchazo / Taller Moto', quickAmount: 10000 },
+    { key: 'DATOS', label: 'Recarga / Plan Celular', quickAmount: 5000 },
+    { key: 'GASOLINA', label: 'Gasolina / Combustible', quickAmount: 15000 },
+    { key: 'PARQUEADERO', label: 'Peaje / Parqueadero', quickAmount: 3000 },
+    { key: 'OTRO', label: 'Otro gasto operativo', quickAmount: 10000 },
   ];
 
   const numericAmount = parseInt(amountStr.replace(/\D/g, ''), 10) || 0;
@@ -190,7 +190,7 @@ export const ExpenseModal: React.FC<ExpenseModalProps> = ({
           {numericAmount > 50000 && (
             <View style={styles.highExpenseNotice}>
               <Text style={styles.highExpenseNoticeText}>
-                ⚠️ Gasto mayor a $50.000 COP. Por control de auditoría, es obligatorio detallar el motivo específico en la nota anterior.
+                Gasto mayor a $50.000 COP. Por control de auditoría, es obligatorio detallar el motivo específico en la nota anterior.
               </Text>
             </View>
           )}

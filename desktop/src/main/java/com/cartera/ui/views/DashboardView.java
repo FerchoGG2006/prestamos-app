@@ -168,10 +168,10 @@ public class DashboardView extends VBox {
         // 3. Pilares Financieros de la Cartera (4 Bento Cards)
         HBox pillars = new HBox(14);
         pillars.getChildren().addAll(
-                createMetricCard("💵 BASE EN CAJA", lblCash, "metric-value-green", "Disponible para prestar"),
-                createMetricCard("📈 CARTERA EN CALLE", lblActiveDebt, "metric-value", "Saldo capital en deuda"),
-                createMetricCard("🏛 PATRIMONIO DE RUTA", lblAdministrative, "metric-value", "Capital total administrado"),
-                createMetricCard("⚠️ CARTERA EN MORA", lblOverdue, "metric-value-red", "Cuotas vencidas hoy")
+                createMetricCard("BASE EN CAJA", lblCash, "metric-value-green", "Disponible para prestar"),
+                createMetricCard("CARTERA EN CALLE", lblActiveDebt, "metric-value", "Saldo capital en deuda"),
+                createMetricCard("PATRIMONIO DE RUTA", lblAdministrative, "metric-value", "Capital total administrado"),
+                createMetricCard("CARTERA EN MORA", lblOverdue, "metric-value-red", "Cuotas vencidas hoy")
         );
 
         // 4. Panel Comparativo Multi-Ruta (Supervisión Gerencial de Rutas)
@@ -183,10 +183,10 @@ public class DashboardView extends VBox {
 
         HBox actionCards = new HBox(14);
         actionCards.getChildren().addAll(
-                createActionCard("📋", "Supervisión de Cobros", "Monitorear cobros de la ruta y registrar abonos", () -> navigate("Cobros y Rutas")),
-                createActionCard("👥", "Clientes de la Red", "Fichas de clientes, historiales y nuevos préstamos", () -> navigate("Clientes")),
-                createActionCard("⚖️", "Liquidación y Arqueo", "Cierre contable de jornada y cuadre de efectivo", () -> navigate("Liquidación Diaria")),
-                createActionCard("💼", "Patrimonio & Caja", "Movimientos de capital y flujo de efectivo", () -> navigate("Administrativo"))
+                createActionCard("01", "Supervisión de Cobros", "Monitorear cobros de la ruta y registrar abonos", () -> navigate("Cobros y Rutas")),
+                createActionCard("02", "Clientes de la Red", "Fichas de clientes, historiales y nuevos préstamos", () -> navigate("Clientes")),
+                createActionCard("03", "Liquidación y Arqueo", "Cierre contable de jornada y cuadre de efectivo", () -> navigate("Liquidación Diaria")),
+                createActionCard("04", "Patrimonio & Caja", "Movimientos de capital y flujo de efectivo", () -> navigate("Administrativo"))
         );
 
         contentBox.getChildren().addAll(headerBox, heroCard, alertsContainer, pillars, multiRouteCard, lblActionsTitle, actionCards);
@@ -312,7 +312,7 @@ public class DashboardView extends VBox {
                     setText(null);
                     setGraphic(null);
                 } else {
-                    Button btn = new Button("📍 Supervisar");
+                    Button btn = new Button("Supervisar");
                     btn.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-padding: 3 8; -fx-cursor: hand; -fx-font-weight: bold;");
                     btn.setOnAction(e -> {
                         if (onSelectRoute != null) {
@@ -443,9 +443,6 @@ public class DashboardView extends VBox {
             alertMora.getStyleClass().add("alert-card-danger");
             alertMora.setAlignment(Pos.CENTER_LEFT);
 
-            Label icon = new Label("⚠️");
-            icon.setStyle("-fx-font-size: 18px;");
-
             VBox textCol = new VBox(2);
             HBox.setHgrow(textCol, Priority.ALWAYS);
             Label title = new Label("Cartera en Mora Detectada (" + CURRENCY.format(overdue) + ")");
@@ -459,7 +456,7 @@ public class DashboardView extends VBox {
             btnAction.setStyle("-fx-background-color: #DC2626; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-radius: 6; -fx-padding: 6 12; -fx-cursor: hand;");
             btnAction.setOnAction(e -> navigate("Cobros y Rutas"));
 
-            alertMora.getChildren().addAll(icon, textCol, btnAction);
+            alertMora.getChildren().addAll(textCol, btnAction);
             alertsContainer.getChildren().add(alertMora);
         }
 
@@ -467,9 +464,6 @@ public class DashboardView extends VBox {
             HBox alertProgress = new HBox(12);
             alertProgress.getStyleClass().add("alert-card-warning");
             alertProgress.setAlignment(Pos.CENTER_LEFT);
-
-            Label icon = new Label("⏳");
-            icon.setStyle("-fx-font-size: 18px;");
 
             VBox textCol = new VBox(2);
             HBox.setHgrow(textCol, Priority.ALWAYS);
@@ -484,7 +478,7 @@ public class DashboardView extends VBox {
             btnAction.setStyle("-fx-background-color: #D97706; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-background-radius: 6; -fx-padding: 6 12; -fx-cursor: hand;");
             btnAction.setOnAction(e -> navigate("Cobros y Rutas"));
 
-            alertProgress.getChildren().addAll(icon, textCol, btnAction);
+            alertProgress.getChildren().addAll(textCol, btnAction);
             alertsContainer.getChildren().add(alertProgress);
         }
 

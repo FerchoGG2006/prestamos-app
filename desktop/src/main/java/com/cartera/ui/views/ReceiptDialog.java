@@ -115,7 +115,7 @@ public class ReceiptDialog extends Stage {
         HBox actions = new HBox(10);
         actions.setAlignment(Pos.CENTER);
 
-        Button btnWhatsApp = new Button("📲 Enviar Recibo por WhatsApp");
+        Button btnWhatsApp = new Button("Enviar Recibo por WhatsApp");
         btnWhatsApp.setStyle("-fx-background-color: #16a34a; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 14; -fx-background-radius: 8; -fx-cursor: hand;");
         btnWhatsApp.setOnAction(e -> {
             String message = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
@@ -137,7 +137,7 @@ public class ReceiptDialog extends Stage {
             lblCopied.setManaged(true);
         });
 
-        Button btnCopy = new Button("📋 Copiar Texto");
+        Button btnCopy = new Button("Copiar Texto");
         btnCopy.getStyleClass().add("btn-secondary");
         btnCopy.setOnAction(e -> {
             String message = WhatsAppReceiptUtil.generatePaymentReceiptMessage(

@@ -411,7 +411,7 @@ public final class CarteraApplication extends Application {
         // Selector Global de Ruta Activa
         HBox routeSelectorBox = new HBox(8);
         routeSelectorBox.setAlignment(Pos.CENTER_LEFT);
-        Label lblRoute = new Label("📍 Ruta Activa:");
+        Label lblRoute = new Label("Ruta Activa:");
         lblRoute.setStyle("-fx-text-fill: #334155; -fx-font-size: 12px; -fx-font-weight: bold;");
 
         cmbGlobalRoute.setPrefWidth(220);
@@ -446,7 +446,7 @@ public final class CarteraApplication extends Application {
                 for (RouteEntity r : routes) {
                     if (r.getActive() != null && r.getActive() == 0) continue;
                     if (session.userId().equalsIgnoreCase(r.getCollectorId())) {
-                        GlobalRouteOption opt = new GlobalRouteOption(r.getId(), "🛵 Mi Ruta: " + r.getName());
+                        GlobalRouteOption opt = new GlobalRouteOption(r.getId(), "Mi Ruta: " + r.getName());
                         cmbGlobalRoute.getItems().add(opt);
                         targetSelection = opt;
                         break;
@@ -454,7 +454,7 @@ public final class CarteraApplication extends Application {
                 }
                 if (targetSelection == null && !routes.isEmpty()) {
                     RouteEntity first = routes.get(0);
-                    targetSelection = new GlobalRouteOption(first.getId(), "🛵 Mi Ruta: " + first.getName());
+                    targetSelection = new GlobalRouteOption(first.getId(), "Mi Ruta: " + first.getName());
                     cmbGlobalRoute.getItems().add(targetSelection);
                 }
             }

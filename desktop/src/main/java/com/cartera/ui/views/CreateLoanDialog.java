@@ -69,7 +69,7 @@ public class CreateLoanDialog extends Stage {
     private final DatePicker dpStartDate = new DatePicker(LocalDate.now());
 
     // Switch de Crédito Anterior
-    private final CheckBox chkMigration = new CheckBox("📋 Crédito Anterior (Cartulina ya iniciada)");
+    private final CheckBox chkMigration = new CheckBox("Crédito Anterior (Cartulina ya iniciada)");
     private final Set<Integer> paidInstallmentNumbers = new HashSet<>();
     private String cardPhotoPath = null;
 
@@ -85,7 +85,7 @@ public class CreateLoanDialog extends Stage {
     private final Label lblSummaryInterest = new Label("$ 60.000");
     private final Label lblSummaryCartulinaTitle = new Label("Cartulina / Papelería");
     private final Label lblSummaryCartulina = new Label("- $ 15.000");
-    private final Label lblSummaryNetTitle = new Label("💵 Neto a Entregar");
+    private final Label lblSummaryNetTitle = new Label("Neto a Entregar");
     private final Label lblSummaryNet = new Label("$ 285.000");
     private final Label lblFeedback = new Label();
 
@@ -327,12 +327,12 @@ public class CreateLoanDialog extends Stage {
         // Header de la cartulina
         HBox cartHeader = new HBox(10);
         cartHeader.setAlignment(Pos.CENTER_LEFT);
-        Label lblCartTitle = new Label("📋 Cartulina Física Digital (Toca las casillas que ya pagó)");
+        Label lblCartTitle = new Label("Cartulina Física Digital (Toca las casillas que ya pagó)");
         lblCartTitle.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 12px; -fx-font-weight: 900;");
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
-        Button btnPhoto = new Button("📷 Foto Cartulina");
+        Button btnPhoto = new Button("Foto Cartulina");
         btnPhoto.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 4 8; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-cursor: hand;");
         btnPhoto.setOnAction(e -> pickCartulinaPhoto());
 
@@ -385,7 +385,7 @@ public class CreateLoanDialog extends Stage {
         lblCartulinaSummary.setStyle("-fx-text-fill: #15803d; -fx-font-size: 11.5px; -fx-font-weight: bold;");
         HBox.setHgrow(lblCartulinaSummary, Priority.ALWAYS);
 
-        Label lblSafeCashBadge = new Label("🛡️ Caja de hoy protegida ($0)");
+        Label lblSafeCashBadge = new Label("Caja de hoy protegida ($0)");
         lblSafeCashBadge.setStyle("-fx-background-color: #dcfce7; -fx-text-fill: #166534; -fx-font-size: 10px; -fx-font-weight: 900; -fx-padding: 3 8; -fx-background-radius: 6;");
 
         cartSummaryBanner.getChildren().addAll(lblCartulinaSummary, lblSafeCashBadge);
@@ -403,7 +403,7 @@ public class CreateLoanDialog extends Stage {
             btnDisburse.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 13px; -fx-padding: 9 16; -fx-background-radius: 8;");
 
             lblSummaryCartulinaTitle.setText("Impacto Caja Hoy");
-            lblSummaryNetTitle.setText("💼 Saldo Cartera a Cobrar");
+            lblSummaryNetTitle.setText("Saldo Cartera a Cobrar");
 
             planTable.setVisible(false);
             planTable.setManaged(false);
@@ -418,7 +418,7 @@ public class CreateLoanDialog extends Stage {
             btnDisburse.setStyle("");
 
             lblSummaryCartulinaTitle.setText("Cartulina / Papelería");
-            lblSummaryNetTitle.setText("💵 Neto a Entregar");
+            lblSummaryNetTitle.setText("Neto a Entregar");
 
             boxCartulinaSection.setVisible(false);
             boxCartulinaSection.setManaged(false);
@@ -437,7 +437,7 @@ public class CreateLoanDialog extends Stage {
         File file = chooser.showOpenDialog(this);
         if (file != null) {
             cardPhotoPath = file.getAbsolutePath();
-            lblAttachedPhoto.setText("📎 Foto adjunta: " + file.getName() + " (" + (file.length() / 1024) + " KB)");
+            lblAttachedPhoto.setText("Foto adjunta: " + file.getName() + " (" + (file.length() / 1024) + " KB)");
             lblAttachedPhoto.setVisible(true);
             lblAttachedPhoto.setManaged(true);
         }
@@ -570,13 +570,13 @@ public class CreateLoanDialog extends Stage {
         }
 
         if (hasLoanInOtherRoute) {
-            lblCrossRouteAlert.setText("⚠️ ALERTA CREDITICIA MULTI-RUTA:\nEste cliente ya registra crédito ACTIVO en [" + otherRouteName + "] por saldo de " + CURRENCY.format(totalOtherDebt) + ". Verifique antes de autorizar el desembolso.");
+            lblCrossRouteAlert.setText("ALERTA CREDITICIA MULTI-RUTA:\nEste cliente ya registra crédito ACTIVO en [" + otherRouteName + "] por saldo de " + CURRENCY.format(totalOtherDebt) + ". Verifique antes de autorizar el desembolso.");
             crossRouteAlertBox.setStyle("-fx-background-color: #fef2f2; -fx-padding: 8 10; -fx-background-radius: 6; -fx-border-color: #fecaca; -fx-border-radius: 6;");
             lblCrossRouteAlert.setStyle("-fx-text-fill: #991b1b; -fx-font-size: 11px; -fx-font-weight: bold; -fx-wrap-text: true;");
             crossRouteAlertBox.setVisible(true);
             crossRouteAlertBox.setManaged(true);
         } else {
-            lblCrossRouteAlert.setText("ℹ️ El cliente tiene " + activeLoans.size() + " crédito(s) vigente(s) en esta ruta. Verifique cupo.");
+            lblCrossRouteAlert.setText("El cliente tiene " + activeLoans.size() + " crédito(s) vigente(s) en esta ruta. Verifique cupo.");
             crossRouteAlertBox.setStyle("-fx-background-color: #eff6ff; -fx-padding: 8 10; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6;");
             lblCrossRouteAlert.setStyle("-fx-text-fill: #1e40af; -fx-font-size: 11px; -fx-font-weight: bold; -fx-wrap-text: true;");
             crossRouteAlertBox.setVisible(true);
@@ -701,7 +701,7 @@ public class CreateLoanDialog extends Stage {
             final int instNum = i;
             boolean isPaid = paidInstallmentNumbers.contains(instNum);
 
-            Button tile = new Button(instNum + (isPaid ? " ✓" : ""));
+            Button tile = new Button(String.valueOf(instNum));
             if (isPaid) {
                 tile.setStyle("-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-font-weight: 900; -fx-font-size: 11px; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-background-radius: 6; -fx-min-width: 46px; -fx-min-height: 34px; -fx-cursor: hand;");
             } else {

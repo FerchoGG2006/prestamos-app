@@ -141,7 +141,7 @@ public class ReportsView extends VBox {
 
         segmentBar.getChildren().addAll(btnTabReports, btnTabAudit);
 
-        Button btnExportExcel = new Button("📊 Exportar Reporte Contable en Excel (.xlsx)");
+        Button btnExportExcel = new Button("Exportar Reporte Contable en Excel (.xlsx)");
         btnExportExcel.setStyle("-fx-background-color: #15803d; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 8 14; -fx-background-radius: 8; -fx-cursor: hand;");
         btnExportExcel.setOnAction(e -> exportExcelReport());
 

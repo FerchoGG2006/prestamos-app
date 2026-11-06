@@ -45,21 +45,21 @@ public final class WhatsAppReceiptUtil {
                 : LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
 
         return "━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "🧾 *COMPROBANTE OFICIAL DE PAGO*\n" +
-                "🏢 *" + comp + "*\n" +
+                "*COMPROBANTE OFICIAL DE PAGO*\n" +
+                "*" + comp + "*\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "📅 *Fecha:* " + dt + "\n" +
-                "🔢 *Recibo No:* #" + shortRec + "\n" +
-                "👤 *Cliente:* " + (customerName != null ? customerName : "Cliente") + "\n" +
-                "🪪 *Documento:* " + (customerDoc != null ? customerDoc : "-") + "\n" +
+                "*Fecha:* " + dt + "\n" +
+                "*Recibo No:* #" + shortRec + "\n" +
+                "*Cliente:* " + (customerName != null ? customerName : "Cliente") + "\n" +
+                "*Documento:* " + (customerDoc != null ? customerDoc : "-") + "\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "✅ *VALOR ABONADO:* *" + CURRENCY.format(amountPaid != null ? amountPaid : BigDecimal.ZERO) + "*\n" +
-                "📌 *Cuotas cubiertas:* " + installmentsAffected + "\n" +
-                "💳 *Medio de pago:* " + (paymentMethod != null ? paymentMethod : "EFECTIVO") + "\n" +
-                "📉 *SALDO RESTANTE:* *" + CURRENCY.format(remainingBalance != null ? remainingBalance : BigDecimal.ZERO) + "*\n" +
+                "*VALOR ABONADO:* *" + CURRENCY.format(amountPaid != null ? amountPaid : BigDecimal.ZERO) + "*\n" +
+                "*Cuotas cubiertas:* " + installmentsAffected + "\n" +
+                "*Medio de pago:* " + (paymentMethod != null ? paymentMethod : "EFECTIVO") + "\n" +
+                "*SALDO RESTANTE:* *" + CURRENCY.format(remainingBalance != null ? remainingBalance : BigDecimal.ZERO) + "*\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "🛵 *Atendido por:* " + (collectorName != null ? collectorName : "Cobrador de Ruta") + "\n" +
-                "🙏 _¡Gracias por su puntual pago! Conserve este mensaje como comprobante digital._";
+                "*Atendido por:* " + (collectorName != null ? collectorName : "Cobrador de Ruta") + "\n" +
+                "_¡Gracias por su puntual pago! Conserve este mensaje como comprobante digital._";
     }
 
     public static String formatAccountStatement(
@@ -81,30 +81,30 @@ public final class WhatsAppReceiptUtil {
 
         StringBuilder sb = new StringBuilder();
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("📊 *ESTADO DE CUENTA DE CRÉDITO*\n");
-        sb.append("🏢 *").append(comp).append("*\n");
+        sb.append("*ESTADO DE CUENTA DE CRÉDITO*\n");
+        sb.append("*").append(comp).append("*\n");
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("👤 *Cliente:* ").append(customerName != null ? customerName : "Cliente").append("\n");
+        sb.append("*Cliente:* ").append(customerName != null ? customerName : "Cliente").append("\n");
         if (customerDoc != null && !customerDoc.isBlank()) {
-            sb.append("🪪 *Documento:* ").append(customerDoc).append("\n");
+            sb.append("*Documento:* ").append(customerDoc).append("\n");
         }
-        sb.append("📄 *Contrato:* #").append(shortLoan).append("\n");
+        sb.append("*Contrato:* #").append(shortLoan).append("\n");
         if (principal != null) {
-            sb.append("💰 *Capital Prestado:* ").append(CURRENCY.format(principal)).append("\n");
+            sb.append("*Capital Prestado:* ").append(CURRENCY.format(principal)).append("\n");
         }
-        sb.append("💵 *Total Pactado:* ").append(CURRENCY.format(totalAgreed != null ? totalAgreed : BigDecimal.ZERO)).append("\n");
-        sb.append("✅ *Total Abonado:* ").append(CURRENCY.format(paid != null ? paid : BigDecimal.ZERO)).append("\n");
-        sb.append("📉 *SALDO PENDIENTE:* *").append(CURRENCY.format(pending != null ? pending : BigDecimal.ZERO)).append("*\n");
+        sb.append("*Total Pactado:* ").append(CURRENCY.format(totalAgreed != null ? totalAgreed : BigDecimal.ZERO)).append("\n");
+        sb.append("*Total Abonado:* ").append(CURRENCY.format(paid != null ? paid : BigDecimal.ZERO)).append("\n");
+        sb.append("*SALDO PENDIENTE:* *").append(CURRENCY.format(pending != null ? pending : BigDecimal.ZERO)).append("*\n");
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("📌 *Progreso:* Cuota ").append(paidInstallments).append(" de ").append(totalInstallments).append("\n");
+        sb.append("*Progreso:* Cuota ").append(paidInstallments).append(" de ").append(totalInstallments).append("\n");
 
         if (overdueInstallments > 0) {
-            sb.append("⚠️ *Estado:* Presenta *").append(overdueInstallments).append(" cuota(s) vencida(s)*.\n");
+            sb.append("*Estado:* Presenta *").append(overdueInstallments).append(" cuota(s) vencida(s)*.\n");
         } else {
-            sb.append("✅ *Estado:* Al día.\n");
+            sb.append("*Estado:* Al día.\n");
         }
         if (nextDueDate != null && !nextDueDate.isBlank() && !"-".equals(nextDueDate)) {
-            sb.append("📅 *Próximo Vencimiento:* ").append(nextDueDate).append("\n");
+            sb.append("*Próximo Vencimiento:* ").append(nextDueDate).append("\n");
         }
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
         sb.append("_Por favor comuníquese con nosotros para coordinar su abono. ¡Muchas gracias!_");
@@ -127,26 +127,26 @@ public final class WhatsAppReceiptUtil {
 
         StringBuilder sb = new StringBuilder();
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("📊 *ESTADO DE CUENTA DE CRÉDITO*\n");
-        sb.append("🏢 *").append(comp).append("*\n");
+        sb.append("*ESTADO DE CUENTA DE CRÉDITO*\n");
+        sb.append("*").append(comp).append("*\n");
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("👤 *Cliente:* ").append(customerName != null ? customerName : "Cliente").append("\n");
-        sb.append("📄 *Contrato:* #").append(shortLoan).append("\n");
-        sb.append("💵 *Total Pactado:* ").append(CURRENCY.format(totalAgreed != null ? totalAgreed : BigDecimal.ZERO)).append("\n");
-        sb.append("✅ *Total Abonado:* ").append(CURRENCY.format(totalPaid != null ? totalPaid : BigDecimal.ZERO)).append("\n");
-        sb.append("📉 *SALDO PENDIENTE:* *").append(CURRENCY.format(remainingBalance != null ? remainingBalance : BigDecimal.ZERO)).append("*\n");
+        sb.append("*Cliente:* ").append(customerName != null ? customerName : "Cliente").append("\n");
+        sb.append("*Contrato:* #").append(shortLoan).append("\n");
+        sb.append("*Total Pactado:* ").append(CURRENCY.format(totalAgreed != null ? totalAgreed : BigDecimal.ZERO)).append("\n");
+        sb.append("*Total Abonado:* ").append(CURRENCY.format(totalPaid != null ? totalPaid : BigDecimal.ZERO)).append("\n");
+        sb.append("*SALDO PENDIENTE:* *").append(CURRENCY.format(remainingBalance != null ? remainingBalance : BigDecimal.ZERO)).append("*\n");
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
         if (overdueInstallmentsCount > 0) {
-            sb.append("⚠️ *Estado:* Presenta *").append(overdueInstallmentsCount).append(" cuota(s) vencida(s)*.\n");
+            sb.append("*Estado:* Presenta *").append(overdueInstallmentsCount).append(" cuota(s) vencida(s)*.\n");
         } else {
-            sb.append("✅ *Estado:* Al día.\n");
+            sb.append("*Estado:* Al día.\n");
         }
         if (nextInstallmentAmount != null && nextInstallmentAmount.compareTo(BigDecimal.ZERO) > 0) {
-            sb.append("🔔 *Valor Cuota a Cobrar:* *").append(CURRENCY.format(nextInstallmentAmount)).append("*\n");
+            sb.append("*Valor Cuota a Cobrar:* *").append(CURRENCY.format(nextInstallmentAmount)).append("*\n");
         }
         if (nextDueDate != null && !nextDueDate.isBlank()) {
-            sb.append("📅 *Fecha de Vencimiento:* ").append(nextDueDate).append("\n");
+            sb.append("*Fecha de Vencimiento:* ").append(nextDueDate).append("\n");
         }
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
         sb.append("_Por favor comuníquese con nosotros para coordinar su abono. ¡Muchas gracias!_");

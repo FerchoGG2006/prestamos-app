@@ -41,12 +41,12 @@ export const NonPaymentModal: React.FC<NonPaymentModalProps> = ({
 
   if (!customer || !loan) return null;
 
-  const reasons: Array<{ key: NonPaymentReason; label: string; icon: string }> = [
-    { key: 'NO_ESTABA', label: 'No estaba en el domicilio', icon: '🏠' },
-    { key: 'LOCAL_CERRADO', label: 'Negocio / local cerrado', icon: '🔒' },
-    { key: 'PASAR_TARDE', label: 'Pidió pasar más tarde', icon: '⏰' },
-    { key: 'SIN_DINERO', label: 'Sin dinero hoy', icon: '💸' },
-    { key: 'OTRO', label: 'Otro motivo', icon: '📝' },
+  const reasons: Array<{ key: NonPaymentReason; label: string }> = [
+    { key: 'NO_ESTABA', label: 'No estaba en el domicilio' },
+    { key: 'LOCAL_CERRADO', label: 'Negocio / local cerrado' },
+    { key: 'PASAR_TARDE', label: 'Pidió pasar más tarde' },
+    { key: 'SIN_DINERO', label: 'Sin dinero hoy' },
+    { key: 'OTRO', label: 'Otro motivo' },
   ];
 
   const handleSave = async () => {
@@ -112,41 +112,40 @@ export const NonPaymentModal: React.FC<NonPaymentModalProps> = ({
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ paddingBottom: 4 }}
           >
-          <Text style={styles.label}>MOTIVO DE LA VISITA NO EFECTIVA</Text>
-          <View style={styles.reasonsList}>
-            {reasons.map((r) => {
-              const isSelected = selectedReason === r.key;
-              return (
-                <TouchableOpacity
-                  key={r.key}
-                  style={[styles.reasonOption, isSelected && styles.reasonOptionSelected]}
-                  onPress={() => setSelectedReason(r.key)}
-                >
-                  <Text style={styles.reasonIcon}>{r.icon}</Text>
-                  <Text
-                    style={[
-                      styles.reasonText,
-                      isSelected && styles.reasonTextSelected,
-                    ]}
+            <Text style={styles.label}>MOTIVO DE LA VISITA NO EFECTIVA</Text>
+            <View style={styles.reasonsList}>
+              {reasons.map((r) => {
+                const isSelected = selectedReason === r.key;
+                return (
+                  <TouchableOpacity
+                    key={r.key}
+                    style={[styles.reasonOption, isSelected && styles.reasonOptionSelected]}
+                    onPress={() => setSelectedReason(r.key)}
                   >
-                    {r.label}
-                  </Text>
-                  {isSelected && <Check size={16} color={COLORS.primary} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+                    <Text
+                      style={[
+                        styles.reasonText,
+                        isSelected && styles.reasonTextSelected,
+                      ]}
+                    >
+                      {r.label}
+                    </Text>
+                    {isSelected && <Check size={16} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-          <Text style={[styles.label, { marginTop: 12 }]}>NOTA ADICIONAL (OPCIONAL)</Text>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Ej: Dice que regresa a las 5pm..."
-            placeholderTextColor={COLORS.textMuted}
-            value={notes}
-            onChangeText={setNotes}
-            multiline
-            numberOfLines={2}
-          />
+            <Text style={[styles.label, { marginTop: 12 }]}>NOTA ADICIONAL (OPCIONAL)</Text>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Ej: Dice que regresa a las 5pm..."
+              placeholderTextColor={COLORS.textMuted}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              numberOfLines={2}
+            />
           </ScrollView>
 
           <View style={styles.actions}>
@@ -238,11 +237,6 @@ const styles = StyleSheet.create({
   reasonOptionSelected: {
     backgroundColor: COLORS.primaryLight,
     borderColor: COLORS.primary,
-  },
-  reasonIcon: {
-    fontFamily: FONT_FAMILY,
-    fontSize: 16,
-    marginRight: 10,
   },
   reasonText: {
     flex: 1,

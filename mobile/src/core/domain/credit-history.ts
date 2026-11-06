@@ -159,19 +159,19 @@ export function calculateCustomerCreditHistory(
 
     if (isCompleted) {
       if (maxLoanDelayDays === 0) {
-        behaviorVerdict = '✓ Pagó Excelente (Puntual)';
+        behaviorVerdict = 'Pagó Excelente (Puntual)';
         behaviorColor = '#059669';
       } else {
         hasPastLoansWithDelay = true;
-        behaviorVerdict = `⚠ Pagó con Atraso (${maxLoanDelayDays} días máx)`;
+        behaviorVerdict = `Pagó con Atraso (${maxLoanDelayDays} días máx)`;
         behaviorColor = '#D97706';
       }
     } else if (isActive) {
       if (overdueInstCount > 0) {
-        behaviorVerdict = `🚨 En Mora (${overdueInstCount} cuotas vencidas - ${maxLoanDelayDays} días)`;
+        behaviorVerdict = `En Mora (${overdueInstCount} cuotas vencidas - ${maxLoanDelayDays} días)`;
         behaviorColor = '#DC2626';
       } else {
-        behaviorVerdict = '✓ Al Día (Al corriente)';
+        behaviorVerdict = 'Al Día (Al corriente)';
         behaviorColor = '#2563EB';
       }
     } else {
@@ -206,7 +206,7 @@ export function calculateCustomerCreditHistory(
   if (customerLoans.length === 0) {
     rating = {
       type: 'SIN_HISTORIAL',
-      label: 'ℹ CLIENTE NUEVO (SIN HISTORIAL)',
+      label: 'CLIENTE NUEVO (SIN HISTORIAL)',
       explanation: 'No registra préstamos anteriores en cartera. Perfil limpio sin antecedentes.',
       textColor: '#2563EB',
       bgColor: '#EFF6FF',
@@ -215,7 +215,7 @@ export function calculateCustomerCreditHistory(
   } else if (hasActiveOverdueLoans) {
     rating = {
       type: 'EN_MORA',
-      label: '🚨 MAL PAGADOR / EN MORA',
+      label: 'MAL PAGADOR / EN MORA',
       explanation: `Presenta cuotas vencidas e impagas en su crédito activo (${maxOverdueDaysRecorded} días de atraso). Riesgo financiero alto.`,
       textColor: '#DC2626',
       bgColor: '#FEF2F2',
@@ -224,7 +224,7 @@ export function calculateCustomerCreditHistory(
   } else if (hasPastLoansWithDelay) {
     rating = {
       type: 'REGULAR',
-      label: '⚠ REGULAR (CON ATRASOS)',
+      label: 'REGULAR (CON ATRASOS)',
       explanation: `Ha cancelado sus compromisos pero incurrió en demoras en las cuotas (${maxOverdueDaysRecorded} días máx registrados).`,
       textColor: '#D97706',
       bgColor: '#FFFBEB',
@@ -233,7 +233,7 @@ export function calculateCustomerCreditHistory(
   } else {
     rating = {
       type: 'BUEN_PAGADOR',
-      label: '★ BUEN PAGADOR / PUNTUAL',
+      label: 'BUEN PAGADOR / PUNTUAL',
       explanation: 'Excelente récord financiero. Canceló o lleva sus cuotas al día sin morosidad registrada.',
       textColor: '#059669',
       bgColor: '#ECFDF5',

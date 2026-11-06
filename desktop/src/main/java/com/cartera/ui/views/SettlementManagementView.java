@@ -249,7 +249,7 @@ public class SettlementManagementView extends VBox {
         HBox actionBox = new HBox(12);
         actionBox.setAlignment(Pos.CENTER_RIGHT);
 
-        Button btnCopyWhatsAppReport = new Button("📲 Copiar Reporte WhatsApp");
+        Button btnCopyWhatsAppReport = new Button("Copiar Reporte WhatsApp");
         btnCopyWhatsAppReport.getStyleClass().add("btn-secondary");
         btnCopyWhatsAppReport.setStyle("-fx-font-size: 13px; -fx-padding: 8 16;");
         btnCopyWhatsAppReport.setOnAction(e -> copyCuadreWhatsAppReport());
@@ -269,7 +269,7 @@ public class SettlementManagementView extends VBox {
 
         HBox header = new HBox(8);
         header.setAlignment(Pos.CENTER_LEFT);
-        Label title = new Label("💵 Calculadora y Desglose Rápido de Efectivo Físico");
+        Label title = new Label("Calculadora y Desglose Rápido de Efectivo Físico");
         title.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1e293b;");
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -417,7 +417,7 @@ public class SettlementManagementView extends VBox {
                 cmbPayrollReason
         );
 
-        Label help = new Label("💡 Política operativa: Los consumos personales del cobrador (almuerzo, bebidas o anticipos) no son gastos de ruta y se descuentan de su nómina.");
+        Label help = new Label("Política operativa: Los consumos personales del cobrador (almuerzo, bebidas o anticipos) no son gastos de ruta y se descuentan de su nómina.");
         help.setStyle("-fx-text-fill: #b45309; -fx-font-size: 11px; -fx-font-style: italic;");
 
         payrollBox.getChildren().addAll(chkPayrollDeduction, inputs, help);
@@ -833,17 +833,17 @@ public class SettlementManagementView extends VBox {
 
         StringBuilder sb = new StringBuilder();
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("📊 *REPORTE DE CUADRE DIARIO*\n");
-        sb.append("📅 *Fecha:* ").append(date).append("\n");
-        sb.append("👤 *Cobrador:* ").append(collectorName).append("\n");
+        sb.append("*REPORTE DE CUADRE DIARIO*\n");
+        sb.append("*Fecha:* ").append(date).append("\n");
+        sb.append("*Cobrador:* ").append(collectorName).append("\n");
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
-        sb.append("📥 *1. COBRADO HOY*\n");
+        sb.append("*1. COBRADO HOY*\n");
         sb.append("• *Total Cobrado:* ").append(CURRENCY.format(currentSummary.totalCollected())).append("\n\n");
-        sb.append("⛽ *2. GASTOS DE RUTA:* ").append(CURRENCY.format(currentSummary.routeExpenses())).append("\n");
-        sb.append("💵 *3. NETO ESPERADO EN EFECTIVO:* ").append(CURRENCY.format(currentSummary.netExpectedCash())).append("\n\n");
+        sb.append("*2. GASTOS DE RUTA:* ").append(CURRENCY.format(currentSummary.routeExpenses())).append("\n");
+        sb.append("*3. NETO ESPERADO EN EFECTIVO:* ").append(CURRENCY.format(currentSummary.netExpectedCash())).append("\n\n");
 
         if (anyDenomTouched()) {
-            sb.append("💵 *DESGLOSE DE EFECTIVO FÍSICO CONTADO:*\n");
+            sb.append("*DESGLOSE DE EFECTIVO FÍSICO CONTADO:*\n");
             long q100 = parseCount(txtDenom100k.getText());
             long q50 = parseCount(txtDenom50k.getText());
             long q20 = parseCount(txtDenom20k.getText());
@@ -864,10 +864,10 @@ public class SettlementManagementView extends VBox {
         }
 
         if (currentSummary.isClosed() && currentSummary.settlement() != null) {
-            sb.append("✅ *ESTADO:* JORNADA CERRADA\n");
+            sb.append("*ESTADO:* JORNADA CERRADA\n");
             sb.append("• *Efectivo Entregado:* ").append(CURRENCY.format(currentSummary.settlement().getActualCollection())).append("\n");
         } else {
-            sb.append("⏳ *ESTADO:* JORNADA EN CURSO\n");
+            sb.append("*ESTADO:* JORNADA EN CURSO\n");
         }
         sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
         sb.append("_Generado desde Sistema de Cartera Desktop_");

@@ -277,7 +277,7 @@ public class ConfigurationView extends VBox {
         lblBackupFeedback.setManaged(false);
 
         HBox btns = new HBox(8);
-        Button btnInstant = new Button("⚡ Respaldo Instantáneo");
+        Button btnInstant = new Button("Respaldo Instantáneo");
         btnInstant.getStyleClass().add("btn-primary");
         btnInstant.setOnAction(e -> createInstantBackup());
 
@@ -298,9 +298,9 @@ public class ConfigurationView extends VBox {
     private void updateBackupCounterLabel() {
         if (databaseBackupService != null) {
             int count = databaseBackupService.getBackupCount();
-            lblBackupCounter.setText("📦 Copias automáticas almacenadas: " + count);
+            lblBackupCounter.setText("Copias automáticas almacenadas: " + count);
         } else {
-            lblBackupCounter.setText("📦 Carpeta de respaldos activa en ~/.sistema-cartera/backups");
+            lblBackupCounter.setText("Carpeta de respaldos activa en ~/.sistema-cartera/backups");
         }
     }
 
@@ -329,7 +329,7 @@ public class ConfigurationView extends VBox {
         card.getStyleClass().add("table-card");
         card.setPadding(new Insets(18));
 
-        Label title = new Label("💼 Capital Operativo: Administrativo, Cartera en Calle y Base");
+        Label title = new Label("Capital Operativo: Administrativo, Cartera en Calle y Base");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
 
         Label formulaBadge = new Label("REGLA MAESTRA FINANCIERA:  Administrativo = Cartera en Calle + Base en Mano");

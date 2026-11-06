@@ -79,7 +79,7 @@ export async function checkAndDownloadUpdate(silent: boolean = true): Promise<bo
           return true;
         }
         Alert.alert(
-          '🚀 Nueva Actualización Lista',
+          'Nueva Actualización Lista',
           'Se han descargado las últimas mejoras y correcciones del sistema. ¿Deseas reiniciar la aplicación ahora para aplicarlas?',
           [
             { text: 'Más tarde', style: 'cancel' },
@@ -321,7 +321,7 @@ export async function checkAllUpdates(options?: {
       options.onApkUpdateFound(apkCheck.versionInfo, apkCheck.isForce);
     } else {
       Alert.alert(
-        apkCheck.isForce ? '⚠️ Actualización Obligatoria' : '📦 Nueva Versión Disponible',
+        apkCheck.isForce ? 'Actualización Obligatoria' : 'Nueva Versión Disponible',
         `Está disponible la versión ${apkCheck.versionInfo.latest_version} de Kredia.\n\n${
           apkCheck.versionInfo.release_notes || 'Mejoras y correcciones en la aplicación.'
         }`,

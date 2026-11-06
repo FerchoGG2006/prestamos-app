@@ -142,21 +142,21 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   }> = [
     {
       key: 'DAILY',
-      label: '☀️ Diario',
+      label: 'Diario',
       unitLabel: 'días',
       defaultCount: 30,
       quickCounts: [20, 24, 30, 36],
     },
     {
       key: 'WEEKLY',
-      label: '📆 Semanal',
+      label: 'Semanal',
       unitLabel: 'semanas',
       defaultCount: 4,
       quickCounts: [4, 6, 8, 10],
     },
     {
       key: 'BIWEEKLY',
-      label: '🗓️ Quincenal',
+      label: 'Quincenal',
       unitLabel: 'quincenas',
       defaultCount: 2,
       quickCounts: [2, 4, 6],

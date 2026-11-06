@@ -163,7 +163,7 @@ public class RenewLoanDialog extends Stage {
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
-        VBox b2 = new VBox(2, new Label("💵 Efectivo Neto a Entregar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, lblNetCash);
+        VBox b2 = new VBox(2, new Label("Efectivo Neto a Entregar") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;"); }}, lblNetCash);
         lblNetCash.setStyle("-fx-text-fill: #059669; -fx-font-size: 18px; -fx-font-weight: bold;");
 
         balanceCard.getChildren().addAll(b1, bPaperwork, sp, b2);

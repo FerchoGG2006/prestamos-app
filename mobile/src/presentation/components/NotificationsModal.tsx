@@ -100,7 +100,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
           id: `mora-${cust.id}-${activeLoan.id}`,
           category: 'MORA',
           title: cust.fullName,
-          subtitle: `📍 ${cust.neighborhood} • Debe ${delinquency.overdueInstallmentsCount} cuotas (${formatCOP(delinquency.overdueAmount)})`,
+          subtitle: `${cust.neighborhood} • Debe ${delinquency.overdueInstallmentsCount} cuotas (${formatCOP(delinquency.overdueAmount)})`,
           badgeLabel: isCritical ? `MORA CRÍTICA (${delinquency.overdueDays}d)` : `Atraso (${delinquency.overdueDays}d)`,
           badgeColor: isCritical ? '#DC2626' : '#EA580C',
           badgeBg: isCritical ? '#FEE2E2' : '#FFEDD5',
@@ -122,7 +122,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
           id: `renovacion-${cust.id}-${activeLoan.id}`,
           category: 'RENOVACION',
           title: cust.fullName,
-          subtitle: `📍 ${cust.neighborhood} • Solo le faltan ${pendingCount} cuotas para terminar el crédito`,
+          subtitle: `${cust.neighborhood} • Solo le faltan ${pendingCount} cuotas para terminar el crédito`,
           badgeLabel: 'OPORTUNIDAD RENOVACIÓN',
           badgeColor: '#2563EB',
           badgeBg: '#EFF6FF',
@@ -152,7 +152,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
           id: `promesa-${p.id}`,
           category: 'PROMESA',
           title: cust.fullName,
-          subtitle: `📍 ${cust.neighborhood} • Pactó abonar ${formatCOP(p.promisedAmount)}${p.notes ? ` (${p.notes})` : ''}`,
+          subtitle: `${cust.neighborhood} • Pactó abonar ${formatCOP(p.promisedAmount)}${p.notes ? ` (${p.notes})` : ''}`,
           badgeLabel: isOverduePromise ? 'PROMESA INCUMPLIDA' : 'PROMESA PARA HOY',
           badgeColor: isOverduePromise ? '#B91C1C' : '#CA8A04',
           badgeBg: isOverduePromise ? '#FEE2E2' : '#FEF9C3',
@@ -245,7 +245,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
               onPress={() => setActiveTab('MORAS')}
             >
               <Text style={[styles.tabChipText, activeTab === 'MORAS' && styles.tabChipTextActive]}>
-                ⚠️ En Mora ({counts.MORAS})
+                En Mora ({counts.MORAS})
               </Text>
             </TouchableOpacity>
 
@@ -254,7 +254,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
               onPress={() => setActiveTab('PROMESAS')}
             >
               <Text style={[styles.tabChipText, activeTab === 'PROMESAS' && styles.tabChipTextActive]}>
-                🤝 Promesas ({counts.PROMESAS})
+                Promesas ({counts.PROMESAS})
               </Text>
             </TouchableOpacity>
 
@@ -263,7 +263,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
               onPress={() => setActiveTab('RENOVACIONES')}
             >
               <Text style={[styles.tabChipText, activeTab === 'RENOVACIONES' && styles.tabChipTextActive]}>
-                🔄 Por Renovar ({counts.RENOVACIONES})
+                Por Renovar ({counts.RENOVACIONES})
               </Text>
             </TouchableOpacity>
           </View>
@@ -324,7 +324,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
                         onSelectCustomerToPay(item.customer, item.loan);
                       }}
                     >
-                      <Text style={styles.btnActionCobrarText}>💵 Cobrar {item.amountHint}</Text>
+                      <Text style={styles.btnActionCobrarText}>Cobrar {item.amountHint}</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity

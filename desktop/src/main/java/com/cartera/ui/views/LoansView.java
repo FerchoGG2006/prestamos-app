@@ -136,7 +136,7 @@ public class LoansView extends VBox {
             }
         });
 
-        Button btnMigrate = new Button("📋 Cargar Cartulina Anterior");
+        Button btnMigrate = new Button("Cargar Cartulina Anterior");
         btnMigrate.setStyle("-fx-background-color: #fef3c7; -fx-text-fill: #92400e; -fx-font-weight: 800; -fx-font-size: 12px; -fx-border-color: #fde68a; -fx-border-radius: 8; -fx-background-radius: 8; -fx-cursor: hand; -fx-padding: 7 14;");
         btnMigrate.setOnAction(e -> {
             if (createLoanUseCase != null) {
@@ -373,7 +373,7 @@ public class LoansView extends VBox {
 
                         // Solo ADMIN y SUPERVISOR ven el botón de Anular Crédito
                         if (cancelLoanUseCase != null && UserSessionContext.canCurrentUserReverseOrCancel()) {
-                            Button btnCancelLoan = new Button("🚫 Anular");
+                            Button btnCancelLoan = new Button("Anular");
                             btnCancelLoan.setStyle("-fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-text-fill: #dc2626; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
                             btnCancelLoan.setOnAction(e -> promptAndCancelLoan(l));
                             box.getChildren().add(btnCancelLoan);
@@ -419,7 +419,7 @@ public class LoansView extends VBox {
         TextInputDialog dialog = new TextInputDialog();
         if (ownerStage != null) dialog.initOwner(ownerStage);
         dialog.setTitle("Anulación Auditada de Crédito");
-        dialog.setHeaderText("🚫 Anular Crédito de " + customerName + " (" + CURRENCY.format(loan.getPrincipal()) + ")");
+        dialog.setHeaderText("Anular Crédito de " + customerName + " (" + CURRENCY.format(loan.getPrincipal()) + ")");
         dialog.setContentText("Ingrese el motivo obligatorio de auditoría:");
 
         Optional<String> result = dialog.showAndWait();

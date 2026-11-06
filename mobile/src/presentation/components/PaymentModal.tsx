@@ -196,9 +196,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   ];
 
   const paymentMethods: Array<{ key: PaymentMethod; label: string }> = [
-    { key: 'CASH', label: '💵 Efectivo' },
-    { key: 'NEQUI', label: '🟣 Nequi' },
-    { key: 'TRANSFER', label: '🏦 Transferencia' },
+    { key: 'CASH', label: 'Efectivo' },
+    { key: 'NEQUI', label: 'Nequi' },
+    { key: 'TRANSFER', label: 'Transferencia' },
   ];
 
   return (
@@ -252,7 +252,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <View style={styles.semanticApprovedPill}>
                   <Sparkles size={13} color={COLORS.success} />
                   <Text style={styles.semanticApprovedPillText}>
-                    ✓ PAGO REGISTRADO EN DISPOSITIVO
+                    PAGO REGISTRADO EN DISPOSITIVO
                   </Text>
                 </View>
 
@@ -296,7 +296,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 >
                   <MessageCircle size={18} color="#ffffff" style={{ marginRight: 8 }} />
                   <Text style={styles.whatsappReceiptBtnText}>
-                    📲 Enviar Recibo por WhatsApp al Cliente
+                    Enviar Recibo por WhatsApp al Cliente
                   </Text>
                 </TouchableOpacity>
 
@@ -378,7 +378,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     }}
                   >
                     <Text style={{ fontSize: 12, fontWeight: '700', color: '#dc2626' }}>
-                      ⚠️ El monto ingresado supera el saldo total pendiente ({formatCOP(totalRemainingBalance)}).
+                      El monto ingresado supera el saldo total pendiente ({formatCOP(totalRemainingBalance)}).
                     </Text>
                   </View>
                 )}
@@ -401,7 +401,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         color: isBelowPartialPolicy ? '#dc2626' : '#b45309',
                       }}
                     >
-                      ℹ️ Abonos parciales deshabilitados por oficina. Mínimo a recaudar: {formatCOP(minAllowedAmount)}.
+                      Abonos parciales deshabilitados por oficina. Mínimo a recaudar: {formatCOP(minAllowedAmount)}.
                     </Text>
                   </View>
                 )}

@@ -30,7 +30,7 @@ function runFinancialTests() {
   console.assert(loanSummary.interestAmount === 30000, 'Error: Interés debe ser 30.000');
   console.assert(loanSummary.totalAgreed === 180000, 'Error: Total debe ser 180.000');
   console.assert(loanSummary.installmentAmount === 6000, 'Error: Cuota debe ser 6.000');
-  console.log('✔ Test 1 superado con éxito.\n');
+  console.log('Test 1 superado con éxito.\n');
 
   // 2. GENERACIÓN DE CUOTAS
   console.log('Test 2: Generación automática de cuotas');
@@ -38,7 +38,7 @@ function runFinancialTests() {
   console.assert(installments.length === 30, 'Error: Deben generarse 30 cuotas');
   console.assert(installments[0].expectedAmount === 6000, 'Error: Cuota 1 debe ser 6.000');
   console.assert(installments[0].status === 'PENDIENTE', 'Error: Estado inicial debe ser PENDIENTE');
-  console.log('✔ Test 2 superado con éxito.\n');
+  console.log('Test 2 superado con éxito.\n');
 
   // 3. PAGO PARCIAL (Handoff punto 9)
   console.log('Test 3: Pago parcial (Cliente abona $3.000 de $6.000)');
@@ -80,7 +80,7 @@ function runFinancialTests() {
   console.assert(updatedCuota1.pendingAmount === 3000, 'Error: Cuota 1 pendingAmount debe ser 3.000');
   console.assert(updatedCuota1.status === 'PARCIAL', 'Error: Cuota 1 status debe ser PARCIAL');
   console.assert(partialPaymentResult.updatedInstallments.length === 30, 'Error: No debe crear cuotas nuevas');
-  console.log('✔ Test 3 superado con éxito.\n');
+  console.log('Test 3 superado con éxito.\n');
 
   // 4. PAGO DE VARIAS CUOTAS Y ADELANTADAS (Handoff puntos 10 y 11)
   console.log('Test 4: Pago de varias cuotas y pago adelantado');
@@ -103,7 +103,7 @@ function runFinancialTests() {
   console.assert(cuota1After.status === 'PAGADA', 'Error: Cuota 1 debe ser PAGADA');
   console.assert(cuota2After.pendingAmount === 0, 'Error: Cuota 2 debe quedar en 0');
   console.assert(cuota2After.status === 'ADELANTADA', 'Error: Cuota 2 con fecha futura debe ser ADELANTADA');
-  console.log('✔ Test 4 superado con éxito.\n');
+  console.log('Test 4 superado con éxito.\n');
 
   // 5. RENOVACIONES Y PAPELERÍA (Handoff puntos 13, 14 y 15)
   console.log('Test 5: Renovación y desembolso real');
@@ -115,7 +115,7 @@ function runFinancialTests() {
   console.assert(renewalResult.previousBalanceDeducted === 60000, 'Error: Saldo anterior debe ser $60.000');
   console.assert(renewalResult.paperworkDeducted === 10000, 'Error: Papelería debe ser $10.000');
   console.assert(renewalResult.actualCashDisbursed === 130000, 'Error: Desembolso real debe ser $130.000');
-  console.log('✔ Test 5 superado con éxito.\n');
+  console.log('Test 5 superado con éxito.\n');
 
   // 6. MORA FÁCTICA SIN RECARGO INVENTADO (Handoff punto 12)
   console.log('Test 6: Métricas de mora fácticas');
@@ -158,9 +158,9 @@ function runFinancialTests() {
   console.assert(delinquency.overdueAmount === 10000, 'Error: Saldo vencido debe ser $10.000 (6000 + 4000)');
   console.assert(delinquency.overdueDays === 9, 'Error: Días de mora máximos deben ser 9');
   console.assert(delinquency.surchargeAmount === 0, 'Error: Recargo debe ser 0 (no inventar fórmulas)');
-  console.log('✔ Test 6 superado con éxito.\n');
+  console.log('Test 6 superado con éxito.\n');
 
-  console.log('🎉 ¡TODAS LAS PRUEBAS FINANCIERAS FUERON SUPERADAS AL 100%!');
+  console.log('¡TODAS LAS PRUEBAS FINANCIERAS FUERON SUPERADAS AL 100%!');
 }
 
 runFinancialTests();

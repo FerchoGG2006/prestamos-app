@@ -353,7 +353,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                           color: isSel ? '#1d4ed8' : '#475569',
                         }}
                       >
-                        🗺️ {rt.name} ({rt.code})
+                        {rt.name} ({rt.code})
                       </Text>
                     </TouchableOpacity>
                   );

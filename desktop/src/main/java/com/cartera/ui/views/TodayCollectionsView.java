@@ -188,19 +188,19 @@ public class TodayCollectionsView extends VBox {
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
         // Botón Registrar Gasto
-        Button btnReportExpense = new Button("💸 Gasto de Ruta");
+        Button btnReportExpense = new Button("Gasto de Ruta");
         btnReportExpense.getStyleClass().add("btn-secondary");
         btnReportExpense.setStyle("-fx-font-size: 12px; -fx-padding: 7 12;");
         btnReportExpense.setOnAction(e -> openReportExpenseDialog());
 
         // Botón Sincronizar Móvil
-        Button btnSyncMobile = new Button("📡 Sincronizar Móvil");
+        Button btnSyncMobile = new Button("Sincronizar Móvil");
         btnSyncMobile.getStyleClass().add("btn-primary");
         btnSyncMobile.setStyle("-fx-font-size: 12px; -fx-padding: 7 14;");
         btnSyncMobile.setOnAction(e -> openSyncMobileDialog());
 
         // Botón Actualizar
-        Button btnRefresh = new Button("🔄 Actualizar");
+        Button btnRefresh = new Button("Actualizar");
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setStyle("-fx-font-size: 12px; -fx-padding: 7 12;");
         btnRefresh.setOnAction(e -> refreshData());
@@ -366,20 +366,20 @@ public class TodayCollectionsView extends VBox {
         cmbFreqFilter.valueProperty().addListener((obs, oldVal, newVal) -> applyFiltersTrigger.run());
 
         // Botón Auto-Ordenar
-        Button btnAutoSort = new Button("⚡ Auto-Ordenar Ruta");
+        Button btnAutoSort = new Button("Auto-Ordenar Ruta");
         btnAutoSort.getStyleClass().add("btn-secondary");
         btnAutoSort.setStyle("-fx-font-size: 11px; -fx-padding: 6 12; -fx-font-weight: bold;");
         btnAutoSort.setTooltip(new Tooltip("Organizar clientes automáticamente: Mora → Cobro Hoy → Promesas → Pagados"));
         btnAutoSort.setOnAction(e -> autoSortByPriority());
 
         // Controles de mover manual
-        Button btnMoveUp = new Button("⬆");
+        Button btnMoveUp = new Button("Subir");
         btnMoveUp.getStyleClass().add("btn-secondary");
         btnMoveUp.setStyle("-fx-font-size: 11px; -fx-padding: 6 10;");
         btnMoveUp.setTooltip(new Tooltip("Subir cliente en el orden de visita"));
         btnMoveUp.setOnAction(e -> moveSelectedRow(-1));
 
-        Button btnMoveDown = new Button("⬇");
+        Button btnMoveDown = new Button("Bajar");
         btnMoveDown.getStyleClass().add("btn-secondary");
         btnMoveDown.setStyle("-fx-font-size: 11px; -fx-padding: 6 10;");
         btnMoveDown.setTooltip(new Tooltip("Bajar cliente en el orden de visita"));
@@ -495,7 +495,7 @@ public class TodayCollectionsView extends VBox {
                     Label address = new Label(item.address());
                     address.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 13px; -fx-font-weight: 500;");
 
-                    Button btnMap = new Button("📍 Mapa");
+                    Button btnMap = new Button("Mapa");
                     btnMap.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #0f172a; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-padding: 1 6; -fx-font-size: 10px; -fx-font-weight: bold;");
                     btnMap.setTooltip(new Tooltip("Abrir dirección en Google Maps"));
                     btnMap.setOnAction(e -> openMap(item.address(), item.neighborhood()));
@@ -629,7 +629,7 @@ public class TodayCollectionsView extends VBox {
                     HBox actBox = new HBox(6);
                     actBox.setAlignment(Pos.CENTER_LEFT);
 
-                    Button btnWhatsApp = new Button("📲 WhatsApp");
+                    Button btnWhatsApp = new Button("WhatsApp");
                     btnWhatsApp.setStyle("-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-cursor: hand;");
                     btnWhatsApp.setOnAction(e -> sendQuickWhatsAppFor(item));
 

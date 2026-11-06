@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { AlertTriangle } from 'lucide-react-native';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 
 interface Props {
@@ -49,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <View style={styles.container}>
           <View style={styles.card}>
             <View style={styles.iconCircle}>
-              <Text style={styles.icon}>⚠️</Text>
+              <AlertTriangle size={28} color="#DC2626" />
             </View>
 
             <Text style={styles.title}>Novedad en la Interfaz</Text>
@@ -71,7 +72,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onPress={this.handleReset}
                 activeOpacity={0.8}
               >
-                <Text style={styles.btnPrimaryText}>🔄 Recuperar Vista</Text>
+                <Text style={styles.btnPrimaryText}>Recuperar Vista</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -79,7 +80,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onPress={this.handleReload}
                 activeOpacity={0.8}
               >
-                <Text style={styles.btnSecondaryText}>⚡ Recargar Aplicación</Text>
+                <Text style={styles.btnSecondaryText}>Recargar Aplicación</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -122,10 +123,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 2,
     borderColor: '#FEE2E2',
-  },
-  icon: {
-    fontFamily: FONT_FAMILY,
-    fontSize: 28,
   },
   title: {
     fontFamily: FONT_FAMILY,
@@ -191,4 +188,3 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
   },
 });
-

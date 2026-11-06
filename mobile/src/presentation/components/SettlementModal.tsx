@@ -309,7 +309,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       const res = await localStore.pushSyncToOfficeServer(officeServerUrl, todayStr);
       setWifiConnected(true);
       setWifiStatusText(res.message);
-      Alert.alert('📤 Sincronización Exitosa con PC', res.message);
+      Alert.alert('Sincronización Exitosa con PC', res.message);
     } catch (err: any) {
       setWifiConnected(false);
       setWifiStatusText(err?.message || 'Error al enviar datos al PC');
@@ -329,7 +329,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       );
       onSuccess();
       Alert.alert(
-        '📥 Cartera Descargada del PC',
+        'Cartera Descargada del PC',
         `Se sincronizaron ${res.importedCustomers} clientes y ${res.importedLoans} créditos desde el PC de Oficina.`
       );
     } catch (err: any) {
@@ -357,7 +357,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         Alert.alert(
-          '📊 Reporte Contable Excel (.csv) Descargado',
+          'Reporte Contable Excel (.csv) Descargado',
           `Archivo ${filename} generado con Resumen de Rentabilidad, Cartera Activa, Mora, Historial de Abonos y Libro de Caja.`
         );
         return;
@@ -372,7 +372,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
         message: csvContent,
       });
     } catch {
-      Alert.alert('📊 Reporte Contable Generado', 'El reporte CSV fue generado correctamente.');
+      Alert.alert('Reporte Contable Generado', 'El reporte CSV fue generado correctamente.');
     }
   };
 
@@ -396,15 +396,15 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
 
     const lines = [
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `🏢 *${companyName.toUpperCase()}*`,
-      `📊 *CUADRE OFICIAL DE JORNADA ${isSealed ? 'CERRADA' : 'EN PROCESO'}*`,
+      `*${companyName.toUpperCase()}*`,
+      `*CUADRE OFICIAL DE JORNADA ${isSealed ? 'CERRADA' : 'EN PROCESO'}*`,
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `${isSealed ? '🔒 *ESTADO: SELLADO Y LIQUIDADO*' : '⚠️ *ESTADO: PREVIO AL CIERRE*'}`,
-      st ? `🔖 *Folio Liquidación:* #${st.id.toUpperCase()}` : '',
-      `📅 *Fecha:* ${reportDate}`,
-      `👤 *Cobrador:* ${collectorName} • *Ruta:* ${routeName}`,
+      `${isSealed ? '*ESTADO: SELLADO Y LIQUIDADO*' : '*ESTADO: PREVIO AL CIERRE*'}`,
+      st ? `*Folio Liquidación:* #${st.id.toUpperCase()}` : '',
+      `*Fecha:* ${reportDate}`,
+      `*Cobrador:* ${collectorName} • *Ruta:* ${routeName}`,
       st
-        ? `⏰ *Hora Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
+        ? `*Hora Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
@@ -412,22 +412,22 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
         : '',
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
       '',
-      '📥 *1. COBRADO HOY (RECAUDO)*',
+      '*1. COBRADO HOY (RECAUDO)*',
       `• *Total Cobrado:* ${formatCOP(actualCol)}`,
       `  - Efectivo en caja: ${formatCOP(cashCol)}`,
       `  - Digital / Nequi: ${formatCOP(digCol)}`,
       `• *Clientes Visitados:* ${metrics.visitedCustomersCount} de ${metrics.expectedCustomersCount} (${metrics.progressPercentage}%)`,
       '',
-      '📤 *2. SALIDAS Y COLOCACIÓN*',
+      '*2. SALIDAS Y COLOCACIÓN*',
       `• *Operaciones:* ${salidas} crédito(s)`,
       `• *Desembolso Neto Entregado:* ${formatCOP(netDisbursed)}`,
       '',
-      `⛽ *3. GASTOS DE RUTA DEDUCIDOS:* ${formatCOP(exp)}`,
+      `*3. GASTOS DE RUTA DEDUCIDOS:* ${formatCOP(exp)}`,
       '',
-      '💵 *4. ARQUEO Y RENDICIÓN DE EFECTIVO*',
+      '*4. ARQUEO Y RENDICIÓN DE EFECTIVO*',
       `• Efectivo Neto Esperado: ${formatCOP(netCashExpected)}`,
       `• Efectivo Entregado a Oficina: ${formatCOP(handedOver)}`,
-      `• Diferencia Arqueo: ${diff === 0 ? '✓ Exacto ($0)' : formatCOP(diff)}`,
+      `• Diferencia Arqueo: ${diff === 0 ? 'Exacto ($0)' : formatCOP(diff)}`,
     ];
 
     if (diffJust) {
@@ -436,15 +436,15 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
 
     lines.push(
       '',
-      `📈 *5. ADMINISTRATIVO TOTAL:* ${formatCOP(metrics.totalAdministrativeCapital)}`,
+      `*5. ADMINISTRATIVO TOTAL:* ${formatCOP(metrics.totalAdministrativeCapital)}`,
       `• Cartera en Calle: ${formatCOP(metrics.activeCapitalInStreet)}`,
       `• Base en Caja: ${formatCOP(metrics.cashAvailableInHand)}`,
       '',
-      '⚠️ *6. ESTADO DE MORA*',
+      '*6. ESTADO DE MORA*',
       `• Clientes en mora: ${metrics.overdueCustomersCount}`,
       `• Saldo vencido acumulado: ${formatCOP(metrics.overdueTotalAmount)}`,
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `🔐 *Sello SHA:* ${verificationHash}`,
+      `*Sello SHA:* ${verificationHash}`,
       `_Enviado desde App Móvil de Cobro_`
     );
 
@@ -636,7 +636,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                       ]}
                     >
                       {settledRecord.cashDifference === 0
-                        ? '✓ Exacto ($0)'
+                        ? 'Exacto ($0)'
                         : formatCOP(settledRecord.cashDifference)}
                     </Text>
                   </View>
@@ -681,7 +681,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 >
                   <MessageCircle size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
                   <Text style={styles.sendWhatsAppMainBtnText}>
-                    📲 Enviar Cuadre a la Oficina (WhatsApp)
+                    Enviar Cuadre a la Oficina (WhatsApp)
                   </Text>
                 </TouchableOpacity>
 
@@ -725,7 +725,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 >
                   <Check size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
                   <Text style={styles.finishAndContinueBtnText}>
-                    ✓ Finalizar e Ir a la Nueva Jornada
+                    Finalizar e Ir a la Nueva Jornada
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -734,7 +734,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
             {/* 1. CUADRÍCULA BENTO: COBRO EFECTIVO, GASTOS RUTA Y NETO A RENDIR */}
             <View style={styles.splitRow}>
               <View style={styles.splitCard}>
-                <Text style={styles.splitLabel}>💵 COBRADO EFECTIVO</Text>
+                <Text style={styles.splitLabel}>COBRADO EFECTIVO</Text>
                 <Text
                   style={[styles.splitValue, { color: COLORS.success }]}
                   numberOfLines={1}
@@ -754,7 +754,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 ]}
               >
                 <Text style={[styles.splitLabel, { color: '#c2410c' }]}>
-                  🛠️ (-) GASTOS RUTA
+                  (-) GASTOS RUTA
                 </Text>
                 <Text
                   style={[styles.splitValue, { color: '#ea580c' }]}
@@ -779,7 +779,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     ]}
                   >
                     <Text style={[styles.splitLabel, { color: '#7e22ce' }]}>
-                      📤 (-) DESEMBOLSOS RUTA
+                      (-) DESEMBOLSOS RUTA
                     </Text>
                     <Text
                       style={[styles.splitValue, { color: '#7e22ce' }]}
@@ -801,7 +801,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     ]}
                   >
                     <Text style={[styles.splitLabel, { color: '#1d4ed8' }]}>
-                      🏦 (-) AVANCES OFICINA
+                      (-) AVANCES OFICINA
                     </Text>
                     <Text
                       style={[styles.splitValue, { color: '#1d4ed8' }]}
@@ -825,7 +825,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               ]}
             >
               <Text style={[styles.splitLabel, { color: COLORS.primary }]}>
-                💰 (=) EFECTIVO NETO A RENDIR (CAJA OFICINA)
+                (=) EFECTIVO NETO A RENDIR (CAJA OFICINA)
               </Text>
               <Text
                 style={[styles.splitValue, { color: COLORS.primary, fontSize: 22 }]}
@@ -961,7 +961,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     style={{ marginRight: 6 }}
                   />
                   <Text style={styles.balancedText}>
-                    ✓ Caja cuadrada perfectamente ($0 diferencia)
+                    Caja cuadrada perfectamente ($0 diferencia)
                   </Text>
                 </View>
               ) : (
@@ -1123,7 +1123,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     },
                   ]}
                 >
-                  {cashDifference === 0 ? '✓ Cuadre Exacto ($0)' : formatCOP(cashDifference)}
+                  {cashDifference === 0 ? 'Cuadre Exacto ($0)' : formatCOP(cashDifference)}
                 </Text>
               </View>
 
@@ -1156,7 +1156,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               >
                 <FileSpreadsheet size={15} color="#15803d" style={{ marginRight: 6 }} />
                 <Text style={{ fontSize: 12, fontWeight: '800', color: '#15803d' }}>
-                  📊 Exportar Reporte Contable Excel (.csv)
+                  Exportar Reporte Contable Excel (.csv)
                 </Text>
               </TouchableOpacity>
 

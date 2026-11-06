@@ -491,7 +491,7 @@ public class CustomersView extends VBox {
             fixedDateBar.setAlignment(Pos.CENTER_LEFT);
             fixedDateBar.setStyle("-fx-background-color: #eff6ff; -fx-padding: 6 10; -fx-background-radius: 8; -fx-border-color: #bfdbfe; -fx-border-radius: 8;");
 
-            Label lblFixedLabel = new Label("📅 Fecha Fija:");
+            Label lblFixedLabel = new Label("Fecha Fija:");
             lblFixedLabel.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold;");
 
             DatePicker dpFixed = new DatePicker(LocalDate.now().plusDays(20));
@@ -513,7 +513,7 @@ public class CustomersView extends VBox {
             Region spFixed = new Region();
             HBox.setHgrow(spFixed, Priority.ALWAYS);
 
-            Button btnApplyFixed = new Button("➕ Crear Préstamo");
+            Button btnApplyFixed = new Button("Crear Préstamo");
             btnApplyFixed.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
             btnApplyFixed.setOnAction(e -> {
                 if (createLoanUseCase != null && customerRepository != null) {
@@ -537,7 +537,7 @@ public class CustomersView extends VBox {
         singleLineActionBar.setAlignment(Pos.CENTER_LEFT);
         singleLineActionBar.setPadding(new Insets(2, 0, 2, 0));
 
-        Button btnFixedDate = new Button("📅 Fecha Fija");
+        Button btnFixedDate = new Button("Fecha Fija");
         btnFixedDate.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnFixedDate.setOnAction(e -> {
             if (createLoanUseCase != null && customerRepository != null) {
@@ -552,7 +552,7 @@ public class CustomersView extends VBox {
             }
         });
 
-        Button btnNewCredit = new Button("➕ Nuevo Crédito");
+        Button btnNewCredit = new Button("Nuevo Crédito");
         btnNewCredit.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f0fdf4; -fx-text-fill: #15803d; -fx-border-color: #bbf7d0; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnNewCredit.setOnAction(e -> {
             if (createLoanUseCase != null && customerRepository != null) {
@@ -568,7 +568,7 @@ public class CustomersView extends VBox {
         singleLineActionBar.getChildren().addAll(btnFixedDate, btnNewCredit);
 
         if (activeLoan != null) {
-            Button btnRenew = new Button("🔄 Renovar Crédito");
+            Button btnRenew = new Button("Renovar Crédito");
             btnRenew.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
             btnRenew.setOnAction(e -> {
                 if (renewLoanUseCase != null && installmentRepository != null) {
@@ -579,21 +579,21 @@ public class CustomersView extends VBox {
                 }
             });
 
-            Button btnPlan = new Button("📋 Ver Cuotas");
+            Button btnPlan = new Button("Ver Cuotas");
             btnPlan.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
             btnPlan.setOnAction(e -> showInstallmentsModal(activeLoan));
 
             singleLineActionBar.getChildren().addAll(btnRenew, btnPlan);
 
             if (UserSessionContext.canCurrentUserReverseOrCancel() && cancelLoanUseCase != null) {
-                Button btnVoid = new Button("🚫 Anular Crédito");
+                Button btnVoid = new Button("Anular Crédito");
                 btnVoid.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
                 btnVoid.setOnAction(e -> promptCancelActiveLoan(activeLoan, c));
                 singleLineActionBar.getChildren().add(btnVoid);
             }
         }
 
-        Button btnHistory = new Button("📋 Ver Historial");
+        Button btnHistory = new Button("Ver Historial");
         btnHistory.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnHistory.setOnAction(e -> {
             if (onOpenCreditHistory != null && c.getDocumentNumber() != null) {
@@ -601,19 +601,19 @@ public class CustomersView extends VBox {
             }
         });
 
-        Button btnEdit = new Button("✏️ Editar Datos");
+        Button btnEdit = new Button("Editar Datos");
         btnEdit.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnEdit.setOnAction(e -> showEditCustomerDialog(c));
 
-        Button btnWhatsApp = new Button("📲 Enviar WhatsApp");
+        Button btnWhatsApp = new Button("Enviar WhatsApp");
         btnWhatsApp.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #dcfce7; -fx-text-fill: #166534; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnWhatsApp.setOnAction(e -> sendAccountStatementViaWhatsApp(c));
 
-        Button btnMap = new Button("📍 Ver Mapa");
+        Button btnMap = new Button("Ver Mapa");
         btnMap.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #e0f2fe; -fx-text-fill: #0369a1; -fx-border-color: #7dd3fc; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnMap.setOnAction(e -> openGoogleMaps(c));
 
-        Button btnDelete = new Button("🗑️ Eliminar Cliente");
+        Button btnDelete = new Button("Eliminar Cliente");
         btnDelete.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnDelete.setOnAction(e -> handleDeleteCustomer(c));
 
@@ -657,9 +657,9 @@ public class CustomersView extends VBox {
                 .orElse(null);
 
         if (activeLoan == null) {
-            String msg = "📋 *ESTADO DE CUENTA — " + companyName + "*\n"
-                    + "👤 *Cliente:* " + c.getFullName() + "\n"
-                    + "✅ Actualmente usted se encuentra *A PAZ Y SALVO* sin créditos pendientes.";
+            String msg = "*ESTADO DE CUENTA — " + companyName + "*\n"
+                    + "*Cliente:* " + c.getFullName() + "\n"
+                    + "Actualmente usted se encuentra *A PAZ Y SALVO* sin créditos pendientes.";
             WhatsAppReceiptUtil.sendViaWhatsApp(c.getPhone(), msg);
             return;
         }
@@ -1128,14 +1128,14 @@ public class CustomersView extends VBox {
                             LocalDate paidDate = LocalDate.parse(pDateStr.length() >= 10 ? pDateStr.substring(0, 10) : pDateStr);
                             if (paidDate.isAfter(dueDate)) {
                                 long days = ChronoUnit.DAYS.between(dueDate, paidDate);
-                                badge.setText("⚠️ " + days + " d retraso");
+                                badge.setText("" + days + " d retraso");
                                 badge.setStyle(base + "-fx-background-color: #fef3c7; -fx-text-fill: #b45309; -fx-border-color: #fde68a; -fx-border-radius: 12;");
                             } else if (paidDate.isBefore(dueDate)) {
                                 long days = ChronoUnit.DAYS.between(paidDate, dueDate);
-                                badge.setText("⚡ Adelantada (" + days + "d)");
+                                badge.setText("Adelantada (" + days + "d)");
                                 badge.setStyle(base + "-fx-background-color: #e0e7ff; -fx-text-fill: #4338ca; -fx-border-color: #c7d2fe; -fx-border-radius: 12;");
                             } else {
-                                badge.setText("✓ A tiempo");
+                                badge.setText("A tiempo");
                                 badge.setStyle(base + "-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-border-color: #bbf7d0; -fx-border-radius: 12;");
                             }
                         } catch (Exception ex) {
@@ -1147,10 +1147,10 @@ public class CustomersView extends VBox {
                             LocalDate dueDate = LocalDate.parse(inst.getDueDate());
                             if (dueDate.isBefore(today)) {
                                 long days = ChronoUnit.DAYS.between(dueDate, today);
-                                badge.setText("⚠️ Mora (" + days + "d)");
+                                badge.setText("Mora (" + days + "d)");
                                 badge.setStyle(base + "-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 12;");
                             } else if (dueDate.isEqual(today)) {
-                                badge.setText("🔔 Vence hoy");
+                                badge.setText("Vence hoy");
                                 badge.setStyle(base + "-fx-background-color: #e0f2fe; -fx-text-fill: #0284c7; -fx-border-color: #bae6fd; -fx-border-radius: 12;");
                             } else {
                                 badge.setText("Pendiente");
@@ -1188,7 +1188,7 @@ public class CustomersView extends VBox {
                     } else {
                         String payId = installmentPaymentIds.get(inst.getId());
                         if (payId != null) {
-                            Button btnRev = new Button("↩ Anular Pago");
+                            Button btnRev = new Button("Anular Pago");
                             btnRev.setStyle("-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-cursor: hand;");
                             btnRev.setOnAction(e -> {
                                 TextInputDialog dlg = new TextInputDialog();

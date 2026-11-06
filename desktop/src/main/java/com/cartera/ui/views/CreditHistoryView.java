@@ -87,7 +87,7 @@ public class CreditHistoryView extends VBox {
         txtDocument.setPrefWidth(280);
         txtDocument.setOnAction(e -> handleSearch());
 
-        Button btnSearch = new Button("🔍 Consultar Historial");
+        Button btnSearch = new Button("Consultar Historial");
         btnSearch.getStyleClass().add("btn-primary");
         btnSearch.setOnAction(e -> handleSearch());
 
@@ -203,16 +203,13 @@ public class CreditHistoryView extends VBox {
         emptyCard.setPadding(new Insets(40, 20, 40, 20));
         emptyCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-border-color: #e2e8f0; -fx-border-radius: 12;");
 
-        Label icon = new Label("📋");
-        icon.setStyle("-fx-font-size: 42px;");
-
         Label title = new Label("Verificación de Historial y Calificación de Pago");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
 
         Label sub = new Label("Ingrese la cédula de la persona en el buscador superior para comprobar si es buen pagador,\nsus créditos finalizados, demoras históricas y saldo activo en cartera.");
         sub.setStyle("-fx-text-fill: #64748b; -fx-font-size: 13px; -fx-text-alignment: center;");
 
-        emptyCard.getChildren().addAll(icon, title, sub);
+        emptyCard.getChildren().addAll(title, sub);
         contentContainer.getChildren().add(emptyCard);
     }
 
@@ -224,16 +221,13 @@ public class CreditHistoryView extends VBox {
         notFoundCard.setPadding(new Insets(40, 20, 40, 20));
         notFoundCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-border-color: #fecaca; -fx-border-radius: 12;");
 
-        Label icon = new Label("🔍");
-        icon.setStyle("-fx-font-size: 36px;");
-
         Label title = new Label("No se encontró ningún cliente con el documento: " + searched);
         title.setStyle("-fx-text-fill: #b91c1c; -fx-font-size: 15px; -fx-font-weight: bold;");
 
         Label sub = new Label("Verifique el número ingresado o asegúrese de que el cliente haya sido registrado previamente.");
         sub.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
 
-        notFoundCard.getChildren().addAll(icon, title, sub);
+        notFoundCard.getChildren().addAll(title, sub);
         contentContainer.getChildren().add(notFoundCard);
     }
 

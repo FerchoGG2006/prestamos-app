@@ -158,15 +158,15 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
 
     const lines = [
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `🏢 *${companyName.toUpperCase()}*`,
-      `📊 *CUADRE OFICIAL DE RUTA*`,
+      `*${companyName.toUpperCase()}*`,
+      `*CUADRE OFICIAL DE RUTA*`,
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `${isSealed ? '🔒 *ESTADO: CUADRE CERRADO Y SELLADO*' : '⚠️ *ESTADO: BORRADOR EN RUTA*'}`,
-      st ? `🔖 *Folio Liquidación:* #${st.id.toUpperCase()}` : '',
-      `📅 *Fecha de Cobro:* ${reportDate}`,
-      `👤 *Cobrador:* ${collectorName} • *Ruta:* ${reportRouteName}`,
+      `${isSealed ? '*ESTADO: CUADRE CERRADO Y SELLADO*' : '*ESTADO: BORRADOR EN RUTA*'}`,
+      st ? `*Folio Liquidación:* #${st.id.toUpperCase()}` : '',
+      `*Fecha de Cobro:* ${reportDate}`,
+      `*Cobrador:* ${collectorName} • *Ruta:* ${reportRouteName}`,
       st
-        ? `⏰ *Hora de Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
+        ? `*Hora de Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
@@ -174,25 +174,25 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
         : '',
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
       '',
-      '📥 *1. COBRADO HOY*',
+      '*1. COBRADO HOY*',
       `• *Total Cobrado:* ${formatCOP(actualCol)}`,
       `  - Efectivo en mano: ${formatCOP(cashCol)}`,
       `  - Digital (Nequi / Bancos): ${formatCOP(digCol)}`,
       `• *Clientes Visitados:* ${metrics.visitedCustomersCount} de ${metrics.expectedCustomersCount} (${metrics.progressPercentage}%)`,
       '',
-      '📤 *2. SALIDAS / PRÉSTAMOS ENTREGADOS*',
+      '*2. SALIDAS / PRÉSTAMOS ENTREGADOS*',
       `• *Operaciones:* ${salidas} crédito(s)`,
       `• *Desembolso Neto en Calle:* ${formatCOP(netDisbursed)}`,
       '',
-      `⛽ *3. GASTOS DE RUTA DEDUCIDOS:* ${formatCOP(expensesToday)}`,
+      `*3. GASTOS DE RUTA DEDUCIDOS:* ${formatCOP(expensesToday)}`,
       recaudoRetiradoToday > 0
-        ? `🏦 *AVANCES ENTREGADOS A OFICINA:* ${formatCOP(recaudoRetiradoToday)}`
+        ? `*AVANCES ENTREGADOS A OFICINA:* ${formatCOP(recaudoRetiradoToday)}`
         : '',
       '',
-      '💵 *4. RENDICIÓN DE EFECTIVO A OFICINA*',
+      '*4. RENDICIÓN DE EFECTIVO A OFICINA*',
       `• Efectivo Neto Esperado: ${formatCOP(netCashExpected)}`,
       `• Efectivo Entregado Físicamente: ${formatCOP(handedOver)}`,
-      `• Diferencia Arqueo: ${diff === 0 ? '✓ Exacto ($0)' : formatCOP(diff)}`,
+      `• Diferencia Arqueo: ${diff === 0 ? 'Exacto ($0)' : formatCOP(diff)}`,
     ];
 
     if (diffJust) {
@@ -201,11 +201,11 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
 
     lines.push(
       '',
-      '⚠️ *5. ESTADO DE MORA*',
+      '*5. ESTADO DE MORA*',
       `• Clientes en mora: ${metrics.overdueCustomersCount}`,
       `• Saldo vencido acumulado: ${formatCOP(metrics.overdueTotalAmount)}`,
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `🔐 *Sello de Verificación:* ${verificationHash}`,
+      `*Sello de Verificación:* ${verificationHash}`,
       `_Enviado desde App del Cobrador_`
     );
 
@@ -393,7 +393,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                       ]}
                     >
                       {settledRecord.cashDifference === 0
-                        ? '✓ Exacto ($0)'
+                        ? 'Exacto ($0)'
                         : formatCOP(settledRecord.cashDifference)}
                     </Text>
                   </View>
@@ -438,7 +438,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                 >
                   <MessageCircle size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
                   <Text style={styles.sendWhatsAppMainBtnText}>
-                    📲 Enviar Cuadre a la Oficina (WhatsApp)
+                    Enviar Cuadre a la Oficina (WhatsApp)
                   </Text>
                 </TouchableOpacity>
 
@@ -471,7 +471,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                 >
                   <Check size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
                   <Text style={styles.finishAndContinueBtnText}>
-                    ✓ Finalizar e Ir a la Nueva Jornada
+                    Finalizar e Ir a la Nueva Jornada
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -481,7 +481,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                 {/* 1. Tarjetas Bento de Rendición de Ruta */}
                 <View style={styles.splitRow}>
                   <View style={styles.splitCard}>
-                    <Text style={styles.splitLabel}>💵 COBRADO EFECTIVO</Text>
+                    <Text style={styles.splitLabel}>COBRADO EFECTIVO</Text>
                     <Text
                       style={[styles.splitValue, { color: COLORS.success }]}
                       numberOfLines={1}
@@ -499,7 +499,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                     ]}
                   >
                     <Text style={[styles.splitLabel, { color: '#c2410c' }]}>
-                      ⛽ (-) GASTOS RUTA
+                      (-) GASTOS RUTA
                     </Text>
                     <Text
                       style={[styles.splitValue, { color: '#ea580c' }]}
@@ -517,7 +517,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                 {/* Cobrado Digital Info */}
                 {collectedDigital > 0 && (
                   <View style={styles.digitalCard}>
-                    <Text style={styles.digitalLabel}>📲 COBRADO DIGITAL (NEQUI / BANCOS)</Text>
+                    <Text style={styles.digitalLabel}>COBRADO DIGITAL (NEQUI / BANCOS)</Text>
                     <Text style={styles.digitalValue}>{formatCOP(collectedDigital)}</Text>
                     <Text style={styles.digitalSub}>Ya ingresó a la cuenta, no se rinde en efectivo físico</Text>
                   </View>
@@ -526,7 +526,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                 {/* Salidas de Efectivo en Ruta */}
                 {disbursedToday > 0 && (
                   <View style={styles.disbursedCard}>
-                    <Text style={styles.disbursedLabel}>📤 (-) SALIDAS ENTREGADAS EN PRÉSTAMOS</Text>
+                    <Text style={styles.disbursedLabel}>(-) SALIDAS ENTREGADAS EN PRÉSTAMOS</Text>
                     <Text style={styles.disbursedValue}>{formatCOP(disbursedToday)}</Text>
                     <Text style={styles.disbursedSub}>Dinero prestado en efectivo a clientes hoy</Text>
                   </View>
@@ -535,7 +535,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                 {/* Avances / Retiros entregados a Oficina */}
                 {recaudoRetiradoToday > 0 && (
                   <View style={styles.disbursedCard}>
-                    <Text style={styles.disbursedLabel}>🏦 (-) AVANCES ENTREGADOS A OFICINA</Text>
+                    <Text style={styles.disbursedLabel}>(-) AVANCES ENTREGADOS A OFICINA</Text>
                     <Text style={styles.disbursedValue}>{formatCOP(recaudoRetiradoToday)}</Text>
                     <Text style={styles.disbursedSub}>Efectivo ya adelantado o retirado a oficina hoy</Text>
                   </View>
@@ -562,7 +562,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                   >
                     <Landmark size={15} color="#1d4ed8" style={{ marginRight: 6 }} />
                     <Text style={{ fontSize: 12, fontWeight: '800', color: '#1d4ed8' }}>
-                      🏦 Registrar Avance / Retiro a Oficina
+                      Registrar Avance / Retiro a Oficina
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -570,7 +570,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                 {/* Total Neto a Rendir Físicamente */}
                 <View style={styles.netCard}>
                   <Text style={styles.netLabel}>
-                    💰 (=) EFECTIVO NETO A ENTREGAR A OFICINA
+                    (=) EFECTIVO NETO A ENTREGAR A OFICINA
                   </Text>
                   <Text
                     style={styles.netValue}
@@ -657,7 +657,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                   <View style={styles.exactFormulaBadge}>
                     <CheckCircle size={15} color={COLORS.success} style={{ marginRight: 6 }} />
                     <Text style={styles.exactFormulaText}>
-                      ✓ Cuadre Automático Exacto ($0 Descuadre)
+                      Cuadre Automático Exacto ($0 Descuadre)
                     </Text>
                   </View>
                 </View>

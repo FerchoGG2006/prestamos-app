@@ -126,11 +126,11 @@ public class ImportMobileSyncDialog extends Stage {
         HBox fileBar = new HBox(10);
         fileBar.setAlignment(Pos.CENTER_LEFT);
 
-        Button btnExportRoute = new Button("📤 Enviar Ruta al Celular");
+        Button btnExportRoute = new Button("Enviar Ruta al Celular");
         btnExportRoute.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-background-radius: 8; -fx-font-weight: bold; -fx-padding: 8 14; -fx-cursor: hand;");
         btnExportRoute.setOnAction(e -> exportRouteToFile());
 
-        Button btnPickFile = new Button("📁 Cargar Archivo de Cobros...");
+        Button btnPickFile = new Button("Cargar Archivo de Cobros...");
         btnPickFile.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #1e293b; -fx-border-color: #cbd5e1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-padding: 8 14; -fx-cursor: hand;");
         btnPickFile.setOnAction(e -> pickJsonFile());
 
@@ -186,7 +186,7 @@ public class ImportMobileSyncDialog extends Stage {
         HBox topRow = new HBox(10);
         topRow.setAlignment(Pos.CENTER_LEFT);
 
-        Label badge = new Label("📡 CONEXIÓN DIRECTA WI-FI");
+        Label badge = new Label("CONEXIÓN DIRECTA WI-FI");
         badge.setStyle("-fx-background-color: #1d4ed8; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-background-radius: 10;");
 
         Label urlLabel = new Label("Código de Enlace: " + connectionCode);
@@ -195,7 +195,7 @@ public class ImportMobileSyncDialog extends Stage {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button btnCopyUrl = new Button("📋 Copiar Código");
+        Button btnCopyUrl = new Button("Copiar Código");
         btnCopyUrl.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #1d4ed8; -fx-border-color: #93c5fd; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-cursor: hand;");
         btnCopyUrl.setOnAction(e -> {
             ClipboardContent content = new ClipboardContent();

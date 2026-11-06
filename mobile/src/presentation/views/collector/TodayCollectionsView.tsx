@@ -308,7 +308,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         .sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
       setEditingCustomers(refreshed);
       Alert.alert(
-        '⚡ Ruta Ordenada por Prioridad',
+        'Ruta Ordenada por Prioridad',
         '1° Clientes en Mora → 2° Cuota de Hoy → 3° Promesas Activas → 4° Al Día / Ya Visitados.'
       );
     } catch (err: any) {
@@ -452,7 +452,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
 
       let dueDateDisplay = '';
       if (isPaidToday) {
-        dueDateDisplay = '✓ Pagado hoy';
+        dueDateDisplay = 'Pagado hoy';
       } else if (isCreatedToday) {
         dueDateDisplay = 'CRÉDITO NUEVO (1ª cuota mañana)';
       } else if (todayInstallment && todayInstallment.dueDate === todayStr) {
@@ -1042,7 +1042,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 activeOpacity={0.7}
                 onPress={onOpenDailyReport}
               >
-                <Text style={styles.cleanHeroLinkAction}>📊 Cuadre</Text>
+                <Text style={styles.cleanHeroLinkAction}>Cuadre</Text>
                 <ChevronRight size={13} color="#38BDF8" />
               </TouchableOpacity>
             </View>
@@ -1054,13 +1054,13 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       {isAdminMode && (
         <View style={styles.collectorCapitalCard}>
           <View style={styles.collectorCapitalHeader}>
-            <Text style={styles.collectorCapitalTag}>💼 CAPITAL ASIGNADO A MI RUTA</Text>
+            <Text style={styles.collectorCapitalTag}>CAPITAL ASIGNADO A MI RUTA</Text>
             <Text style={styles.collectorCapitalFormula}>Admin = Cartera + Base</Text>
           </View>
 
           <View style={styles.collectorCapitalGrid}>
             <View style={styles.collectorCapitalItem}>
-              <Text style={styles.collectorCapitalItemLabel}>📈 Administrativo</Text>
+              <Text style={styles.collectorCapitalItemLabel}>Administrativo</Text>
               <Text style={styles.collectorCapitalItemVal} numberOfLines={1} adjustsFontSizeToFit>
                 {maskIfPrivate(metrics.totalAdministrativeCapital)}
               </Text>
@@ -1069,7 +1069,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             <View style={styles.collectorCapitalDivider} />
 
             <View style={styles.collectorCapitalItem}>
-              <Text style={styles.collectorCapitalItemLabel}>👥 Cartera en Calle</Text>
+              <Text style={styles.collectorCapitalItemLabel}>Cartera en Calle</Text>
               <Text style={[styles.collectorCapitalItemVal, { color: '#0F766E' }]} numberOfLines={1} adjustsFontSizeToFit>
                 {maskIfPrivate(metrics.activeCapitalInStreet)}
               </Text>
@@ -1078,7 +1078,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             <View style={styles.collectorCapitalDivider} />
 
             <View style={styles.collectorCapitalItem}>
-              <Text style={styles.collectorCapitalItemLabel}>💵 Base en Mano</Text>
+              <Text style={styles.collectorCapitalItemLabel}>Base en Mano</Text>
               <Text style={[styles.collectorCapitalItemVal, { color: '#1D4ED8' }]} numberOfLines={1} adjustsFontSizeToFit>
                 {maskIfPrivate(metrics.cashAvailableInHand)}
               </Text>
@@ -1087,7 +1087,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
 
           <View style={styles.collectorCapitalFooter}>
             <Text style={styles.collectorCapitalFooterText}>
-              💡 Base disponible para prestar hoy: <Text style={{ fontWeight: '800', color: '#1D4ED8' }}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
+              Base disponible para prestar hoy: <Text style={{ fontWeight: '800', color: '#1D4ED8' }}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
             </Text>
           </View>
         </View>
@@ -1107,7 +1107,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               activeOpacity={0.75}
               onPress={handleQuickPayFirstPending}
             >
-              <Text style={styles.adminSmallBtnText}>💵 Registrar Cobro</Text>
+              <Text style={styles.adminSmallBtnText}>Registrar Cobro</Text>
             </TouchableOpacity>
           )}
 
@@ -1117,7 +1117,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               activeOpacity={0.75}
               onPress={onOpenExpense}
             >
-              <Text style={styles.adminSmallBtnText}>⛽ Gasto Ruta</Text>
+              <Text style={styles.adminSmallBtnText}>Gasto Ruta</Text>
             </TouchableOpacity>
           )}
 
@@ -1127,7 +1127,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               activeOpacity={0.75}
               onPress={onNavigateToRoute}
             >
-              <Text style={styles.adminSmallBtnText}>📍 Ver Ruta</Text>
+              <Text style={styles.adminSmallBtnText}>Ver Ruta</Text>
             </TouchableOpacity>
           )}
 
@@ -1137,7 +1137,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               activeOpacity={0.75}
               onPress={onOpenDailyReport}
             >
-              <Text style={styles.adminSmallBtnText}>📊 Mi Cuadre</Text>
+              <Text style={styles.adminSmallBtnText}>Mi Cuadre</Text>
             </TouchableOpacity>
           )}
 
@@ -1146,7 +1146,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             activeOpacity={0.75}
             onPress={onOpenNewLoan}
           >
-            <Text style={styles.adminSmallBtnText}>➕ Nuevo Crédito</Text>
+            <Text style={styles.adminSmallBtnText}>Nuevo Crédito</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -1244,7 +1244,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     if (item.isCreatedToday) {
       badgeStyle = { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder };
       badgeTextStyle = { color: COLORS.primary };
-      badgeLabel = '★ Crédito nuevo';
+      badgeLabel = 'Crédito nuevo';
     } else if (delinquency.hasDelinquency) {
       badgeStyle = styles.badgeMora;
       badgeTextStyle = styles.badgeMoraText;
@@ -1252,7 +1252,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     } else if (item.todayPromise) {
       badgeStyle = { backgroundColor: COLORS.warningLight, borderColor: COLORS.warningBorder };
       badgeTextStyle = { color: COLORS.warning };
-      badgeLabel = '⏳ Promesa';
+      badgeLabel = 'Promesa';
     } else if (todayInstallment?.status === 'PARCIAL') {
       badgeStyle = styles.badgeParcial;
       badgeTextStyle = styles.badgeParcialText;
@@ -1260,7 +1260,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     } else if (!item.isDueToday) {
       badgeStyle = styles.badgeAlDia;
       badgeTextStyle = styles.badgeAlDiaText;
-      badgeLabel = '✓ Al día';
+      badgeLabel = 'Al día';
     }
 
     const collectionAmount = item.expectedToday > 0 ? item.expectedToday : activeLoan.installmentAmount;
@@ -1303,7 +1303,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           {/* FILA 2: DIRECCIÓN Y SALDO RESTANTE (SIN NÚMEROS DUPLICADOS) */}
           <View style={styles.cardSubDetailsRow}>
             <Text style={styles.addressSubText} numberOfLines={1}>
-              📍 {customer.neighborhood} • {customer.address}
+              {customer.neighborhood} • {customer.address}
             </Text>
             <Text style={styles.remainingBalanceText}>
               Saldo: <Text style={{ fontWeight: '800', color: COLORS.textPrimary }}>{maskIfPrivate(item.remainingBalance)}</Text>
@@ -1387,8 +1387,8 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           </View>
           <Text style={styles.completedSubDetail} numberOfLines={1}>
             {item.isPaidToday
-              ? `✓ Cobrado hoy • Saldo restante: ${maskIfPrivate(item.remainingBalance)}`
-              : `⚠️ Visita: ${todayNonPayment?.reasonLabel || 'No pago registrado'}`}
+              ? `Cobrado hoy • Saldo restante: ${maskIfPrivate(item.remainingBalance)}`
+              : `Visita: ${todayNonPayment?.reasonLabel || 'No pago registrado'}`}
           </Text>
         </TouchableOpacity>
 
@@ -1452,7 +1452,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               {isEditingRoute ? (
                 <>
                   <CheckCircle size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
-                  <Text style={styles.btnOrdenarHeaderTextActive}>✓ Guardar</Text>
+                  <Text style={styles.btnOrdenarHeaderTextActive}>Guardar</Text>
                 </>
               ) : (
                 <>
@@ -1543,14 +1543,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             <>
               <Landmark size={11} color={COLORS.primary} style={{ marginRight: 4 }} />
               <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.primary }}>
-                🏛️ Liquidar Rutas
+                Liquidar Rutas
               </Text>
             </>
           ) : (
             <>
               <Calculator size={11} color={COLORS.primary} style={{ marginRight: 4 }} />
               <Text style={{ fontSize: 10.5, fontWeight: '800', color: COLORS.primary }}>
-                📊 Mi Cuadre
+                Mi Cuadre
               </Text>
             </>
           )}
@@ -1587,7 +1587,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               <View style={{ flex: 1 }}>
                 <Text style={styles.editingRouteBannerTitle}>Modo Ordenamiento Inteligente de Ruta</Text>
                 <Text style={styles.editingRouteBannerSub}>
-                  Usa ⬆️ ⬇️ para mover paradas o auto-ordena por prioridad de cobro
+                  Usa los controles para mover paradas o auto-ordena por prioridad de cobro
                 </Text>
               </View>
             </View>
@@ -1616,7 +1616,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           >
             <Zap size={14} color="#1d4ed8" style={{ marginRight: 6 }} />
             <Text style={{ fontSize: 12, fontWeight: '800', color: '#1d4ed8' }}>
-              ⚡ Auto-Ordenar por Prioridad (1° Mora → 2° Cobrar Hoy → 3° Al Día)
+              Auto-Ordenar por Prioridad (1° Mora → 2° Cobrar Hoy → 3° Al Día)
             </Text>
           </TouchableOpacity>
         </View>
@@ -1701,7 +1701,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                     {customer.fullName}
                   </Text>
                   <Text style={styles.reorderAddress} numberOfLines={1}>
-                    📍 {customer.neighborhood} • {customer.address}
+                    {customer.neighborhood} • {customer.address}
                   </Text>
                   <Text style={styles.reorderLoanInfo}>
                     {activeLoan

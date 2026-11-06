@@ -94,7 +94,7 @@ public class PaymentDialog {
         cmbMethod.setMaxWidth(Double.MAX_VALUE);
         cmbMethod.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 6;");
 
-        CheckBox chkSendWhatsApp = new CheckBox("📲 Enviar recibo digital por WhatsApp automáticamente al confirmar");
+        CheckBox chkSendWhatsApp = new CheckBox("Enviar recibo digital por WhatsApp automáticamente al confirmar");
         chkSendWhatsApp.setStyle("-fx-text-fill: #15803d; -fx-font-weight: bold; -fx-font-size: 12px;");
         chkSendWhatsApp.setSelected(false);
 

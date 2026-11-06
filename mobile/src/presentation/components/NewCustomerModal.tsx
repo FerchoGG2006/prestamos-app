@@ -17,7 +17,7 @@ import { localStore } from '../../infrastructure/storage/local-store';
 import { LoanFrequency } from '../../core/domain/types';
 import { calculateLoanSummary, calculatePaperworkFee } from '../../core/domain/calculator';
 import { formatCOP, addDays as addDaysToDate } from '../../core/config/business-rules';
-import { UserPlus, X, Zap, Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { UserPlus, X, Zap, Calendar, ChevronLeft, ChevronRight, Check } from 'lucide-react-native';
 import { ClientMediaAttachment, ClientMediaValue } from './ClientMediaAttachment';
 
 interface NewCustomerModalProps {
@@ -58,6 +58,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
   useEffect(() => {
     if (visible) {
+      setFormError('');
       const targetRoute =
         defaultRouteId && defaultRouteId !== 'ALL'
           ? defaultRouteId
@@ -89,6 +90,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const [dataConsentAccepted, setDataConsentAccepted] = useState(false);
   const [mediaAttachment, setMediaAttachment] = useState<ClientMediaValue | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string>('');
 
   const isFixedDate = frequency === 'FIXED_DATE';
   const principal = parseInt(principalStr.replace(/\D/g, ''), 10) || 0;
@@ -134,11 +136,11 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const quickPrincipals = [150000, 200000, 300000, 500000];
 
   const frequencies: Array<{ key: LoanFrequency; label: string; defaultCount: number }> = [
-    { key: 'DAILY', label: '☀️ Diario', defaultCount: 30 },
-    { key: 'WEEKLY', label: '📆 Semanal', defaultCount: 4 },
-    { key: 'BIWEEKLY', label: '🗓️ Quincenal', defaultCount: 2 },
-    { key: 'MONTHLY', label: '🏛️ Mensual', defaultCount: 1 },
-    { key: 'FIXED_DATE', label: '📅 Fecha Fija', defaultCount: 1 },
+    { key: 'DAILY', label: 'Diario', defaultCount: 30 },
+    { key: 'WEEKLY', label: 'Semanal', defaultCount: 4 },
+    { key: 'BIWEEKLY', label: 'Quincenal', defaultCount: 2 },
+    { key: 'MONTHLY', label: 'Mensual', defaultCount: 1 },
+    { key: 'FIXED_DATE', label: 'Fecha Fija', defaultCount: 1 },
   ];
 
   const handleSelectFrequency = (freq: LoanFrequency, defaultCount: number) => {
@@ -169,39 +171,45 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setQuickPaidCountStr('');
     setDataConsentAccepted(false);
     setMediaAttachment(null);
+    setFormError('');
   };
 
   const handleSaveCustomerAndLoan = async () => {
+    setFormError('');
     if (!fullName.trim() || !documentNumber.trim()) {
-      Alert.alert('Campos requeridos', 'Ingrese el nombre completo y número de cédula del cliente.');
+      const msg = 'Ingrese el nombre completo y el número de cédula del titular en la sección 1.';
+      setFormError(msg);
+      Alert.alert('Campos requeridos', msg);
       return;
     }
 
-    if (!phone.trim()) {
-      Alert.alert('Teléfono requerido', 'Ingrese el número telefónico para llamadas.');
-      return;
-    }
-
-    if (!whatsappPhone.trim()) {
-      Alert.alert('WhatsApp requerido', 'Ingrese el número de WhatsApp (puede ser el mismo de llamadas).');
+    const effectivePhone = phone.trim() || whatsappPhone.trim();
+    const effectiveWhatsapp = whatsappPhone.trim() || phone.trim();
+    if (!effectivePhone) {
+      const msg = 'Ingrese el número telefónico del titular en la sección 1.';
+      setFormError(msg);
+      Alert.alert('Teléfono requerido', msg);
       return;
     }
 
     if (!dataConsentAccepted) {
-      Alert.alert(
-        'Autorización de Datos Requerida (Ley 1581)',
-        'Debe marcar expresamente que el titular autorizó el tratamiento de sus datos personales para originar y gestionar su obligación crediticia.'
-      );
+      const msg = 'Debe marcar la casilla de Autorización de Tratamiento de Datos Personales (Ley 1581) antes de continuar.';
+      setFormError(msg);
+      Alert.alert('Autorización de Datos Requerida (Ley 1581)', msg);
       return;
     }
 
     if (withLoan && principal <= 0) {
-      Alert.alert('Capital requerido', 'Ingrese un monto de capital válido para desembolsar.');
+      const msg = 'Ingrese un monto de capital mayor a $0 para desembolsar.';
+      setFormError(msg);
+      Alert.alert('Capital requerido', msg);
       return;
     }
 
     if (withLoan && isFixedDate && !fixedDueDateStr.trim()) {
-      Alert.alert('Fecha fija requerida', 'Por favor selecciona la fecha pactada para el cobro del crédito con fecha fija.');
+      const msg = 'Seleccione la fecha pactada para el cobro del crédito con fecha fija.';
+      setFormError(msg);
+      Alert.alert('Fecha fija requerida', msg);
       return;
     }
 
@@ -212,8 +220,8 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
       const newCustomer = await localStore.createCustomer({
         fullName,
         documentNumber,
-        phone,
-        whatsappPhone,
+        phone: effectivePhone,
+        whatsappPhone: effectiveWhatsapp,
         address,
         neighborhood,
         businessName,
@@ -269,7 +277,9 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
       onSuccess();
       onClose();
     } catch (err: any) {
-      Alert.alert('Error al registrar', err.message || 'No se pudo completar el registro');
+      const errMsg = err.message || 'No se pudo completar el registro';
+      setFormError(errMsg);
+      Alert.alert('Error al registrar', errMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -439,7 +449,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                               isSel && styles.quickPillTextActive,
                             ]}
                           >
-                            🗺️ {rt.name} ({rt.code})
+                            {rt.name} ({rt.code})
                           </Text>
                         </TouchableOpacity>
                       );
@@ -545,7 +555,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                         color: !isCardMigration ? '#0F766E' : '#64748B',
                       }}
                     >
-                      💵 Préstamo Nuevo
+                      Préstamo Nuevo
                     </Text>
                   </TouchableOpacity>
 
@@ -569,7 +579,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                         color: isCardMigration ? '#0F766E' : '#64748B',
                       }}
                     >
-                      📋 Cartulina Física a Digital
+                      Cartulina Física a Digital
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -672,7 +682,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                         activeOpacity={0.8}
                         onPress={() => setCalendarModalVisible(true)}
                       >
-                        <Text style={styles.btnOpenCalendarPillText}>🗓️ Calendario</Text>
+                        <Text style={styles.btnOpenCalendarPillText}>Calendario</Text>
                       </TouchableOpacity>
 
                       {[7, 15, 30].map((days) => (
@@ -762,7 +772,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                   >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F766E' }}>
-                        📋 Marca las cuotas ya pagadas en la cartulina
+                        Selecciona las cuotas ya pagadas en la cartulina
                       </Text>
                       <View
                         style={{
@@ -773,7 +783,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                         }}
                       >
                         <Text style={{ fontSize: 10, fontWeight: '800', color: '#166534' }}>
-                          🛡️ Caja hoy: $0
+                          Caja hoy: $0
                         </Text>
                       </View>
                     </View>
@@ -843,7 +853,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                               }}
                             >
                               {num}
-                              {isPaid ? ' ✓' : ''}
+                              
                             </Text>
                           </TouchableOpacity>
                         );
@@ -904,7 +914,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
                     <View style={styles.summaryRowHighlight}>
                       <Text style={styles.summaryLabelHighlight}>
-                        💵 EFECTIVO NETO A ENTREGAR:
+                        EFECTIVO NETO A ENTREGAR:
                       </Text>
                       <Text style={styles.summaryValueHighlight}>
                         {formatCOP(netCashToDeliver)}
@@ -963,9 +973,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
                   marginTop: 1,
                 }}
               >
-                {dataConsentAccepted && (
-                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '900' }}>✓</Text>
-                )}
+                {dataConsentAccepted && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#0F172A' }}>
@@ -977,6 +985,24 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
               </View>
             </TouchableOpacity>
           </ScrollView>
+
+          {formError ? (
+            <View
+              style={{
+                backgroundColor: '#FEF2F2',
+                borderWidth: 1,
+                borderColor: '#FECACA',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '700' }}>
+                {formError}
+              </Text>
+            </View>
+          ) : null}
 
           {/* Botón Principal */}
           <TouchableOpacity
@@ -1009,7 +1035,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
           <View style={styles.calendarModalCard}>
             <View style={styles.calendarModalHeader}>
               <View>
-                <Text style={styles.calendarModalTitle}>📅 Fecha Fija de Pago</Text>
+                <Text style={styles.calendarModalTitle}>Fecha Fija de Pago</Text>
                 <Text style={styles.calendarModalSubtitle}>Selecciona el día acordado para el cobro</Text>
               </View>
               <TouchableOpacity

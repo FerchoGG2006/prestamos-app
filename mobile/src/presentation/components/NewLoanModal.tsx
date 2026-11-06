@@ -21,13 +21,26 @@ import {
 } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
-import { FilePlus2, X, Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import {
+  FilePlus2,
+  X,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  UserPlus,
+  Wallet,
+  ClipboardList,
+  Search,
+  Check,
+} from 'lucide-react-native';
 
 interface NewLoanModalProps {
   visible: boolean;
   customers: Customer[];
   loans: Loan[];
   todayStr: string;
+  defaultRouteId?: string;
   baseAvailable?: number;
   preselectedCustomerId?: string;
   initialFrequency?: LoanFrequency;
@@ -42,6 +55,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   customers,
   loans,
   todayStr,
+  defaultRouteId,
   baseAvailable,
   preselectedCustomerId,
   initialFrequency,
@@ -51,7 +65,30 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   onSuccess,
 }) => {
   const insets = useSafeAreaInsets();
+
+  // Modo de selección de titular: existente vs cliente nuevo
+  const [customerMode, setCustomerMode] = useState<'EXISTING' | 'NEW'>('EXISTING');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(preselectedCustomerId || '');
+  const [customerSearch, setCustomerSearch] = useState<string>('');
+
+  // Campos para registro de Nuevo Cliente dentro del mismo flujo
+  const [fullName, setFullName] = useState('');
+  const [documentNumber, setDocumentNumber] = useState('');
+  const [phone, setPhone] = useState('');
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [routeOrderStr, setRouteOrderStr] = useState('');
+  const [dataConsentAccepted, setDataConsentAccepted] = useState(false);
+
+  const availableRoutes = localStore.getRoutes();
+  const initialRoute =
+    defaultRouteId && defaultRouteId !== 'ALL'
+      ? defaultRouteId
+      : availableRoutes[0]?.id || 'route-norte';
+  const [selectedRouteId, setSelectedRouteId] = useState(initialRoute);
+
   const [isCardMigration, setIsCardMigration] = useState<boolean>(false);
   const [paidInstallmentNums, setPaidInstallmentNums] = useState<number[]>([]);
   const [quickPaidCountStr, setQuickPaidCountStr] = useState<string>('');
@@ -77,18 +114,31 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     }
   });
   const officeConfig = localStore.getOfficeConfig();
-  const defaultInterestRate = officeConfig.defaultInterestRate || 0.2;
   const [interestPercentStr, setInterestPercentStr] = useState<string>(() =>
     String(Math.round((localStore.getOfficeConfig().defaultInterestRate || 0.2) * 100))
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string>('');
   const [mediaAttachment, setMediaAttachment] = useState<ClientMediaValue | null>(null);
 
   useEffect(() => {
     if (visible) {
+      setFormError('');
+      const targetRoute =
+        defaultRouteId && defaultRouteId !== 'ALL'
+          ? defaultRouteId
+          : localStore.getRoutes()[0]?.id || 'route-norte';
+      setSelectedRouteId(targetRoute);
+
       if (preselectedCustomerId) {
+        setCustomerMode('EXISTING');
         setSelectedCustomerId(preselectedCustomerId);
+      } else if (customers.length === 0) {
+        setCustomerMode('NEW');
+      } else {
+        setCustomerMode('EXISTING');
       }
+
       if (initialFrequency) {
         setFrequency(initialFrequency);
       }
@@ -98,7 +148,21 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       const cfgRate = localStore.getOfficeConfig().defaultInterestRate || 0.2;
       setInterestPercentStr(String(Math.round(cfgRate * 100)));
     }
-  }, [visible, preselectedCustomerId, initialFrequency, initialFixedDueDate]);
+  }, [visible, preselectedCustomerId, initialFrequency, initialFixedDueDate, defaultRouteId]);
+
+  const resetNewCustomerFields = () => {
+    setFullName('');
+    setDocumentNumber('');
+    setPhone('');
+    setWhatsappPhone('');
+    setAddress('');
+    setNeighborhood('');
+    setBusinessName('');
+    setRouteOrderStr('');
+    setDataConsentAccepted(false);
+    setMediaAttachment(null);
+    setFormError('');
+  };
 
   const togglePaidInstallment = (num: number) => {
     setPaidInstallmentNums((prev) =>
@@ -159,11 +223,11 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     defaultCount: number;
     options: number[];
   }> = [
-    { key: 'DAILY', label: 'Diario', shortLabel: '☀️ Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
-    { key: 'WEEKLY', label: 'Semanal', shortLabel: '📆 Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
-    { key: 'BIWEEKLY', label: 'Quincenal', shortLabel: '🗓️ Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
-    { key: 'MONTHLY', label: 'Mensual', shortLabel: '🏛️ Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
-    { key: 'FIXED_DATE', label: 'Fecha Fija', shortLabel: '📅 Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
+    { key: 'DAILY', label: 'Diario', shortLabel: 'Diario', unitLabel: 'días', questionLabel: '¿A cuántos días hábiles? (Recomendado: 30 días)', defaultCount: 30, options: [20, 24, 30, 36, 40] },
+    { key: 'WEEKLY', label: 'Semanal', shortLabel: 'Semanal', unitLabel: 'semanas', questionLabel: '¿A cuántas semanas?', defaultCount: 4, options: [4, 6, 8, 10, 12] },
+    { key: 'BIWEEKLY', label: 'Quincenal', shortLabel: 'Quincenal', unitLabel: 'quincenas', questionLabel: '¿A cuántas quincenas?', defaultCount: 2, options: [2, 4, 6, 8] },
+    { key: 'MONTHLY', label: 'Mensual', shortLabel: 'Mensual', unitLabel: 'meses', questionLabel: '¿A cuántos meses?', defaultCount: 1, options: [1, 2, 3, 6] },
+    { key: 'FIXED_DATE', label: 'Fecha Fija', shortLabel: 'Fecha Fija', unitLabel: 'pago único', questionLabel: 'Fecha de Pago Único Acordada', defaultCount: 1, options: [] },
   ];
 
   const currentFreqConfig = frequencies.find((f) => f.key === frequency) || frequencies[0];
@@ -176,28 +240,95 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     }
   };
 
+  const filteredCustomers = customers.filter((c) => {
+    const q = customerSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.fullName?.toLowerCase().includes(q) ||
+      c.documentNumber?.toLowerCase().includes(q) ||
+      c.neighborhood?.toLowerCase().includes(q)
+    );
+  });
+
   const handleCreateLoan = async () => {
-    if (!selectedCustomerId) {
-      Alert.alert('Seleccione un cliente', 'Elija el cliente para desembolsar el préstamo.');
-      return;
-    }
+    setFormError('');
     if (principal <= 0) {
-      Alert.alert('Capital inválido', 'Ingrese un monto de capital mayor a $0.');
+      const msg = 'Ingrese un monto de capital mayor a $0.';
+      setFormError(msg);
+      Alert.alert('Capital inválido', msg);
       return;
     }
     if (isFixedDate && !fixedDueDateStr) {
-      Alert.alert('Fecha inválida', 'Seleccione o ingrese la fecha fija de vencimiento.');
+      const msg = 'Seleccione o ingrese la fecha fija de vencimiento.';
+      setFormError(msg);
+      Alert.alert('Fecha inválida', msg);
       return;
+    }
+
+    let targetCustomerId = selectedCustomerId;
+    let targetRouteId: string | undefined;
+    let targetCollectorId: string | undefined;
+
+    if (customerMode === 'NEW') {
+      if (!fullName.trim() || !documentNumber.trim()) {
+        const msg = 'Ingrese el nombre completo y el número de cédula del nuevo cliente.';
+        setFormError(msg);
+        Alert.alert('Campos requeridos', msg);
+        return;
+      }
+      const effectivePhone = phone.trim() || whatsappPhone.trim();
+      if (!effectivePhone) {
+        const msg = 'Ingrese el número telefónico del nuevo cliente.';
+        setFormError(msg);
+        Alert.alert('Teléfono requerido', msg);
+        return;
+      }
+      if (!dataConsentAccepted) {
+        const msg = 'Marque la casilla de autorización de tratamiento de datos personales (Ley 1581) para continuar.';
+        setFormError(msg);
+        Alert.alert('Autorización requerida (Ley 1581)', msg);
+        return;
+      }
+    } else {
+      if (!targetCustomerId) {
+        const msg = 'Seleccione un titular de la lista o cambie a la pestaña "Nuevo Cliente".';
+        setFormError(msg);
+        Alert.alert('Seleccione un cliente', msg);
+        return;
+      }
     }
 
     setIsSubmitting(true);
     try {
+      if (customerMode === 'NEW') {
+        const parsedOrder = parseInt(routeOrderStr.replace(/\D/g, ''), 10);
+        const createdCustomer = await localStore.createCustomer({
+          fullName: fullName.trim(),
+          documentNumber: documentNumber.trim(),
+          phone: (phone.trim() || whatsappPhone.trim()),
+          whatsappPhone: (whatsappPhone.trim() || phone.trim()),
+          address: address.trim() || 'Por actualizar',
+          neighborhood: neighborhood.trim() || 'General',
+          businessName: businessName.trim(),
+          referenceName: '',
+          referencePhone: '',
+          routeId: selectedRouteId,
+          orderIndex: !isNaN(parsedOrder) && parsedOrder > 0 ? parsedOrder : undefined,
+          todayStr,
+        });
+        targetCustomerId = createdCustomer.id;
+        targetRouteId = selectedRouteId;
+        targetCollectorId = createdCustomer.assignedCollectorId;
+      }
+
       const res = await localStore.createLoan({
-        customerId: selectedCustomerId,
+        customerId: targetCustomerId,
         principal,
         interestRate: effectiveInterestRate,
         installmentCount,
         frequency,
+        routeId: targetRouteId,
+        collectorId: targetCollectorId,
         fixedDueDate: isFixedDate ? fixedDueDateStr : undefined,
         todayStr,
         isCardMigration,
@@ -208,7 +339,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         const paidTotal = res.loan.installmentAmount * paidInstallmentNums.length;
         const pendingTotal = Math.max(0, res.loan.totalAgreed - paidTotal);
         Alert.alert(
-          '¡Cartulina Pasada a Digital!',
+          'Cartulina Pasada a Digital',
           `Crédito ${res.loan.loanNumber} digitalizado con éxito.\n\n` +
           `• Cuotas ya pagadas en cartulina: ${paidInstallmentNums.length} de ${installmentCount} (${formatCOP(paidTotal)})\n` +
           `• Saldo pendiente por cobrar: ${formatCOP(pendingTotal)}\n` +
@@ -216,7 +347,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         );
       } else {
         Alert.alert(
-          '¡Crédito Desembolsado!',
+          'Crédito Desembolsado',
           `Crédito ${res.loan.loanNumber} creado exitosamente.\n\n` +
           `• Modalidad: ${isFixedDate ? `Fecha Fija (Vence: ${fixedDueDateStr})` : `${installmentCount} ${currentFreqConfig.unitLabel}`}\n` +
           `• Total a cobrar: ${formatCOP(res.loan.totalAgreed)}\n` +
@@ -225,10 +356,13 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
           `• Efectivo neto a entregar: ${formatCOP(netCashToDeliver)}`
         );
       }
+      resetNewCustomerFields();
       onSuccess();
       onClose();
     } catch (err: any) {
-      Alert.alert('No se pudo crear', err.message || 'Error al crear préstamo');
+      const errMsg = err.message || 'Error al crear préstamo';
+      setFormError(errMsg);
+      Alert.alert('No se pudo crear', errMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -257,7 +391,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             <View>
               <Text style={styles.title}>Originación de Crédito</Text>
               <Text style={styles.subtitle}>
-                Tasa pactada ({interestPercentStr || '0'}%) sobre capital • {isPaperworkEnabled ? `Papelería $${(officeConfig.paperworkRate || 5000).toLocaleString('es-CO')} / $100k` : 'Sin cobro de papelería (Desactivada)'}
+                Tasa pactada ({interestPercentStr || '0'}%) sobre capital • {isPaperworkEnabled ? `Papelería $${(officeConfig.paperworkRate || 5000).toLocaleString('es-CO')} / $100k` : 'Sin cobro de papelería'}
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -277,6 +411,9 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 style={[
                   {
                     flex: 1,
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    gap: 6,
                     paddingVertical: 10,
                     paddingHorizontal: 10,
                     borderRadius: 12,
@@ -288,14 +425,16 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 ]}
                 onPress={() => setIsCardMigration(false)}
               >
+                <Wallet size={14} color={!isCardMigration ? '#0F766E' : '#64748B'} />
                 <Text
                   style={{
+                    fontFamily: FONT_FAMILY,
                     fontSize: 12,
                     fontWeight: '800',
                     color: !isCardMigration ? '#0F766E' : '#64748B',
                   }}
                 >
-                  💵 Nuevo Préstamo
+                  Nuevo Préstamo
                 </Text>
               </TouchableOpacity>
 
@@ -303,6 +442,9 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 style={[
                   {
                     flex: 1.2,
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    gap: 6,
                     paddingVertical: 10,
                     paddingHorizontal: 10,
                     borderRadius: 12,
@@ -314,56 +456,258 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 ]}
                 onPress={() => setIsCardMigration(true)}
               >
+                <ClipboardList size={14} color={isCardMigration ? '#0F766E' : '#64748B'} />
                 <Text
                   style={{
+                    fontFamily: FONT_FAMILY,
                     fontSize: 12,
                     fontWeight: '800',
                     color: isCardMigration ? '#0F766E' : '#64748B',
                   }}
                 >
-                  📋 Cartulina Física a Digital
+                  Cartulina Física a Digital
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.label}>1. Seleccionar Titular</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginBottom: 12 }}
-            >
-              {customers.map((c) => {
-                const hasActive = loans.some(
-                  (l) => l.customerId === c.id && l.status === 'ACTIVE'
-                );
-                const isSelected = selectedCustomerId === c.id;
-                return (
-                  <TouchableOpacity
-                    key={c.id}
+            {/* 1. SELECCIONAR O CREAR TITULAR */}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.label}>1. Titular del Crédito</Text>
+              <View style={styles.modeSwitchContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.modeSwitchBtn,
+                    customerMode === 'EXISTING' && styles.modeSwitchBtnActive,
+                  ]}
+                  onPress={() => setCustomerMode('EXISTING')}
+                >
+                  <Users size={12} color={customerMode === 'EXISTING' ? '#FFFFFF' : '#475569'} />
+                  <Text
                     style={[
-                      styles.customerChip,
-                      isSelected && styles.customerChipActive,
-                      hasActive && { opacity: 0.55 },
+                      styles.modeSwitchText,
+                      customerMode === 'EXISTING' && styles.modeSwitchTextActive,
                     ]}
-                    onPress={() => setSelectedCustomerId(c.id)}
                   >
-                    <Text
-                      style={[
-                        styles.customerChipName,
-                        isSelected && { color: COLORS.purple },
-                      ]}
-                    >
-                      {c.fullName}
-                    </Text>
-                    <Text style={styles.customerChipSub}>
-                      {hasActive ? 'Con crédito activo' : '✓ Disponible'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                    Existente ({customers.length})
+                  </Text>
+                </TouchableOpacity>
 
-            {/* Patrón #5 de Gemini Share: Filled Input con Floating Label interno para Capital */}
+                <TouchableOpacity
+                  style={[
+                    styles.modeSwitchBtn,
+                    customerMode === 'NEW' && styles.modeSwitchBtnActive,
+                  ]}
+                  onPress={() => setCustomerMode('NEW')}
+                >
+                  <UserPlus size={12} color={customerMode === 'NEW' ? '#FFFFFF' : '#475569'} />
+                  <Text
+                    style={[
+                      styles.modeSwitchText,
+                      customerMode === 'NEW' && styles.modeSwitchTextActive,
+                    ]}
+                  >
+                    Nuevo Cliente
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {customerMode === 'EXISTING' ? (
+              <View style={{ marginBottom: 14 }}>
+                {customers.length > 3 && (
+                  <View style={styles.searchCustomerBox}>
+                    <Search size={14} color="#64748B" style={{ marginRight: 6 }} />
+                    <TextInput
+                      style={styles.searchCustomerInput}
+                      placeholder="Buscar titular por nombre o cédula..."
+                      placeholderTextColor="#94A3B8"
+                      value={customerSearch}
+                      onChangeText={setCustomerSearch}
+                    />
+                    {customerSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setCustomerSearch('')}>
+                        <X size={14} color="#64748B" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ alignItems: 'center', paddingVertical: 2 }}
+                >
+
+                  {filteredCustomers.map((c) => {
+                    const hasActive = loans.some(
+                      (l) => l.customerId === c.id && l.status === 'ACTIVE'
+                    );
+                    const isSelected = selectedCustomerId === c.id;
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[
+                          styles.customerChip,
+                          isSelected && styles.customerChipActive,
+                          hasActive && { opacity: 0.55 },
+                        ]}
+                        onPress={() => setSelectedCustomerId(c.id)}
+                      >
+                        <Text
+                          style={[
+                            styles.customerChipName,
+                            isSelected && { color: COLORS.purple },
+                          ]}
+                        >
+                          {c.fullName}
+                        </Text>
+                        <Text style={styles.customerChipSub}>
+                          {hasActive ? 'Con crédito activo' : 'Disponible'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            ) : (
+              <View style={styles.newCustomerCard}>
+                {!isCollector && (!defaultRouteId || defaultRouteId === 'ALL') && availableRoutes.length > 1 && (
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={styles.fieldLabel}>Ruta Asignada</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {availableRoutes.map((r) => {
+                        const active = selectedRouteId === r.id;
+                        return (
+                          <TouchableOpacity
+                            key={r.id}
+                            style={[styles.routePill, active && styles.routePillActive]}
+                            onPress={() => setSelectedRouteId(r.id)}
+                          >
+                            <Text style={[styles.routePillText, active && styles.routePillTextActive]}>
+                              {r.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+
+                <View style={styles.formRow}>
+                  <View style={{ flex: 1.3 }}>
+                    <Text style={styles.fieldLabel}>Nombre Completo *</Text>
+                    <TextInput
+                      style={styles.textField}
+                      placeholder="Ej. Carlos Pérez"
+                      placeholderTextColor="#94A3B8"
+                      value={fullName}
+                      onChangeText={setFullName}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Cédula / NIT *</Text>
+                    <TextInput
+                      style={styles.textField}
+                      placeholder="Ej. 1065842100"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={documentNumber}
+                      onChangeText={setDocumentNumber}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.formRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Teléfono Llamadas *</Text>
+                    <TextInput
+                      style={styles.textField}
+                      placeholder="Ej. 3001234567"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="phone-pad"
+                      value={phone}
+                      onChangeText={(val) => {
+                        setPhone(val);
+                        if (!whatsappPhone) setWhatsappPhone(val);
+                      }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>WhatsApp</Text>
+                    <TextInput
+                      style={styles.textField}
+                      placeholder="Igual al teléfono"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="phone-pad"
+                      value={whatsappPhone}
+                      onChangeText={setWhatsappPhone}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.formRow}>
+                  <View style={{ flex: 1.2 }}>
+                    <Text style={styles.fieldLabel}>Dirección</Text>
+                    <TextInput
+                      style={styles.textField}
+                      placeholder="Calle / Carrera #..."
+                      placeholderTextColor="#94A3B8"
+                      value={address}
+                      onChangeText={setAddress}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Barrio / Sector</Text>
+                    <TextInput
+                      style={styles.textField}
+                      placeholder="Ej. Centro"
+                      placeholderTextColor="#94A3B8"
+                      value={neighborhood}
+                      onChangeText={setNeighborhood}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.formRow}>
+                  <View style={{ flex: 1.4 }}>
+                    <Text style={styles.fieldLabel}>Negocio / Ocupación (Opcional)</Text>
+                    <TextInput
+                      style={styles.textField}
+                      placeholder="Ej. Tienda, taller, restaurante..."
+                      placeholderTextColor="#94A3B8"
+                      value={businessName}
+                      onChangeText={setBusinessName}
+                    />
+                  </View>
+                  <View style={{ flex: 0.7 }}>
+                    <Text style={styles.fieldLabel}>Orden en Ruta</Text>
+                    <TextInput
+                      style={styles.textField}
+                      placeholder="Auto"
+                      placeholderTextColor="#94A3B8"
+                      keyboardType="numeric"
+                      value={routeOrderStr}
+                      onChangeText={setRouteOrderStr}
+                    />
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.consentRow}
+                  activeOpacity={0.75}
+                  onPress={() => setDataConsentAccepted(!dataConsentAccepted)}
+                >
+                  <View style={[styles.checkboxBox, dataConsentAccepted && styles.checkboxBoxChecked]}>
+                    {dataConsentAccepted && <Check size={12} color="#FFFFFF" />}
+                  </View>
+                  <Text style={styles.consentText}>
+                    El titular autoriza el tratamiento de sus datos personales para la gestión crediticia (Ley 1581).
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 2. CAPITAL INICIAL */}
             <View style={styles.filledAmountBlock}>
               <Text style={styles.floatingInternalLabel}>
                 2. CAPITAL INICIAL A DESEMBOLSAR ($ COP)
@@ -379,11 +723,11 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             {baseAvailable !== undefined && (
               <View style={[styles.baseAvailableBox, principal > baseAvailable && styles.baseExceededBox]}>
                 <Text style={styles.baseAvailableText}>
-                  💵 Base disponible para prestar: <Text style={{ fontWeight: '800' }}>{formatCOP(baseAvailable)}</Text>
+                  Base disponible para prestar: <Text style={{ fontWeight: '800' }}>{formatCOP(baseAvailable)}</Text>
                 </Text>
                 {principal > baseAvailable && (
                   <Text style={styles.baseExceededWarning}>
-                    ⚠️ El monto supera la Base disponible en caja ({formatCOP(baseAvailable)})
+                    El monto supera la Base disponible en caja ({formatCOP(baseAvailable)})
                   </Text>
                 )}
               </View>
@@ -416,7 +760,6 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </ScrollView>
 
             <Text style={styles.label}>3. Modalidad de Pago</Text>
-            {/* Modalidades en una sola línea horizontal: botones compactos de 2 palabras con emoji */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -455,7 +798,6 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 <Text style={styles.label}>
                   4. Fecha fija de pago acordada
                 </Text>
-                {/* Todo en una misma línea de párrafo: caja con fecha fija, botón de calendario y atajos */}
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -477,7 +819,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                     activeOpacity={0.8}
                     onPress={() => setCalendarModalVisible(true)}
                   >
-                    <Text style={styles.btnOpenCalendarPillText}>🗓️ Calendario</Text>
+                    <Text style={styles.btnOpenCalendarPillText}>Calendario</Text>
                   </TouchableOpacity>
 
                   {[7, 15, 30].map((days) => (
@@ -555,7 +897,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 <Text style={{ flex: 1, fontSize: 11, color: COLORS.textSecondary, lineHeight: 15 }}>
                   {isCollector
                     ? 'Tasa comercial configurada por la administración de la oficina.'
-                    : 'La tasa pactada queda congelada en este contrato y no modifica préstamos anteriores. Verifique siempre que la tasa cumpla los topes vigentes según la modalidad legal.'}
+                    : 'La tasa pactada queda congelada en este contrato y no modifica préstamos anteriores.'}
                 </Text>
               </View>
             </View>
@@ -575,7 +917,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#0F766E' }}>
-                    📋 Toca las cuotas ya pagadas en la cartulina física
+                    Selecciona las cuotas ya pagadas en la cartulina física
                   </Text>
                   <View
                     style={{
@@ -586,7 +928,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                     }}
                   >
                     <Text style={{ fontSize: 10, fontWeight: '800', color: '#166534' }}>
-                      🛡️ Caja hoy: $0
+                      Caja hoy: $0
                     </Text>
                   </View>
                 </View>
@@ -656,7 +998,6 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                           }}
                         >
                           {num}
-                          {isPaid ? ' ✓' : ''}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -708,7 +1049,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                         : `Valor Cuota (${installmentCount} cuotas ${currentFreqConfig.unitLabel}):`}
                     </Text>
                     <Text style={styles.calcDateUnderAmount}>
-                      📅 {isFixedDate ? `Vence: ${fixedDueDateStr}` : `1ª cuota: ${firstDueDateStr} • Cobro ${currentFreqConfig.label.toLowerCase()}`}
+                      {isFixedDate ? `Vence: ${fixedDueDateStr}` : `1ª cuota: ${firstDueDateStr} • Cobro ${currentFreqConfig.label.toLowerCase()}`}
                     </Text>
                   </View>
                   <Text style={[styles.calcVal, { color: COLORS.textPrimary, fontSize: 16 }]}>
@@ -743,7 +1084,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </View>
                 <View style={styles.calcRow}>
                   <Text style={[styles.calcLabel, { fontWeight: '800', color: COLORS.textPrimary }]}>
-                    💵 Efectivo Neto a Entregar:
+                    Efectivo Neto a Entregar:
                   </Text>
                   <Text style={[styles.calcVal, { fontSize: 17, color: COLORS.success }]}>
                     {formatCOP(netCashToDeliver)}
@@ -752,6 +1093,24 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               </View>
             )}
           </ScrollView>
+
+          {formError ? (
+            <View
+              style={{
+                backgroundColor: '#FEF2F2',
+                borderWidth: 1,
+                borderColor: '#FECACA',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                marginBottom: 8,
+              }}
+            >
+              <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '700' }}>
+                {formError}
+              </Text>
+            </View>
+          ) : null}
 
           <TouchableOpacity
             style={[styles.confirmBtn, isSubmitting && { opacity: 0.5 }]}
@@ -763,8 +1122,12 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               {isSubmitting
                 ? 'Guardando...'
                 : isCardMigration
-                  ? 'Pasar Cartulina a Digital'
-                  : 'Confirmar y Desembolsar'}
+                  ? customerMode === 'NEW'
+                    ? 'Registrar Cliente y Pasar Cartulina'
+                    : 'Pasar Cartulina a Digital'
+                  : customerMode === 'NEW'
+                    ? 'Registrar Cliente y Desembolsar'
+                    : 'Confirmar y Desembolsar'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -781,7 +1144,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
           <View style={styles.calendarModalCard}>
             <View style={styles.calendarModalHeader}>
               <View>
-                <Text style={styles.calendarModalTitle}>📅 Fecha Fija de Pago</Text>
+                <Text style={styles.calendarModalTitle}>Fecha Fija de Pago</Text>
                 <Text style={styles.calendarModalSubtitle}>Selecciona el día acordado para el cobro</Text>
               </View>
               <TouchableOpacity
@@ -914,7 +1277,6 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               ))}
             </View>
 
-            {/* Fecha seleccionada en una sola línea y botón aceptar */}
             <View style={styles.calendarFooterRow}>
               <Text style={styles.calendarFooterPreview}>
                 Fecha fija: <Text style={{ fontWeight: '800', color: COLORS.primary }}>{fixedDueDateStr}</Text>
@@ -989,6 +1351,167 @@ const styles = StyleSheet.create({
   },
   body: {
     marginBottom: 12,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modeSwitchContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  modeSwitchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  modeSwitchBtnActive: {
+    backgroundColor: '#0F172A',
+  },
+  modeSwitchText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  modeSwitchTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  searchCustomerBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 10,
+    height: 36,
+    marginBottom: 8,
+  },
+  searchCustomerInput: {
+    flex: 1,
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    color: '#0F172A',
+    paddingVertical: 0,
+  },
+  newCustomerQuickChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 16,
+    backgroundColor: '#F0FDFA',
+    borderWidth: 1.5,
+    borderColor: '#99F6E4',
+    borderStyle: 'dashed',
+    marginRight: 8,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  newCustomerQuickChipTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#0F766E',
+  },
+  newCustomerQuickChipSub: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10.5,
+    color: '#0D9488',
+    fontWeight: '600',
+  },
+  newCustomerCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  fieldLabel: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 4,
+  },
+  textField: {
+    fontFamily: FONT_FAMILY,
+    height: 38,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    paddingHorizontal: 10,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  routePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    marginRight: 6,
+  },
+  routePillActive: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+  },
+  routePillText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  routePillTextActive: {
+    color: '#FFFFFF',
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  checkboxBox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxBoxChecked: {
+    backgroundColor: '#0D9488',
+    borderColor: '#0D9488',
+  },
+  consentText: {
+    flex: 1,
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    color: '#475569',
+    lineHeight: 15,
   },
   label: {
     fontFamily: FONT_FAMILY,
@@ -1070,50 +1593,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textSecondary,
   },
-  modalityContainer: {
-    gap: 8,
-    marginBottom: 16,
-  },
-  modalityRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  modalityBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  modalityBtnActive: {
-    backgroundColor: '#EFF6FF',
-    borderWidth: 2,
-    borderColor: '#2563EB',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  modalityBtnText: {
-    fontFamily: FONT_FAMILY,
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  modalityBtnTextActive: {
-    color: '#1D4ED8',
-    fontWeight: '900',
-  },
   installmentsRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1181,50 +1660,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '800',
-  },
-  fixedDateBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceSoft,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    height: 44,
-    borderWidth: 1,
-    borderColor: COLORS.inputBorder,
-  },
-  fixedDateInput: {
-    fontFamily: FONT_FAMILY,
-    flex: 1,
-    color: COLORS.textPrimary,
-    fontSize: 14,
-    fontWeight: '700',
-    paddingVertical: 0,
-  },
-  fixedDateHint: {
-    fontFamily: FONT_FAMILY,
-    fontSize: 11,
-    color: COLORS.primary,
-    fontWeight: '800',
-  },
-  quickDaysPill: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: 9999,
-    backgroundColor: COLORS.surfaceSoft,
-    borderWidth: 1,
-    borderColor: COLORS.microBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickDaysPillActive: {
-    backgroundColor: COLORS.dockBg,
-    borderColor: COLORS.dockBg,
-  },
-  quickDaysText: {
-    fontFamily: FONT_FAMILY,
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
   },
   baseAvailableBox: {
     backgroundColor: '#f0f9ff',
@@ -1500,7 +1935,7 @@ const styles = StyleSheet.create({
   calendarConfirmBtn: {
     backgroundColor: '#2563EB',
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 8,
   },
   calendarConfirmBtnText: {
