@@ -389,7 +389,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
         cleanCustomersData: true, // La cartera de la oficina siempre inicia limpia en $0 lista para registrar clientes
         routesConfig: wizRoutesDraft.map((d, i) => {
           const cleanName = d.name.trim() || `Ruta ${i + 1}`;
-          const targetAdmin = parseInt(d.targetAdministrativeStr?.replace(/\D/g, '') || '0', 10);
           const expectedCust = parseInt(d.expectedCustomersCountStr?.replace(/\D/g, '') || '0', 10);
           return {
             id: d.id,
@@ -397,7 +396,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
             collectorName: cleanName,
             username: d.username.trim().toLowerCase(),
             password: d.password.trim(),
-            targetAdministrative: targetAdmin,
+            targetAdministrative: 0,
             expectedCustomersCount: expectedCust,
           };
         }),
@@ -847,22 +846,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     </View>
                   </View>
 
-                  <View style={[styles.twoColRow, { marginTop: 6 }]}>
-                    <View style={styles.colItem}>
-                      <Text style={styles.fieldCaption}>Dinero Total de la Ruta ($)</Text>
-                      <TextInput
-                        style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
-                        value={rt.targetAdministrativeStr ? (parseInt(rt.targetAdministrativeStr.replace(/\D/g, ''), 10) || 0).toLocaleString('es-CO') : ''}
-                        onChangeText={(v) => updateRouteDraft(idx, 'targetAdministrativeStr', v.replace(/\D/g, ''))}
-                        placeholder="ej: 20.000.000"
-                        placeholderTextColor={COLORS.textMuted}
-                        keyboardType="numeric"
-                        editable={isFormEditable}
-                      />
-                    </View>
-                  </View>
-                  <Text style={{ fontSize: 10, color: '#0F766E', marginTop: 3, fontStyle: 'italic' }}>
-                    Base disponible = Dinero Total de la ruta - Cartera en calle de los clientes que pases uno a uno.
+                  <Text style={{ fontSize: 10, color: '#0F766E', marginTop: 6, fontStyle: 'italic' }}>
+                    Al ingresar, registrarás los clientes del taco (cartulinas físicas) para conformar el Administrativo, la Cartera en Calle, la Base Disponible y la Papelería.
                   </Text>
                 </View>
               ))}

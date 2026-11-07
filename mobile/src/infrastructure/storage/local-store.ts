@@ -1270,19 +1270,27 @@ class LocalStore {
     //    - El Administrativo permanece inmutable.
     // =========================================================================
 
-    // Base asignada inicial o cupo administrativo (ej: $5.000.000 COP)
-    const baseCapital = totalAssignedCashBase > 0
-      ? totalAssignedCashBase
-      : (totalTarget > 0 ? totalTarget : 0);
-
     // Préstamos válidos colocados en la ruta (activos, cancelados por pago completo y renovados; excluye anulados)
     const validLoans = scopedLoans.filter(
       (l) => l.status === 'ACTIVE' || l.status === 'PAID' || l.status === 'RENEWED' || l.status === 'DEFAULTED'
     );
 
-    // Interés/utilidad pactada y generada por todos los créditos colocados:
+    // Opción A (Carga del Taco):
+    // Cada cartulina física pasada a digital aporta su total pactado al patrimonio inicial de la ruta:
+    // - Las cuotas pendientes quedan en Cartera en Calle (activeCapitalInStreet).
+    // - Las cuotas ya cobradas en el taco entran directamente a la Base Disponible (cashAvailableInHand).
+    const tacoBaseCapital = validLoans
+      .filter((l) => isMigratedCardLoan(l))
+      .reduce((sum, l) => sum + (l.totalAgreed || 0), 0);
+
+    const manualBaseCapital = totalAssignedCashBase > 0
+      ? totalAssignedCashBase
+      : (totalTarget > 0 ? totalTarget : 0);
+
+    const baseCapital = manualBaseCapital + tacoBaseCapital;
+
+    // Interés/utilidad pactada y generada por los préstamos nuevos (posteriores al taco):
     // Permanece en el patrimonio tanto mientras el crédito está activo como cuando ya se pagó por completo.
-    // Nunca se borra al pagar la última cuota.
     const totalEarnedInterest = validLoans
       .filter((l) => !isMigratedCardLoan(l))
       .reduce(
@@ -1290,17 +1298,28 @@ class LocalStore {
         0
       );
 
+    const totalCapitalInjectedAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'INCOME' && cm.category === 'CAPITAL_INJECTION')
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const totalExpensesAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'EXPENSE')
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const totalRecaudoRetiradoAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RECAUDO_OFICINA')
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
     // Administrativo / Patrimonio operativo total:
-    // Arranca en el capital base y SUBE únicamente con los intereses generados (+ inyecciones de capital).
-    // NO baja jamás al cobrar cuotas; el administrativo permanece intacto.
+    // Se construye con el Taco cargado (+ base manual si existe) y SUBE con los intereses de nuevos créditos
+    // e inyecciones de capital. NO baja jamás al cobrar cuotas.
     const totalAdministrativeCapital = Math.max(
-      baseCapital,
+      0,
       baseCapital +
         totalEarnedInterest +
-        capitalInjectedToday -
-        expensesToday -
-        recaudoRetiradoToday -
-        paperworkRetiradoToday
+        totalCapitalInjectedAllTime -
+        totalExpensesAllTime -
+        totalRecaudoRetiradoAllTime
     );
 
     // Base en oficina / efectivo en mano:
@@ -1732,7 +1751,7 @@ class LocalStore {
     );
     const isPaperworkEnabled = this.officeConfig.paperworkFeeEnabled ?? true;
     const paperworkFee =
-      isMigration || !isPaperworkEnabled
+      !isPaperworkEnabled
         ? 0
         : calculatePaperworkFee(params.principal, {
             rate: this.officeConfig.paperworkRate || 5000,
@@ -2133,16 +2152,7 @@ class LocalStore {
 
     this.cashMovements.unshift(movement);
 
-    if (params.increaseTargetAdmin) {
-      const routeIdx = this.routes.findIndex((r) => r.id === targetRouteId);
-      if (routeIdx >= 0) {
-        this.routes[routeIdx] = {
-          ...this.routes[routeIdx],
-          targetAdministrative: (this.routes[routeIdx].targetAdministrative || 20000000) + params.amount,
-        };
-        await safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
-      }
-    }
+    // La inyección de capital ya incrementa automáticamente la Base Disponible y el Administrativo mediante totalCapitalInjectedAllTime
 
     await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
     this.notify();
@@ -2215,14 +2225,15 @@ class LocalStore {
     const isPaperworkEnabled = this.officeConfig.paperworkFeeEnabled ?? true;
     const pRate = this.officeConfig.paperworkRate || 5000;
 
-    // 1. Préstamos nuevos con papelería
+    // 1. Préstamos nuevos y cartulinas del taco digitalizadas con papelería
     this.loans.forEach((l) => {
       if (isFilter && l.routeId !== routeId) return;
       if (l.status === 'CANCELLED') return;
-      if (l.notes && l.notes.startsWith('Migrado de cartulina')) return;
+      if (l.previousLoanId) return; // Las renovaciones se contabilizan en el bloque 2
       const fee = isPaperworkEnabled ? calculatePaperworkFee(l.principal, { rate: pRate, base: 100000, calculationMode: 'PROPORTIONAL' }) : 0;
       if (fee > 0) {
         const cust = this.customers.find((c) => c.id === l.customerId);
+        const isTaco = Boolean(l.notes && l.notes.startsWith('Migrado de cartulina'));
         items.push({
           id: "pap-loan-" + l.id,
           date: l.createdAt,
@@ -2230,7 +2241,9 @@ class LocalStore {
           customerName: cust ? cust.fullName : 'Cliente',
           loanNumber: l.loanNumber,
           amount: fee,
-          notes: "Papelería en crédito nuevo de $" + l.principal.toLocaleString('es-CO'),
+          notes: isTaco
+            ? "Papelería de cartulina del taco ($" + l.principal.toLocaleString('es-CO') + ")"
+            : "Papelería en crédito nuevo de $" + l.principal.toLocaleString('es-CO'),
           routeId: l.routeId,
         });
       }

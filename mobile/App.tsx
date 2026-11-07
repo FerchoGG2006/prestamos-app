@@ -757,6 +757,9 @@ function MainApp({
       setSelectedRouteId('ALL');
     }
     syncFromStore();
+    if (localStore.getCustomers().length === 0) {
+      setNewLoanModalVisible(true);
+    }
     if (remember) {
       await safeStorage.setItem('@prestamos_logged_user_id', user.id);
     } else {

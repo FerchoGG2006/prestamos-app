@@ -1090,6 +1090,43 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               Base disponible para prestar hoy: <Text style={{ fontWeight: '800', color: '#1D4ED8' }}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
             </Text>
           </View>
+          {customers.length === 0 && (
+            <View
+              style={{
+                marginTop: 10,
+                padding: 12,
+                borderRadius: 12,
+                backgroundColor: '#F0FDF4',
+                borderWidth: 1,
+                borderColor: '#86EFAC',
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#14532D', marginBottom: 4 }}>
+                Paso Inicial Obligatorio: Cargar Clientes del Taco
+              </Text>
+              <Text style={{ fontSize: 11, color: '#166534', lineHeight: 15, marginBottom: 10 }}>
+                Ingresa las cartulinas físicas del taco de esta ruta (con sus cuotas pagadas y papelería) para generar el Administrativo, la Cartera en Calle y la Base Disponible para prestar.
+              </Text>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#0F766E',
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  borderRadius: 10,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                activeOpacity={0.85}
+                onPress={onOpenNewLoan}
+              >
+                <FilePlus2 size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '800' }}>
+                  Ingresar Clientes del Taco (Cartulina a Digital)
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       )}
 
@@ -1790,11 +1827,15 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             {pendingRouteCards.length === 0 && completedRouteCards.length === 0 && (
               <View style={styles.emptyState}>
                 <MapPin size={34} color={COLORS.primary} style={{ marginBottom: 10 }} />
-                <Text style={styles.emptyTitle}>Hoja de Ruta Lista para Operar</Text>
+                <Text style={styles.emptyTitle}>
+                  {searchQuery || activeFilter !== 'TODOS'
+                    ? 'Sin resultados para este filtro'
+                    : 'Carga Inicial del Taco (Cartulinas a Digital)'}
+                </Text>
                 <Text style={[styles.emptyText, { textAlign: 'center', marginBottom: 16 }]}>
                   {searchQuery || activeFilter !== 'TODOS'
                     ? 'No se encontraron clientes para el filtro actual.'
-                    : 'Aún no hay clientes registrados en esta ruta. Puedes registrar tu primer cliente o recibir la ruta desde la oficina.'}
+                    : 'Registra los clientes que están en el taco físico de esta ruta para generar el Administrativo, la Cartera en Calle, la Base Disponible y la Papelería.'}
                 </Text>
                 <TouchableOpacity
                   style={{
@@ -1810,7 +1851,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 >
                   <FilePlus2 size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
                   <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>
-                    + Registrar Cliente / Crédito
+                    Ingresar Clientes del Taco (Cartulina a Digital)
                   </Text>
                 </TouchableOpacity>
               </View>

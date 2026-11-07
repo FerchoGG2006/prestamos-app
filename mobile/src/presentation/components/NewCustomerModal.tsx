@@ -64,6 +64,10 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
           ? defaultRouteId
           : localStore.getRoutes()[0]?.id || 'route-norte';
       setSelectedRouteId(targetRoute);
+      if (localStore.getCustomers().length === 0) {
+        setWithLoan(true);
+        setIsCardMigration(true);
+      }
       if (isCollector) {
         const fixedRate = Math.round((localStore.getOfficeConfig().defaultInterestRate || 0.2) * 100);
         setInterestPercentStr(String(fixedRate));
@@ -124,7 +128,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
       ? calculateLoanSummary(principal, interestRate, installmentCount)
       : null;
   const paperwork =
-    principal > 0 && isPaperworkEnabled && !isMigration
+    principal > 0 && isPaperworkEnabled
       ? calculatePaperworkFee(principal, {
           rate: paperworkRate,
           base: 100000,
@@ -174,7 +178,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
     setFormError('');
   };
 
-  const handleSaveCustomerAndLoan = async () => {
+  const handleSaveCustomerAndLoan = async (keepOpenForNextTaco: boolean = false) => {
     setFormError('');
     if (!fullName.trim() || !documentNumber.trim()) {
       const msg = 'Ingrese el nombre completo y el número de cédula del titular en la sección 1.';
@@ -252,19 +256,20 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
           const paidTotal = loanRes.loan.installmentAmount * paidInstallmentNums.length;
           const pendingTotal = Math.max(0, loanRes.loan.totalAgreed - paidTotal);
           Alert.alert(
-            '¡Cliente y Cartulina Digitalizados!',
-            `Se registró a ${fullName} y se pasó su cartulina al crédito digital ${loanRes.loan.loanNumber}.\n\n` +
-            `• Pagado en cartulina: ${paidInstallmentNums.length}/${installmentCount} cuotas (${formatCOP(paidTotal)})\n` +
-            `• Saldo pendiente digital: ${formatCOP(pendingTotal)}\n` +
-            `• Impacto en caja hoy: $0 (Caja protegida)`
+            'Cliente y Cartulina del Taco Registrados',
+            `Se registró a ${fullName} con la cartulina digital ${loanRes.loan.loanNumber}.\n\n` +
+            `• Aporte al Administrativo: ${formatCOP(loanRes.loan.totalAgreed)}\n` +
+            `• Recaudado en el taco (entra a Base): ${paidInstallmentNums.length}/${installmentCount} cuotas (${formatCOP(paidTotal)})\n` +
+            `• Saldo pendiente (entra a Cartera en Calle): ${formatCOP(pendingTotal)}\n` +
+            `• Cartulina / Papelería registrada: ${isPaperworkEnabled ? formatCOP(paperwork) : '$0 (Desactivada)'}`
           );
         } else {
           Alert.alert(
-            '¡Cliente y Crédito Registrados!',
+            'Cliente y Crédito Registrados',
             `Se registró a ${fullName} y se generó el crédito ${loanRes.loan.loanNumber}.\n\n` +
             `• Modalidad: ${frequency}\n` +
             `• Capital: ${formatCOP(principal)}\n` +
-            `• Cartulina / Papelería: ${isPaperworkEnabled && !isMigration ? formatCOP(paperwork) : '$0 (Desactivada)'}\n` +
+            `• Cartulina / Papelería: ${isPaperworkEnabled ? formatCOP(paperwork) : '$0 (Desactivada)'}\n` +
             `• Efectivo neto entregado: ${formatCOP(netCashToDeliver)}\n` +
             `• Cuota: ${formatCOP(loanRes.loan.installmentAmount)}`
           );
@@ -275,7 +280,12 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
       resetForm();
       onSuccess();
-      onClose();
+      if (keepOpenForNextTaco) {
+        setWithLoan(true);
+        setIsCardMigration(true);
+      } else {
+        onClose();
+      }
     } catch (err: any) {
       const errMsg = err.message || 'No se pudo completar el registro';
       setFormError(errMsg);
@@ -890,36 +900,54 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>
-                        {isMigration
-                          ? 'Impacto Caja Hoy:'
-                          : isPaperworkEnabled
+                        {isPaperworkEnabled
                           ? `Cartulina / Papelería (${formatCOP(paperworkRate)} / $100k):`
                           : 'Cartulina / Papelería:'}
                       </Text>
                       <Text
                         style={[
                           styles.summaryValueMuted,
-                          (!isPaperworkEnabled || isMigration) && { color: COLORS.textMuted },
+                          !isPaperworkEnabled && { color: COLORS.textMuted },
+                          isMigration && isPaperworkEnabled && { color: '#059669', fontWeight: '800' },
                         ]}
                       >
-                        {isMigration
-                          ? '$ 0 (Cartulina física migrada)'
-                          : isPaperworkEnabled && paperwork > 0
-                          ? `- ${formatCOP(paperwork)}`
+                        {isPaperworkEnabled && paperwork > 0
+                          ? isMigration
+                            ? `+ ${formatCOP(paperwork)}`
+                            : `- ${formatCOP(paperwork)}`
                           : '$ 0 (Desactivada por administración)'}
                       </Text>
                     </View>
 
                     <View style={styles.summaryDivider} />
 
-                    <View style={styles.summaryRowHighlight}>
-                      <Text style={styles.summaryLabelHighlight}>
-                        EFECTIVO NETO A ENTREGAR:
-                      </Text>
-                      <Text style={styles.summaryValueHighlight}>
-                        {formatCOP(netCashToDeliver)}
-                      </Text>
-                    </View>
+                    {isMigration ? (
+                      <>
+                        <View style={styles.summaryRow}>
+                          <Text style={styles.summaryLabel}>Recaudado en el Taco (entra a Base):</Text>
+                          <Text style={[styles.summaryValue, { color: '#1D4ED8', fontWeight: '800' }]}>
+                            + {formatCOP(summary.installmentAmount * paidInstallmentNums.length)}
+                          </Text>
+                        </View>
+                        <View style={styles.summaryRowHighlight}>
+                          <Text style={styles.summaryLabelHighlight}>
+                            SALDO A CARTERA EN CALLE:
+                          </Text>
+                          <Text style={styles.summaryValueHighlight}>
+                            {formatCOP(Math.max(0, summary.totalAgreed - summary.installmentAmount * paidInstallmentNums.length))}
+                          </Text>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.summaryRowHighlight}>
+                        <Text style={styles.summaryLabelHighlight}>
+                          EFECTIVO NETO A ENTREGAR:
+                        </Text>
+                        <Text style={styles.summaryValueHighlight}>
+                          {formatCOP(netCashToDeliver)}
+                        </Text>
+                      </View>
+                    )}
 
                     <View style={styles.summaryDivider} />
 
@@ -1004,10 +1032,31 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
             </View>
           ) : null}
 
+          {withLoan && isCardMigration && (
+            <TouchableOpacity
+              style={[
+                styles.saveBtn,
+                {
+                  backgroundColor: '#0F766E',
+                  marginBottom: 8,
+                  paddingVertical: 11,
+                },
+                isSubmitting && { opacity: 0.5 },
+              ]}
+              onPress={() => handleSaveCustomerAndLoan(true)}
+              disabled={isSubmitting}
+            >
+              <UserPlus size={16} color="#ffffff" style={{ marginRight: 8 }} />
+              <Text style={styles.saveBtnText}>
+                {isSubmitting ? 'Procesando...' : 'Guardar y Agregar Otro del Taco'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {/* Botón Principal */}
           <TouchableOpacity
             style={[styles.saveBtn, isSubmitting && { opacity: 0.5 }]}
-            onPress={handleSaveCustomerAndLoan}
+            onPress={() => handleSaveCustomerAndLoan(false)}
             disabled={isSubmitting}
           >
             <UserPlus size={18} color="#ffffff" style={{ marginRight: 8 }} />

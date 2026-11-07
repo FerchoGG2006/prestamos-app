@@ -135,6 +135,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         setSelectedCustomerId(preselectedCustomerId);
       } else if (customers.length === 0) {
         setCustomerMode('NEW');
+        setIsCardMigration(true);
       } else {
         setCustomerMode('EXISTING');
       }
@@ -203,7 +204,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   const isPaperworkEnabled = officeConfig.paperworkFeeEnabled ?? true;
   const isMigration = isCardMigration;
   const paperwork =
-    principal > 0 && isPaperworkEnabled && !isMigration
+    principal > 0 && isPaperworkEnabled
       ? calculatePaperworkFee(principal, {
         rate: officeConfig.paperworkRate || 5000,
         base: 100000,
@@ -250,7 +251,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     );
   });
 
-  const handleCreateLoan = async () => {
+  const handleCreateLoan = async (keepOpenForNextTaco: boolean = false) => {
     setFormError('');
     if (principal <= 0) {
       const msg = 'Ingrese un monto de capital mayor a $0.';
@@ -339,11 +340,12 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         const paidTotal = res.loan.installmentAmount * paidInstallmentNums.length;
         const pendingTotal = Math.max(0, res.loan.totalAgreed - paidTotal);
         Alert.alert(
-          'Cartulina Pasada a Digital',
+          'Cartulina del Taco Pasada a Digital',
           `Crédito ${res.loan.loanNumber} digitalizado con éxito.\n\n` +
-          `• Cuotas ya pagadas en cartulina: ${paidInstallmentNums.length} de ${installmentCount} (${formatCOP(paidTotal)})\n` +
-          `• Saldo pendiente por cobrar: ${formatCOP(pendingTotal)}\n` +
-          `• Impacto en caja de hoy: $0 (Caja protegida)`
+          `• Aporte al Administrativo: ${formatCOP(res.loan.totalAgreed)}\n` +
+          `• Recaudado en el taco (entra a Base): ${paidInstallmentNums.length} de ${installmentCount} (${formatCOP(paidTotal)})\n` +
+          `• Saldo pendiente (entra a Cartera en Calle): ${formatCOP(pendingTotal)}\n` +
+          `• Cartulina / Papelería registrada: ${isPaperworkEnabled ? formatCOP(paperwork) : '$0 (Desactivada)'}`
         );
       } else {
         Alert.alert(
@@ -357,8 +359,15 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         );
       }
       resetNewCustomerFields();
+      setPaidInstallmentNums([]);
+      setQuickPaidCountStr('');
       onSuccess();
-      onClose();
+      if (keepOpenForNextTaco) {
+        setCustomerMode('NEW');
+        setIsCardMigration(true);
+      } else {
+        onClose();
+      }
     } catch (err: any) {
       const errMsg = err.message || 'Error al crear préstamo';
       setFormError(errMsg);
@@ -1059,37 +1068,56 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 <View style={styles.dashedDivider} />
                 <View style={styles.calcRow}>
                   <Text style={styles.calcLabel}>
-                    {isMigration
-                      ? 'Impacto Caja Hoy:'
-                      : isPaperworkEnabled
-                        ? `Cartulina / Papelería (${formatCOP(officeConfig.paperworkRate || 5000)} / $100k):`
-                        : 'Cartulina / Papelería:'}
+                    {isPaperworkEnabled
+                      ? `Cartulina / Papelería (${formatCOP(officeConfig.paperworkRate || 5000)} / $100k):`
+                      : 'Cartulina / Papelería:'}
                   </Text>
                   <Text
                     style={[
                       styles.calcVal,
-                      isMigration
-                        ? { color: COLORS.primary }
-                        : isPaperworkEnabled && paperwork > 0
-                          ? { color: COLORS.danger }
-                          : { color: COLORS.textMuted },
+                      isPaperworkEnabled && paperwork > 0
+                        ? isMigration
+                          ? { color: '#059669' }
+                          : { color: COLORS.danger }
+                        : { color: COLORS.textMuted },
                     ]}
                   >
-                    {isMigration
-                      ? '$ 0 (Cartulina física migrada)'
-                      : isPaperworkEnabled && paperwork > 0
-                        ? `- ${formatCOP(paperwork)}`
-                        : '$ 0 (Desactivada por administración)'}
+                    {isPaperworkEnabled && paperwork > 0
+                      ? isMigration
+                        ? `+ ${formatCOP(paperwork)}`
+                        : `- ${formatCOP(paperwork)}`
+                      : '$ 0 (Desactivada por administración)'}
                   </Text>
                 </View>
-                <View style={styles.calcRow}>
-                  <Text style={[styles.calcLabel, { fontWeight: '800', color: COLORS.textPrimary }]}>
-                    Efectivo Neto a Entregar:
-                  </Text>
-                  <Text style={[styles.calcVal, { fontSize: 17, color: COLORS.success }]}>
-                    {formatCOP(netCashToDeliver)}
-                  </Text>
-                </View>
+                {isMigration ? (
+                  <>
+                    <View style={styles.calcRow}>
+                      <Text style={[styles.calcLabel, { fontWeight: '700', color: '#1D4ED8' }]}>
+                        Recaudado en el Taco (entra a Base):
+                      </Text>
+                      <Text style={[styles.calcVal, { color: '#1D4ED8' }]}>
+                        + {formatCOP(summary.installmentAmount * paidInstallmentNums.length)}
+                      </Text>
+                    </View>
+                    <View style={styles.calcRow}>
+                      <Text style={[styles.calcLabel, { fontWeight: '800', color: COLORS.textPrimary }]}>
+                        Saldo Pendiente (entra a Cartera en Calle):
+                      </Text>
+                      <Text style={[styles.calcVal, { fontSize: 16, color: '#0F766E' }]}>
+                        {formatCOP(Math.max(0, summary.totalAgreed - summary.installmentAmount * paidInstallmentNums.length))}
+                      </Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.calcRow}>
+                    <Text style={[styles.calcLabel, { fontWeight: '800', color: COLORS.textPrimary }]}>
+                      Efectivo Neto a Entregar:
+                    </Text>
+                    <Text style={[styles.calcVal, { fontSize: 17, color: COLORS.success }]}>
+                      {formatCOP(netCashToDeliver)}
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
           </ScrollView>
@@ -1112,9 +1140,30 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </View>
           ) : null}
 
+          {isCardMigration && (
+            <TouchableOpacity
+              style={[
+                styles.confirmBtn,
+                {
+                  backgroundColor: '#0F766E',
+                  marginBottom: 8,
+                  paddingVertical: 11,
+                },
+                isSubmitting && { opacity: 0.5 },
+              ]}
+              onPress={() => handleCreateLoan(true)}
+              disabled={isSubmitting}
+            >
+              <FilePlus2 size={16} color="#ffffff" style={{ marginRight: 8 }} />
+              <Text style={styles.confirmBtnText}>
+                {isSubmitting ? 'Guardando...' : 'Guardar y Agregar Otro del Taco'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.confirmBtn, isSubmitting && { opacity: 0.5 }]}
-            onPress={handleCreateLoan}
+            onPress={() => handleCreateLoan(false)}
             disabled={isSubmitting}
           >
             <FilePlus2 size={18} color="#ffffff" style={{ marginRight: 8 }} />

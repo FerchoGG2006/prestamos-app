@@ -147,7 +147,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [editCollectorName, setEditCollectorName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [editPassword, setEditPassword] = useState('');
-  const [editTargetAdminStr, setEditTargetAdminStr] = useState('20000000');
+  const [editTargetAdminStr, setEditTargetAdminStr] = useState('0');
   const [editInitialCashBaseStr, setEditInitialCashBaseStr] = useState('0');
   const [editExpectedCustomersStr, setEditExpectedCustomersStr] = useState('40');
 
@@ -191,7 +191,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       const caps: Record<string, { targetAdminStr: string; cashBaseStr: string }> = {};
       loadedRoutes.forEach((r) => {
         caps[r.id] = {
-          targetAdminStr: (r.targetAdministrative ?? 20000000).toString(),
+          targetAdminStr: (r.targetAdministrative ?? 0).toString(),
           cashBaseStr: (r.initialCashBase ?? 0).toString(),
         };
       });
@@ -210,7 +210,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
   const handleAdjustTargetAdmin = (routeId: string, deltaOrSet: number, isDelta: boolean) => {
     setRouteCapitals((prev) => {
-      const cur = prev[routeId] || { targetAdminStr: '20000000', cashBaseStr: '0' };
+      const cur = prev[routeId] || { targetAdminStr: '0', cashBaseStr: '0' };
       const currentVal = parseInt(cur.targetAdminStr.replace(/\D/g, ''), 10) || 0;
       const nextVal = isDelta ? Math.max(0, currentVal + deltaOrSet) : Math.max(0, deltaOrSet);
       return {
@@ -293,7 +293,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
     setEditCollectorName(collector?.name || route.collectorName || '');
     setEditUsername(collector?.username || '');
     setEditPassword(collector?.password || '');
-    setEditTargetAdminStr(String(route.targetAdministrative || 20000000));
+    setEditTargetAdminStr(String(route.targetAdministrative || 0));
     setEditInitialCashBaseStr(String(route.initialCashBase || 0));
     setEditExpectedCustomersStr(String(route.expectedCustomersCount || 40));
   };
@@ -384,7 +384,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       const routeId = `route-${Date.now()}`;
       const collectorId = `usr-col-${Date.now()}`;
       const colDisplayName = newCollectorName.trim() || newRouteName.trim();
-      const parsedNewAdmin = parseInt(newTargetAdminStr.replace(/\D/g, ''), 10) || 20000000;
+      const parsedNewAdmin = parseInt(newTargetAdminStr.replace(/\D/g, ''), 10) || 0;
       const parsedNewCashBase = parseInt(newInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
       const parsedNewCustomers = parseInt(newExpectedCustomersStr.replace(/\D/g, ''), 10) || 40;
 
@@ -427,7 +427,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setNewCollectorName('');
       setNewUsername('');
       setNewPassword('');
-      setNewTargetAdminStr('20000000');
+      setNewTargetAdminStr('0');
       setNewInitialCashBaseStr('0');
       setNewExpectedCustomersStr('40');
 
@@ -822,14 +822,7 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
               const todayStr = getLocalTodayStr();
               const globalMetrics = localStore.getDailyRouteMetrics(todayStr);
               const allLoans = localStore.getLoans().filter((l) => l.status === 'ACTIVE');
-              const globalTargetAdmin = routesList.reduce((sum, r) => {
-                const curCap = routeCapitals[r.id];
-                const val = curCap
-                  ? (parseInt(curCap.targetAdminStr.replace(/\D/g, ''), 10) || 0)
-                  : (r.targetAdministrative || 20000000);
-                return sum + val;
-              }, 0);
-              const displayGlobalAdmin = globalTargetAdmin > 0 ? globalTargetAdmin : globalMetrics.totalAdministrativeCapital;
+              const displayGlobalAdmin = globalMetrics.totalAdministrativeCapital;
               const displayGlobalCartera = globalMetrics.activeCapitalInStreet;
               const displayGlobalBase = globalMetrics.cashAvailableInHand;
 
@@ -895,12 +888,12 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       .filter((l) => l.routeId === route.id && l.status === 'ACTIVE');
                     const rtMetrics = localStore.getDailyRouteMetrics(todayStr, route.id);
                     const capData = routeCapitals[route.id] || {
-                      targetAdminStr: (route.targetAdministrative || 20000000).toString(),
+                      targetAdminStr: (route.targetAdministrative || 0).toString(),
                       cashBaseStr: (route.initialCashBase || 0).toString(),
                     };
                     const curTargetAdmin = parseInt(capData.targetAdminStr.replace(/\D/g, ''), 10) || 0;
                     const curInitialBase = parseInt(capData.cashBaseStr.replace(/\D/g, ''), 10) || 0;
-                    const displayAdmin = curTargetAdmin > 0 ? curTargetAdmin : rtMetrics.totalAdministrativeCapital;
+                    const displayAdmin = rtMetrics.totalAdministrativeCapital;
                     const displayCartera = rtMetrics.activeCapitalInStreet;
                     const displayBase = rtMetrics.cashAvailableInHand;
 
@@ -1374,30 +1367,8 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       </View>
                     </View>
 
-                    <View style={styles.inputRow}>
-                      <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                        <Text style={styles.inputLabel}>Administrativo de la Ruta ($ COP)</Text>
-                        <TextInput
-                          style={styles.textInput}
-                          value={newTargetAdminStr}
-                          onChangeText={(t) => setNewTargetAdminStr(t.replace(/\D/g, ''))}
-                          placeholder="20000000"
-                          keyboardType="numeric"
-                        />
-                      </View>
-                      <View style={[styles.inputGroup, { flex: 1 }]}>
-                        <Text style={styles.inputLabel}>Base Efectivo Inicial ($ COP)</Text>
-                        <TextInput
-                          style={styles.textInput}
-                          value={newInitialCashBaseStr}
-                          onChangeText={(t) => setNewInitialCashBaseStr(t.replace(/\D/g, ''))}
-                          placeholder="0"
-                          keyboardType="numeric"
-                        />
-                      </View>
-                    </View>
                     <Text style={{ fontSize: 10.5, color: '#0F766E', marginBottom: 8, fontStyle: 'italic' }}>
-                      La base disponible se calcula automáticamente: Administrativo - Cartera en calle de los clientes que vayas ingresando uno a uno.
+                      Al ingresar los clientes del taco de esta ruta, se generarán automáticamente su Administrativo, Cartera en Calle, Base Disponible y Papelería.
                     </Text>
 
                     <TouchableOpacity
@@ -1552,9 +1523,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                             const routeLoans = localStore
                               .getLoans()
                               .filter((l) => l.routeId === route.id && l.status === 'ACTIVE');
-                            const carteraCalle = routeLoans.reduce((sum, l) => sum + (l.principal || 0), 0);
-                            const targetAdmin = route.targetAdministrative || 20000000;
-                            const baseDisponible = Math.max(0, targetAdmin - carteraCalle);
+                            const rtMetrics = localStore.getDailyRouteMetrics(getLocalTodayStr(), route.id);
+                            const carteraCalle = rtMetrics.activeCapitalInStreet;
+                            const targetAdmin = rtMetrics.totalAdministrativeCapital;
+                            const baseDisponible = rtMetrics.cashAvailableInHand;
 
                             return (
                               <View
