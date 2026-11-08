@@ -135,10 +135,14 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       setSelectedRouteId(targetRoute);
 
       setWithLoan(true);
+      const lastLoanWasTaco = Boolean(
+        loans[0]?.notes?.startsWith('Migrado de cartulina')
+      );
       if (preselectedCustomerId) {
         setCustomerMode('EXISTING');
         setSelectedCustomerId(preselectedCustomerId);
-      } else if (customers.length === 0) {
+        setIsCardMigration(false);
+      } else if (customers.length === 0 || loans.length === 0 || lastLoanWasTaco) {
         setCustomerMode('NEW');
         setIsCardMigration(true);
       } else if (initialCustomerMode) {

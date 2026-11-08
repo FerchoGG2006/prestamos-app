@@ -1316,7 +1316,10 @@ class LocalStore {
 
     // Desglose de Salidas / Salientes (Préstamos Paridos & Renovaciones, excluyendo migraciones de cartulina física)
     const isMigratedCardLoan = (l: Loan) =>
-      Boolean(l.notes?.startsWith('Migrado de cartulina física'));
+      Boolean(
+        l.notes?.startsWith('Migrado de cartulina física') ||
+        l.notes?.startsWith('Migrado de cartulina fisica')
+      );
     const todayNewLoans = scopedLoans.filter(
       (l) =>
         l.createdAt.startsWith(todayStr) &&
@@ -1417,28 +1420,9 @@ class LocalStore {
       (l) => l.status === 'ACTIVE' || l.status === 'PAID' || l.status === 'RENEWED' || l.status === 'DEFAULTED'
     );
 
-    // Opción A (Carga del Taco):
-    // Cada cartulina física pasada a digital aporta su total pactado al patrimonio inicial de la ruta:
-    // - Las cuotas pendientes quedan en Cartera en Calle (activeCapitalInStreet).
-    // - Las cuotas ya cobradas en el taco entran directamente a la Base Disponible (cashAvailableInHand).
-    const tacoBaseCapital = validLoans
-      .filter((l) => isMigratedCardLoan(l))
-      .reduce((sum, l) => sum + (l.totalAgreed || 0), 0);
-
     const manualBaseCapital = totalAssignedCashBase > 0
       ? totalAssignedCashBase
       : (totalTarget > 0 ? totalTarget : 0);
-
-    const baseCapital = manualBaseCapital + tacoBaseCapital;
-
-    // Interés/utilidad pactada y generada por los préstamos nuevos (posteriores al taco):
-    // Permanece en el patrimonio tanto mientras el crédito está activo como cuando ya se pagó por completo.
-    const totalEarnedInterest = validLoans
-      .filter((l) => !isMigratedCardLoan(l))
-      .reduce(
-        (sum, l) => sum + Math.max(0, l.interestAmount || ((l.totalAgreed || 0) - (l.principal || 0))),
-        0
-      );
 
     const totalCapitalInjectedAllTime = scopedCashMovements
       .filter((cm) => cm.type === 'INCOME' && cm.category === 'CAPITAL_INJECTION')
@@ -1452,30 +1436,67 @@ class LocalStore {
       .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RECAUDO_OFICINA')
       .reduce((sum, cm) => sum + cm.amount, 0);
 
-    // Administrativo / Patrimonio operativo total:
-    // Se construye con el Taco cargado (+ base manual si existe) y SUBE con los intereses de nuevos créditos
-    // e inyecciones de capital. NO baja jamás al cobrar cuotas.
-    const totalAdministrativeCapital = Math.max(
-      0,
-      baseCapital +
-        totalEarnedInterest +
-        totalCapitalInjectedAllTime -
-        totalExpensesAllTime -
-        totalRecaudoRetiradoAllTime
-    );
+    // Reconstrucción cronológica exacta de la Base Disponible (cashAvailableInHand):
+    // 1. Parte de la base manual (si existe) + inyecciones de capital.
+    // 2. Cada cartulina del taco aporta a la Base las cuotas ya cobradas en papel + abonos posteriores.
+    // 3. Un "Nuevo Préstamo" posterior descuenta su capital (principal) de la Base únicamente si había
+    //    Base acumulada suficiente para cubrirlo; si la Base era menor al capital (porque el administrador
+    //    estaba ingresando clientes iniciales de la ruta desde $0), se trata como cartera inicial aportada
+    //    a la ruta sin destruir la Base existente ni dejar Cartera en Calle > Administrativo.
+    const chronologicalLoans = [...validLoans].reverse();
+    let runningCashBase = manualBaseCapital + totalCapitalInjectedAllTime;
 
-    // Base en oficina / efectivo en mano:
-    // Toda cuota cobrada (sea capital o rédito/interés) ingresa íntegra a la base disponible.
-    // Base = Administrativo - Cartera en calle - Cobros digitales en banco.
-    // Al cobrar una cuota:
-    // 1. Cartera en calle baja en el valor total de la cuota.
-    // 2. Base en mano sube exactamente en ese mismo valor total.
-    // 3. El Administrativo se mantiene 100% inalterado.
+    for (let idx = 0; idx < chronologicalLoans.length; idx++) {
+      const l = chronologicalLoans[idx];
+      const loanInsts = this.getInstallmentsByLoanId(l.id);
+      const currentPending =
+        l.status === 'ACTIVE' || l.status === 'DEFAULTED'
+          ? loanInsts.reduce((s, i) => s + i.pendingAmount, 0)
+          : 0;
+
+      const renewalRecord =
+        l.status === 'RENEWED'
+          ? this.renewals.find((r) => r.previousLoanId === l.id)
+          : undefined;
+
+      const collectedFromLoan =
+        l.status === 'RENEWED'
+          ? Math.max(0, (l.totalAgreed || 0) - (renewalRecord?.previousBalanceDeducted || 0))
+          : Math.max(0, (l.totalAgreed || 0) - currentPending);
+
+      if (isMigratedCardLoan(l)) {
+        runningCashBase += collectedFromLoan;
+      } else if (l.previousLoanId) {
+        const asNewRenewal = this.renewals.find((r) => r.newLoanId === l.id);
+        const netCapitalOut = asNewRenewal
+          ? Math.max(0, asNewRenewal.newPrincipal - asNewRenewal.previousBalanceDeducted)
+          : l.principal;
+        if (runningCashBase >= netCapitalOut) {
+          runningCashBase -= netCapitalOut;
+        }
+        runningCashBase += collectedFromLoan;
+      } else {
+        if (runningCashBase >= l.principal) {
+          runningCashBase -= l.principal;
+        }
+        runningCashBase += collectedFromLoan;
+      }
+    }
+
     const cashAvailableInHand = Math.max(
       0,
-      totalAdministrativeCapital -
-        activeCapitalInStreet -
+      runningCashBase -
+        totalExpensesAllTime -
+        totalRecaudoRetiradoAllTime -
         collectedDigitalToday
+    );
+
+    // Administrativo / Patrimonio operativo total:
+    // Siempre cumple la identidad contable exacta:
+    // Administrativo = Cartera en Calle + Base en Oficina + Recaudo Digital
+    const totalAdministrativeCapital = Math.max(
+      0,
+      activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
     );
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
@@ -1911,11 +1932,34 @@ class LocalStore {
     const routeId = params.routeId || customer.routeId || 'route-norte';
 
     // Si es migración de cartulina física y no enviaron fecha de inicio explícita,
-    // calculamos el inicio hacia atrás según las cuotas ya pagadas para que la próxima cuota caiga hoy
+    // calculamos el inicio hacia atrás en días hábiles (saltando domingos si excludeSundays está activo)
+    // para que las cuotas ya pagadas queden en el pasado y la próxima cuota pendiente toque hoy sin mora falsa
+    const computeBackwardStartDate = (refDateStr: string, paidCount: number, freq: LoanFrequency): string => {
+      if (paidCount <= 0) return refDateStr;
+      if (freq !== 'DAILY') {
+        const stepDays = freq === 'WEEKLY' ? 7 : freq === 'BIWEEKLY' ? 15 : 30;
+        return addDaysToDate(refDateStr, -(paidCount * stepDays));
+      }
+      const excludeSundays = this.officeConfig.excludeSundays ?? true;
+      const cursor = new Date(refDateStr + 'T00:00:00');
+      let remaining = paidCount + 1;
+      while (remaining > 0) {
+        cursor.setDate(cursor.getDate() - 1);
+        if (excludeSundays && cursor.getDay() === 0) {
+          continue;
+        }
+        remaining--;
+      }
+      const yyyy = cursor.getFullYear();
+      const mm = String(cursor.getMonth() + 1).padStart(2, '0');
+      const dd = String(cursor.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
     const effectiveStartDate =
       params.startDate ||
       (isMigration && paidSet.size > 0
-        ? addDaysToDate(params.todayStr, -(paidSet.size + 1))
+        ? computeBackwardStartDate(params.todayStr, paidSet.size, params.frequency || 'DAILY')
         : params.todayStr);
 
     const rawInstallments = generateInstallments(
