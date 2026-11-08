@@ -76,6 +76,8 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   allowRouteReorder: false,
   allowPartialPayments: true,
   officeServerUrl: 'http://192.168.1.10:8765',
+  recoveryPin: '',
+  autoCloudSyncEnabled: true,
   isSetupCompleted: false,
 };
 
@@ -94,6 +96,7 @@ const STORAGE_KEYS = {
   NON_PAYMENT_VISITS: '@prestamos_mobile_non_payments_v1',
   AUDIT_LOGS: '@prestamos_mobile_audit_v1',
   OFFICE_CONFIG: '@prestamos_mobile_office_config_v1',
+  ARCHIVED_LEDGER: '@prestamos_mobile_archived_ledger_v1',
 };
 
 /**
@@ -163,8 +166,45 @@ class LocalStore {
   private auditLogs: AuditLog[] = [];
   private officeConfig: OfficeCompanyConfig = { ...DEFAULT_OFFICE_CONFIG };
 
+  // Índices en memoria O(1) para alto rendimiento con +20.000 registros históricos
+  private installmentsByLoanId = new Map<string, Installment[]>();
+  private paymentsByLoanId = new Map<string, Payment[]>();
+  private activeLoanByCustomerId = new Map<string, Loan>();
+
   private isInitialized = false;
   private listeners: Array<() => void> = [];
+
+  private rebuildIndexes(): void {
+    this.installmentsByLoanId.clear();
+    for (let i = 0; i < this.installments.length; i++) {
+      const inst = this.installments[i];
+      const bucket = this.installmentsByLoanId.get(inst.loanId);
+      if (bucket) {
+        bucket.push(inst);
+      } else {
+        this.installmentsByLoanId.set(inst.loanId, [inst]);
+      }
+    }
+
+    this.paymentsByLoanId.clear();
+    for (let i = 0; i < this.payments.length; i++) {
+      const pay = this.payments[i];
+      const bucket = this.paymentsByLoanId.get(pay.loanId);
+      if (bucket) {
+        bucket.push(pay);
+      } else {
+        this.paymentsByLoanId.set(pay.loanId, [pay]);
+      }
+    }
+
+    this.activeLoanByCustomerId.clear();
+    for (let i = 0; i < this.loans.length; i++) {
+      const loan = this.loans[i];
+      if (loan.status === 'ACTIVE' && !this.activeLoanByCustomerId.has(loan.customerId)) {
+        this.activeLoanByCustomerId.set(loan.customerId, loan);
+      }
+    }
+  }
 
   public subscribe(listener: () => void): () => void {
     this.listeners.push(listener);
@@ -174,6 +214,7 @@ class LocalStore {
   }
 
   private notify() {
+    this.rebuildIndexes();
     this.listeners.forEach((l) => l());
   }
 
@@ -574,6 +615,24 @@ class LocalStore {
   public getCustomers(): Customer[] { return this.customers; }
   public getLoans(): Loan[] { return this.loans; }
   public getInstallments(): Installment[] { return this.installments; }
+  public getInstallmentsByLoanId(loanId: string): Installment[] {
+    if (this.installmentsByLoanId.size === 0 && this.installments.length > 0) {
+      this.rebuildIndexes();
+    }
+    return this.installmentsByLoanId.get(loanId) || [];
+  }
+  public getPaymentsByLoanId(loanId: string): Payment[] {
+    if (this.paymentsByLoanId.size === 0 && this.payments.length > 0) {
+      this.rebuildIndexes();
+    }
+    return this.paymentsByLoanId.get(loanId) || [];
+  }
+  public getActiveLoanByCustomerId(customerId: string): Loan | undefined {
+    if (this.activeLoanByCustomerId.size === 0 && this.loans.length > 0) {
+      this.rebuildIndexes();
+    }
+    return this.activeLoanByCustomerId.get(customerId);
+  }
   public getActiveSession(): CollectionSession {
     if (!this.activeSession) {
       const today = getLocalTodayStr();
@@ -632,6 +691,78 @@ class LocalStore {
   }
 
   /**
+   * Recuperación Segura de Contraseña del Administrador (Sin perder cartera ni clientes):
+   * Permite restablecer la clave de Administrador verificando el PIN Maestro de Recuperación,
+   * el NIT/Teléfono de la oficina o el nombre exacto de la empresa registrada.
+   */
+  public async recoverAdminPassword(params: {
+    recoveryKey: string;
+    newAdminPassword: string;
+  }): Promise<User> {
+    const cleanKey = (params.recoveryKey || '').trim().toLowerCase();
+    const cleanNewPass = (params.newAdminPassword || '').trim();
+
+    if (!cleanKey) {
+      throw new Error('Ingresa el PIN de Recuperación, NIT, teléfono o nombre de tu oficina.');
+    }
+    if (cleanNewPass.length < 6 || cleanNewPass === '123' || cleanNewPass === '123456') {
+      throw new Error('La nueva clave de Administrador debe tener al menos 6 caracteres seguros.');
+    }
+
+    const storedPin = (this.officeConfig.recoveryPin || '').trim().toLowerCase();
+    const storedTaxId = (this.officeConfig.taxId || '').trim().toLowerCase();
+    const storedPhone = (this.officeConfig.supportPhone || '').trim().toLowerCase();
+    const storedCompany = (this.officeConfig.companyName || '').trim().toLowerCase();
+
+    let isAuthorized = false;
+    if (storedPin && cleanKey === storedPin) {
+      isAuthorized = true;
+    } else if (storedTaxId && storedTaxId.length >= 4 && cleanKey === storedTaxId) {
+      isAuthorized = true;
+    } else if (storedPhone && storedPhone.length >= 6 && cleanKey === storedPhone) {
+      isAuthorized = true;
+    } else if (!storedPin && storedCompany && cleanKey === storedCompany) {
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      throw new Error(
+        'Código de recuperación inválido. Verifica tu PIN de recuperación, NIT o teléfono oficial de la oficina.'
+      );
+    }
+
+    const adminIdx = this.users.findIndex((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+    if (adminIdx === -1) {
+      throw new Error('No se encontró un usuario Administrador registrado.');
+    }
+
+    const updatedAdmin: User = {
+      ...this.users[adminIdx],
+      password: hashPassword(cleanNewPass),
+    };
+    this.users[adminIdx] = updatedAdmin;
+
+    const audit: AuditLog = {
+      id: `audit-rec-adm-${Date.now()}`,
+      userId: updatedAdmin.id,
+      timestamp: new Date().toISOString(),
+      entity: 'CONFIG',
+      entityId: updatedAdmin.id,
+      action: 'UPDATE',
+      reason: 'Recuperación autorizada de clave de Administrador sin pérdida de cartera.',
+    };
+    this.auditLogs.unshift(audit);
+
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(this.auditLogs)),
+    ]);
+
+    this.notify();
+    return updatedAdmin;
+  }
+
+  /**
    * Configuración integral de la Oficina:
    * Crea las credenciales del Administrador y configura las N rutas elegidas con sus credenciales y parámetros a gusto de la oficina.
    */
@@ -639,6 +770,7 @@ class LocalStore {
     companyName: string;
     city?: string;
     supportPhone?: string;
+    recoveryPin?: string;
     adminName: string;
     adminUsername: string;
     adminPassword: string;
@@ -794,6 +926,7 @@ class LocalStore {
       companyName: params.companyName.trim() || this.officeConfig.companyName,
       city: params.city?.trim() || this.officeConfig.city,
       supportPhone: params.supportPhone?.trim() || this.officeConfig.supportPhone,
+      recoveryPin: params.recoveryPin !== undefined ? params.recoveryPin.trim() : this.officeConfig.recoveryPin,
       defaultInterestRate: rateFraction,
       paperworkFeeEnabled: params.paperworkFeeEnabled ?? this.officeConfig.paperworkFeeEnabled ?? true,
       paperworkRate: params.paperworkRate ?? this.officeConfig.paperworkRate ?? 5000,
@@ -1086,18 +1219,17 @@ class LocalStore {
     const activeLoanIds = new Set(activeLoans.map((l) => l.id));
     const scopedLoanIds = new Set(scopedLoans.map((l) => l.id));
 
-    // Capital activo en la calle (suma de pendingAmount en cuotas de créditos activos)
-    const activeCapitalInStreet = this.installments
-      .filter((i) => activeLoanIds.has(i.loanId))
-      .reduce((sum, i) => sum + i.pendingAmount, 0);
-
-    // Mora fáctica acumulada y conteo de clientes en mora
+    // Capital activo en la calle y mora fáctica calculados en O(1) por préstamo activo usando índices en memoria
+    let activeCapitalInStreet = 0;
     let overdueTotalAmount = 0;
     let overdueCustomersCount = 0;
     let expectedTodayFromInstallments = 0;
 
     activeLoans.forEach((loan) => {
-      const loanInsts = this.installments.filter((i) => i.loanId === loan.id);
+      const loanInsts = this.getInstallmentsByLoanId(loan.id);
+      for (let k = 0; k < loanInsts.length; k++) {
+        activeCapitalInStreet += loanInsts[k].pendingAmount;
+      }
       const delinq = calculateDelinquencyMetrics(loanInsts, todayStr);
       if (delinq.hasDelinquency) {
         overdueTotalAmount += delinq.overdueAmount;
@@ -2790,6 +2922,71 @@ class LocalStore {
     return {
       customersCount: this.customers.length,
       loansCount: this.loans.length,
+    };
+  }
+
+  /**
+   * Fase 3: Compactación y Archivado de Cuotas de Créditos Cerrados (PAID / RENEWED / CANCELLED)
+   * Mueve las cuotas ya liquidadas a la bóveda fría (@prestamos_mobile_archived_ledger_v1)
+   * conservando intactos los encabezados de los préstamos para que el Administrativo, la Base Disponible,
+   * la Cartera en Calle y la Papelería permanezcan 100% inalterados.
+   */
+  public async archiveCompletedHistory(
+    daysThreshold: number = 0
+  ): Promise<{ archivedInstallmentsCount: number; closedLoansCount: number }> {
+    const cutoffDateStr =
+      daysThreshold > 0 ? addDaysToDate(getLocalTodayStr(), -daysThreshold) : '9999-12-31';
+
+    const archivableLoanIds = new Set<string>();
+    for (const loan of this.loans) {
+      if (
+        (loan.status === 'PAID' || loan.status === 'RENEWED' || loan.status === 'CANCELLED') &&
+        (loan.updatedAt || loan.createdAt) <= cutoffDateStr
+      ) {
+        archivableLoanIds.add(loan.id);
+      }
+    }
+
+    if (archivableLoanIds.size === 0) {
+      return { archivedInstallmentsCount: 0, closedLoansCount: 0 };
+    }
+
+    const toArchive: Installment[] = [];
+    const activeInstallments: Installment[] = [];
+
+    for (const inst of this.installments) {
+      if (archivableLoanIds.has(inst.loanId) && inst.pendingAmount <= 0) {
+        toArchive.push(inst);
+      } else {
+        activeInstallments.push(inst);
+      }
+    }
+
+    if (toArchive.length === 0) {
+      return { archivedInstallmentsCount: 0, closedLoansCount: archivableLoanIds.size };
+    }
+
+    let existingArchive: Installment[] = [];
+    try {
+      const raw = await safeStorage.getItem(STORAGE_KEYS.ARCHIVED_LEDGER);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) existingArchive = parsed;
+      }
+    } catch {}
+
+    const mergedArchive = [...existingArchive, ...toArchive];
+    this.installments = activeInstallments;
+
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
+      safeStorage.setItem(STORAGE_KEYS.ARCHIVED_LEDGER, JSON.stringify(mergedArchive)),
+    ]);
+
+    this.notify();
+    return {
+      archivedInstallmentsCount: toArchive.length,
+      closedLoansCount: archivableLoanIds.size,
     };
   }
 

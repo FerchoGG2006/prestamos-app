@@ -45,6 +45,7 @@ interface NewLoanModalProps {
   preselectedCustomerId?: string;
   initialFrequency?: LoanFrequency;
   initialFixedDueDate?: string;
+  initialCustomerMode?: 'EXISTING' | 'NEW';
   isCollector?: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -60,6 +61,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   preselectedCustomerId,
   initialFrequency,
   initialFixedDueDate,
+  initialCustomerMode,
   isCollector = false,
   onClose,
   onSuccess,
@@ -89,6 +91,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       : availableRoutes[0]?.id || 'route-norte';
   const [selectedRouteId, setSelectedRouteId] = useState(initialRoute);
 
+  const [withLoan, setWithLoan] = useState<boolean>(true);
   const [isCardMigration, setIsCardMigration] = useState<boolean>(false);
   const [paidInstallmentNums, setPaidInstallmentNums] = useState<number[]>([]);
   const [quickPaidCountStr, setQuickPaidCountStr] = useState<string>('');
@@ -130,12 +133,15 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
           : localStore.getRoutes()[0]?.id || 'route-norte';
       setSelectedRouteId(targetRoute);
 
+      setWithLoan(true);
       if (preselectedCustomerId) {
         setCustomerMode('EXISTING');
         setSelectedCustomerId(preselectedCustomerId);
       } else if (customers.length === 0) {
         setCustomerMode('NEW');
         setIsCardMigration(true);
+      } else if (initialCustomerMode) {
+        setCustomerMode(initialCustomerMode);
       } else {
         setCustomerMode('EXISTING');
       }
@@ -253,13 +259,13 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
 
   const handleCreateLoan = async (keepOpenForNextTaco: boolean = false) => {
     setFormError('');
-    if (principal <= 0) {
+    if (withLoan && principal <= 0) {
       const msg = 'Ingrese un monto de capital mayor a $0.';
       setFormError(msg);
       Alert.alert('Capital inválido', msg);
       return;
     }
-    if (isFixedDate && !fixedDueDateStr) {
+    if (withLoan && isFixedDate && !fixedDueDateStr) {
       const msg = 'Seleccione o ingrese la fecha fija de vencimiento.';
       setFormError(msg);
       Alert.alert('Fecha inválida', msg);
@@ -322,41 +328,48 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         targetCollectorId = createdCustomer.assignedCollectorId;
       }
 
-      const res = await localStore.createLoan({
-        customerId: targetCustomerId,
-        principal,
-        interestRate: effectiveInterestRate,
-        installmentCount,
-        frequency,
-        routeId: targetRouteId,
-        collectorId: targetCollectorId,
-        fixedDueDate: isFixedDate ? fixedDueDateStr : undefined,
-        todayStr,
-        isCardMigration,
-        paidInstallmentNumbers: isCardMigration ? paidInstallmentNums : undefined,
-      });
-
-      if (isCardMigration) {
-        const paidTotal = res.loan.installmentAmount * paidInstallmentNums.length;
-        const pendingTotal = Math.max(0, res.loan.totalAgreed - paidTotal);
+      if (!withLoan) {
         Alert.alert(
-          'Cartulina del Taco Pasada a Digital',
-          `Crédito ${res.loan.loanNumber} digitalizado con éxito.\n\n` +
-          `• Aporte al Administrativo: ${formatCOP(res.loan.totalAgreed)}\n` +
-          `• Recaudado en el taco (entra a Base): ${paidInstallmentNums.length} de ${installmentCount} (${formatCOP(paidTotal)})\n` +
-          `• Saldo pendiente (entra a Cartera en Calle): ${formatCOP(pendingTotal)}\n` +
-          `• Cartulina / Papelería registrada: ${isPaperworkEnabled ? formatCOP(paperwork) : '$0 (Desactivada)'}`
+          'Cliente Registrado',
+          `${fullName.trim()} fue registrado exitosamente en el directorio de la ruta.`
         );
       } else {
-        Alert.alert(
-          'Crédito Desembolsado',
-          `Crédito ${res.loan.loanNumber} creado exitosamente.\n\n` +
-          `• Modalidad: ${isFixedDate ? `Fecha Fija (Vence: ${fixedDueDateStr})` : `${installmentCount} ${currentFreqConfig.unitLabel}`}\n` +
-          `• Total a cobrar: ${formatCOP(res.loan.totalAgreed)}\n` +
-          `• Cuota: ${formatCOP(res.loan.installmentAmount)}\n` +
-          `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
-          `• Efectivo neto a entregar: ${formatCOP(netCashToDeliver)}`
-        );
+        const res = await localStore.createLoan({
+          customerId: targetCustomerId,
+          principal,
+          interestRate: effectiveInterestRate,
+          installmentCount,
+          frequency,
+          routeId: targetRouteId,
+          collectorId: targetCollectorId,
+          fixedDueDate: isFixedDate ? fixedDueDateStr : undefined,
+          todayStr,
+          isCardMigration,
+          paidInstallmentNumbers: isCardMigration ? paidInstallmentNums : undefined,
+        });
+
+        if (isCardMigration) {
+          const paidTotal = res.loan.installmentAmount * paidInstallmentNums.length;
+          const pendingTotal = Math.max(0, res.loan.totalAgreed - paidTotal);
+          Alert.alert(
+            'Cartulina del Taco Pasada a Digital',
+            `Crédito ${res.loan.loanNumber} digitalizado con éxito.\n\n` +
+            `• Aporte al Administrativo: ${formatCOP(res.loan.totalAgreed)}\n` +
+            `• Recaudado en el taco (entra a Base): ${paidInstallmentNums.length} de ${installmentCount} (${formatCOP(paidTotal)})\n` +
+            `• Saldo pendiente (entra a Cartera en Calle): ${formatCOP(pendingTotal)}\n` +
+            `• Cartulina / Papelería registrada: ${isPaperworkEnabled ? formatCOP(paperwork) : '$0 (Desactivada)'}`
+          );
+        } else {
+          Alert.alert(
+            'Crédito Desembolsado',
+            `Crédito ${res.loan.loanNumber} creado exitosamente.\n\n` +
+            `• Modalidad: ${isFixedDate ? `Fecha Fija (Vence: ${fixedDueDateStr})` : `${installmentCount} ${currentFreqConfig.unitLabel}`}\n` +
+            `• Total a cobrar: ${formatCOP(res.loan.totalAgreed)}\n` +
+            `• Cuota: ${formatCOP(res.loan.installmentAmount)}\n` +
+            `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
+            `• Efectivo neto a entregar: ${formatCOP(netCashToDeliver)}`
+          );
+        }
       }
       resetNewCustomerFields();
       setPaidInstallmentNums([]);
@@ -414,33 +427,36 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Selector de Modo: Nuevo Desembolso vs Pasar Cartulina Física a Digital */}
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+            {/* Selector de Modo: Nuevo Desembolso vs Pasar Cartulina Física a Digital vs Solo Cliente */}
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 14 }}>
               <TouchableOpacity
                 style={[
                   {
                     flex: 1,
                     flexDirection: 'row',
                     justifyContent: 'center',
-                    gap: 6,
+                    gap: 5,
                     paddingVertical: 10,
-                    paddingHorizontal: 10,
+                    paddingHorizontal: 8,
                     borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: !isCardMigration ? '#0D9488' : '#E2E8F0',
-                    backgroundColor: !isCardMigration ? '#E6F7F5' : '#F8FAFC',
+                    borderColor: withLoan && !isCardMigration ? '#0D9488' : '#E2E8F0',
+                    backgroundColor: withLoan && !isCardMigration ? '#E6F7F5' : '#F8FAFC',
                     alignItems: 'center',
                   },
                 ]}
-                onPress={() => setIsCardMigration(false)}
+                onPress={() => {
+                  setWithLoan(true);
+                  setIsCardMigration(false);
+                }}
               >
-                <Wallet size={14} color={!isCardMigration ? '#0F766E' : '#64748B'} />
+                <Wallet size={13} color={withLoan && !isCardMigration ? '#0F766E' : '#64748B'} />
                 <Text
                   style={{
                     fontFamily: FONT_FAMILY,
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: '800',
-                    color: !isCardMigration ? '#0F766E' : '#64748B',
+                    color: withLoan && !isCardMigration ? '#0F766E' : '#64748B',
                   }}
                 >
                   Nuevo Préstamo
@@ -450,33 +466,72 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
               <TouchableOpacity
                 style={[
                   {
-                    flex: 1.2,
+                    flex: 1.25,
                     flexDirection: 'row',
                     justifyContent: 'center',
-                    gap: 6,
+                    gap: 5,
                     paddingVertical: 10,
-                    paddingHorizontal: 10,
+                    paddingHorizontal: 8,
                     borderRadius: 12,
                     borderWidth: 1.5,
-                    borderColor: isCardMigration ? '#0D9488' : '#E2E8F0',
-                    backgroundColor: isCardMigration ? '#E6F7F5' : '#F8FAFC',
+                    borderColor: withLoan && isCardMigration ? '#0D9488' : '#E2E8F0',
+                    backgroundColor: withLoan && isCardMigration ? '#E6F7F5' : '#F8FAFC',
                     alignItems: 'center',
                   },
                 ]}
-                onPress={() => setIsCardMigration(true)}
+                onPress={() => {
+                  setWithLoan(true);
+                  setIsCardMigration(true);
+                }}
               >
-                <ClipboardList size={14} color={isCardMigration ? '#0F766E' : '#64748B'} />
+                <ClipboardList size={13} color={withLoan && isCardMigration ? '#0F766E' : '#64748B'} />
                 <Text
                   style={{
                     fontFamily: FONT_FAMILY,
-                    fontSize: 12,
+                    fontSize: 11.5,
                     fontWeight: '800',
-                    color: isCardMigration ? '#0F766E' : '#64748B',
+                    color: withLoan && isCardMigration ? '#0F766E' : '#64748B',
                   }}
                 >
-                  Cartulina Física a Digital
+                  Cartulina a Digital
                 </Text>
               </TouchableOpacity>
+
+              {customerMode === 'NEW' && (
+                <TouchableOpacity
+                  style={[
+                    {
+                      flex: 0.85,
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      gap: 4,
+                      paddingVertical: 10,
+                      paddingHorizontal: 6,
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: !withLoan ? '#0D9488' : '#E2E8F0',
+                      backgroundColor: !withLoan ? '#E6F7F5' : '#F8FAFC',
+                      alignItems: 'center',
+                    },
+                  ]}
+                  onPress={() => {
+                    setWithLoan(false);
+                    setIsCardMigration(false);
+                  }}
+                >
+                  <UserPlus size={13} color={!withLoan ? '#0F766E' : '#64748B'} />
+                  <Text
+                    style={{
+                      fontFamily: FONT_FAMILY,
+                      fontSize: 11,
+                      fontWeight: '800',
+                      color: !withLoan ? '#0F766E' : '#64748B',
+                    }}
+                  >
+                    Solo Cliente
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {/* 1. SELECCIONAR O CREAR TITULAR */}
@@ -717,6 +772,8 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             )}
 
             {/* 2. CAPITAL INICIAL */}
+            {withLoan && (
+              <>
             <View style={styles.filledAmountBlock}>
               <Text style={styles.floatingInternalLabel}>
                 2. CAPITAL INICIAL A DESEMBOLSAR ($ COP)
@@ -1120,6 +1177,8 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 )}
               </View>
             )}
+              </>
+            )}
           </ScrollView>
 
           {formError ? (
@@ -1170,13 +1229,15 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             <Text style={styles.confirmBtnText}>
               {isSubmitting
                 ? 'Guardando...'
-                : isCardMigration
-                  ? customerMode === 'NEW'
-                    ? 'Registrar Cliente y Pasar Cartulina'
-                    : 'Pasar Cartulina a Digital'
-                  : customerMode === 'NEW'
-                    ? 'Registrar Cliente y Desembolsar'
-                    : 'Confirmar y Desembolsar'}
+                : !withLoan
+                  ? 'Guardar Solo Cliente'
+                  : isCardMigration
+                    ? customerMode === 'NEW'
+                      ? 'Registrar Cliente y Pasar Cartulina'
+                      : 'Pasar Cartulina a Digital'
+                    : customerMode === 'NEW'
+                      ? 'Registrar Cliente y Desembolsar'
+                      : 'Confirmar y Desembolsar'}
             </Text>
           </TouchableOpacity>
         </View>

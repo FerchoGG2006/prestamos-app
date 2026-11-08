@@ -122,6 +122,7 @@ import { NotificationsModal } from './src/presentation/components/NotificationsM
 import { formatAccountStatementReminder, openWhatsAppReceipt } from './src/core/utils/whatsapp-receipt';
 import { LoginView } from './src/presentation/views/auth/LoginView';
 import { safeStorage } from './src/infrastructure/storage/local-store';
+import { cloudSyncEngine } from './src/infrastructure/sync/cloud-sync';
 import {
   checkAndDownloadUpdate,
   checkAllUpdates,
@@ -702,6 +703,7 @@ function MainApp({
 
     localStore.initialize().then(() => {
       syncFromStore();
+      cloudSyncEngine.initializeAutoSync().catch(() => {});
       safeStorage.getItem('@prestamos_logged_user_id').then((savedUserId) => {
         const allUsers = localStore.getUsers();
         if (savedUserId) {

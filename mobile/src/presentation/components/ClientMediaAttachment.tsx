@@ -12,6 +12,7 @@ import {
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { Camera, Video, Image as ImageIcon, X, RefreshCw, CheckCircle2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { persistMediaUri } from '../../infrastructure/storage/media-storage';
 
 export interface ClientMediaValue {
   uri: string;
@@ -45,15 +46,19 @@ export const ClientMediaAttachment: React.FC<ClientMediaAttachmentProps> = ({
       if (file) {
         setIsLoading(true);
         const reader = new FileReader();
-        reader.onload = (event) => {
-          const resultUri = event.target?.result as string;
-          const detectedType: 'PHOTO' | 'VIDEO' = file.type.startsWith('video') ? 'VIDEO' : 'PHOTO';
-          onChange({
-            uri: resultUri,
-            mediaType: detectedType,
-            fileName: file.name,
-          });
-          setIsLoading(false);
+        reader.onload = async (event) => {
+          try {
+            const resultUri = event.target?.result as string;
+            const detectedType: 'PHOTO' | 'VIDEO' = file.type.startsWith('video') ? 'VIDEO' : 'PHOTO';
+            const optimizedUri = await persistMediaUri(resultUri, detectedType === 'VIDEO');
+            onChange({
+              uri: optimizedUri,
+              mediaType: detectedType,
+              fileName: file.name,
+            });
+          } finally {
+            setIsLoading(false);
+          }
         };
         reader.onerror = () => {
           setIsLoading(false);
@@ -86,7 +91,7 @@ export const ClientMediaAttachment: React.FC<ClientMediaAttachmentProps> = ({
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        quality: 0.7,
+        quality: 0.55,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -125,7 +130,7 @@ export const ClientMediaAttachment: React.FC<ClientMediaAttachmentProps> = ({
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['videos'],
-        videoMaxDuration: 30, // 30 segundos máximo para mantener el paquete ligero
+        videoMaxDuration: 30,
         quality: 0.5,
       });
 
@@ -166,7 +171,7 @@ export const ClientMediaAttachment: React.FC<ClientMediaAttachmentProps> = ({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images', 'videos'],
         allowsEditing: true,
-        quality: 0.7,
+        quality: 0.55,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -193,7 +198,7 @@ export const ClientMediaAttachment: React.FC<ClientMediaAttachmentProps> = ({
       {isLoading ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator size="small" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Cargando archivo audiovisual...</Text>
+          <Text style={styles.loadingText}>Optimizando y guardando archivo audiovisual...</Text>
         </View>
       ) : value && value.uri ? (
         <View style={styles.previewCard}>
@@ -211,7 +216,7 @@ export const ClientMediaAttachment: React.FC<ClientMediaAttachmentProps> = ({
               <View style={styles.badgeSuccess}>
                 <CheckCircle2 size={12} color={COLORS.success} />
                 <Text style={styles.badgeSuccessText}>
-                  {value.mediaType === 'PHOTO' ? 'Fotografía Adjunta' : 'Video Adjunto'}
+                  {value.mediaType === 'PHOTO' ? 'Fotografía Optimizada' : 'Video Adjunto'}
                 </Text>
               </View>
             </View>
@@ -352,7 +357,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 10,
-    backgroundColor: COLORS.surfaceSoft,
+    backgroundColor: COLORS.bgSecondary,
   },
   videoPlaceholder: {
     width: 64,
@@ -361,31 +366,33 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
   videoLabel: {
     fontSize: 9,
     fontFamily: FONT_FAMILY,
     fontWeight: '700',
     color: COLORS.brandBlue,
+    marginTop: 2,
   },
   previewInfo: {
     flex: 1,
-    gap: 3,
+    justifyContent: 'center',
   },
   badgeRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   badgeSuccess: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#F0FDF4',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#BBF7D0',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   badgeSuccessText: {
     fontSize: 10.5,
@@ -397,40 +404,44 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: FONT_FAMILY,
     color: COLORS.textSecondary,
+    marginBottom: 8,
   },
   previewActions: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 2,
   },
   changeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
     backgroundColor: COLORS.surfaceSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.bgTertiary,
   },
   changeBtnText: {
     fontSize: 11,
     fontFamily: FONT_FAMILY,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.primary,
   },
   removeBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
     backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
   removeBtnText: {
     fontSize: 11,
     fontFamily: FONT_FAMILY,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.danger,
   },
 });

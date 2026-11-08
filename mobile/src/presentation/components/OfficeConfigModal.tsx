@@ -23,6 +23,7 @@ import {
 } from '../../infrastructure/storage/local-store';
 import { formatCOP } from '../../core/config/business-rules';
 import { checkAllUpdates, CURRENT_APP_VERSION } from '../utils/appUpdates';
+import { cloudSyncEngine } from '../../infrastructure/sync/cloud-sync';
 import {
   Building2,
   X,
@@ -1654,6 +1655,87 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                     Exportar Reporte Contable Excel (.csv)
                   </Text>
                 </TouchableOpacity>
+
+                {/* Fase 3: Compactar y Archivar Cuotas de Créditos Cerrados */}
+                <TouchableOpacity
+                  style={[
+                    styles.exportBackupBtn,
+                    { backgroundColor: '#0F766E', marginTop: 10 },
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={async () => {
+                    const res = await localStore.archiveCompletedHistory(0);
+                    onSuccess();
+                    const msg =
+                      res.archivedInstallmentsCount > 0
+                        ? `Memoria optimizada: se archivaron ${res.archivedInstallmentsCount} cuotas históricas de ${res.closedLoansCount} créditos cerrados sin alterar Administrativo, Base ni Papelería.`
+                        : 'La memoria ya se encuentra optimizada (0 cuotas cerradas pendientes de archivar).';
+                    if (Platform.OS === 'web') {
+                      window.alert(msg);
+                    } else {
+                      Alert.alert('Optimización de Memoria', msg);
+                    }
+                  }}
+                >
+                  <Layers size={18} color="#ffffff" style={{ marginRight: 8 }} />
+                  <Text style={styles.exportBackupBtnText}>
+                    Optimizar Memoria y Archivar Créditos Cerrados
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Fase 5: Sincronización Multi-Dispositivo en Tiempo Real */}
+                <View
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 12,
+                    backgroundColor: '#F0F9FF',
+                    borderWidth: 1,
+                    borderColor: '#BAE6FD',
+                    gap: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Wifi size={16} color="#0284C7" />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#0C4A6E' }}>
+                      Sincronización Multi-Dispositivo (PC Oficina / Nube)
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: '#0369A1' }}>
+                    Conecta el teléfono del cobrador con el PC de Oficina (JavaFX puerto 8765) o servidor remoto con cola Offline-First automática:
+                  </Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={officeServerUrl}
+                    onChangeText={(t) => setOfficeServerUrl(t)}
+                    placeholder="http://192.168.1.10:8765"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.exportBackupBtn,
+                      { backgroundColor: '#0284C7', marginTop: 2, paddingVertical: 10 },
+                    ]}
+                    onPress={async () => {
+                      const targetUrl = (officeServerUrl || 'http://192.168.1.10:8765').trim();
+                      await localStore.updateOfficeConfig({ officeServerUrl: targetUrl });
+                      const ok = await cloudSyncEngine.syncBidirectional(targetUrl);
+                      onSuccess();
+                      const status = cloudSyncEngine.getStatus();
+                      if (Platform.OS === 'web') {
+                        window.alert(status.message);
+                      } else {
+                        Alert.alert(ok ? 'Sincronización Exitosa' : 'Modo Offline', status.message);
+                      }
+                    }}
+                  >
+                    <RefreshCw size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.exportBackupBtnText}>
+                      Sincronizar Ahora (Enviar Cobros y Recibir Cartera)
+                    </Text>
+                  </TouchableOpacity>
+                </View>
 
                 <View style={styles.backupDivider} />
 

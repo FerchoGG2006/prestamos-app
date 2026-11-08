@@ -101,11 +101,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [wizCompanyName, setWizCompanyName] = useState('');
   const [wizAdminUsername, setWizAdminUsername] = useState('');
   const [wizAdminPassword, setWizAdminPassword] = useState('');
+  const [wizRecoveryPin, setWizRecoveryPin] = useState('');
   const [wizRoutesCount, setWizRoutesCount] = useState<number>(1);
   const [wizRoutesDraft, setWizRoutesDraft] = useState<EditableRouteDraft[]>([
     { name: '', username: '', password: '', targetAdministrativeStr: '', expectedCustomersCountStr: '' },
   ]);
   const [wizError, setWizError] = useState('');
+  const [showRecoveryForm, setShowRecoveryForm] = useState(false);
+  const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
+  const [recoveryNewPasswordInput, setRecoveryNewPasswordInput] = useState('');
 
   const handleLogin = () => {
     const cleanUser = username.trim().toLowerCase();
@@ -195,9 +199,58 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setWizCompanyName('');
     setWizAdminUsername('');
     setWizAdminPassword('');
+    setWizRecoveryPin('');
     setWizRoutesCount(1);
     setWizRoutesDraft([{ name: '', username: '', password: '', targetAdministrativeStr: '', expectedCustomersCountStr: '' }]);
     setWizError('');
+    setShowRecoveryForm(false);
+  };
+
+  const handleRecoverAdminPassword = async () => {
+    try {
+      const updatedAdmin = await localStore.recoverAdminPassword({
+        recoveryKey: recoveryKeyInput,
+        newAdminPassword: recoveryNewPasswordInput,
+      });
+      setWizCurrentAdminPassword(recoveryNewPasswordInput.trim());
+      setWizAdminPassword(recoveryNewPasswordInput.trim());
+      setIsSetupUnlocked(true);
+      setShowRecoveryForm(false);
+      setRecoveryKeyInput('');
+      setRecoveryNewPasswordInput('');
+      setWizError('');
+      setSavedNotice(
+        `Clave del Administrador (${updatedAdmin.username}) restablecida exitosamente sin perder la cartera.`
+      );
+    } catch (err: any) {
+      setWizError(err?.message || 'No se pudo recuperar la clave.');
+    }
+  };
+
+  const handleExportEmergencyBackup = () => {
+    try {
+      const rawJson = localStore.exportFullBackupJSON();
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const blob = new Blob([rawJson], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `respaldo_emergencia_kredia_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setWizError('');
+        setSavedNotice('Respaldo de emergencia (.json) descargado exitosamente.');
+      } else {
+        Alert.alert(
+          'Respaldo Generado',
+          `Copia de seguridad lista (${rawJson.length} bytes). Use la pestaña Respaldo en Configuración para compartirla.`
+        );
+      }
+    } catch (err: any) {
+      setWizError(err?.message || 'Error al exportar respaldo de emergencia.');
+    }
   };
 
   const openSetupModal = () => {
@@ -226,6 +279,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setWizCompanyName(cfg.companyName || '');
     setWizAdminUsername(adminUserStr);
     setWizAdminPassword('');
+    setWizRecoveryPin(cfg.recoveryPin || '');
+    setShowRecoveryForm(false);
 
     const count = Math.max(1, currentRoutes.length || 1);
     setWizRoutesCount(count);
@@ -382,11 +437,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
       const result = await localStore.setupOfficeAndRoutes({
         companyName: wizCompanyName.trim(),
+        recoveryPin: wizRecoveryPin.trim() || undefined,
         adminName: 'Administración General',
         adminUsername: wizAdminUsername.trim().toLowerCase(),
         adminPassword: wizAdminPassword.trim(),
         currentAdminPassword: isOfficeRegistered ? wizCurrentAdminPassword.trim() : undefined,
-        cleanCustomersData: true, // La cartera de la oficina siempre inicia limpia en $0 lista para registrar clientes
+        cleanCustomersData: !isOfficeRegistered, // Solo limpia cartera en el registro inicial, nunca al editar credenciales
         routesConfig: wizRoutesDraft.map((d, i) => {
           const cleanName = d.name.trim() || `Ruta ${i + 1}`;
           const expectedCust = parseInt(d.expectedCustomersCountStr?.replace(/\D/g, '') || '0', 10);
@@ -694,25 +750,106 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </Text>
 
                   {!isSetupUnlocked ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                      <TextInput
-                        style={[styles.compactInput, { flex: 1 }]}
-                        value={wizCurrentAdminPassword}
-                        onChangeText={handleCurrentPasswordChange}
-                        onSubmitEditing={handleVerifyCurrentPassword}
-                        placeholder="Ingresa clave actual"
-                        placeholderTextColor={COLORS.textMuted}
-                        secureTextEntry
-                        autoCapitalize="none"
-                      />
-                      <TouchableOpacity
-                        style={styles.verifyBtn}
-                        activeOpacity={0.8}
-                        onPress={handleVerifyCurrentPassword}
-                      >
-                        <ShieldCheck size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                        <Text style={styles.verifyBtnText}>Desbloquear</Text>
-                      </TouchableOpacity>
+                    <View style={{ marginTop: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <TextInput
+                          style={[styles.compactInput, { flex: 1 }]}
+                          value={wizCurrentAdminPassword}
+                          onChangeText={handleCurrentPasswordChange}
+                          onSubmitEditing={handleVerifyCurrentPassword}
+                          placeholder="Ingresa clave actual"
+                          placeholderTextColor={COLORS.textMuted}
+                          secureTextEntry
+                          autoCapitalize="none"
+                        />
+                        <TouchableOpacity
+                          style={styles.verifyBtn}
+                          activeOpacity={0.8}
+                          onPress={handleVerifyCurrentPassword}
+                        >
+                          <ShieldCheck size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                          <Text style={styles.verifyBtnText}>Desbloquear</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                        <TouchableOpacity
+                          onPress={() => setShowRecoveryForm(!showRecoveryForm)}
+                          style={{
+                            paddingVertical: 5,
+                            paddingHorizontal: 9,
+                            borderRadius: 6,
+                            backgroundColor: '#EFF6FF',
+                            borderWidth: 1,
+                            borderColor: '#BFDBFE',
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#1D4ED8' }}>
+                            {showRecoveryForm
+                              ? 'Ocultar recuperación'
+                              : '¿Olvidaste la clave Admin? Recuperar sin perder cartera'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={handleExportEmergencyBackup}
+                          style={{
+                            paddingVertical: 5,
+                            paddingHorizontal: 9,
+                            borderRadius: 6,
+                            backgroundColor: '#ECFDF5',
+                            borderWidth: 1,
+                            borderColor: '#A7F3D0',
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#047857' }}>
+                            Exportar Respaldo de Emergencia (.json)
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {showRecoveryForm && (
+                        <View
+                          style={{
+                            marginTop: 8,
+                            padding: 10,
+                            borderRadius: 8,
+                            backgroundColor: '#F8FAFC',
+                            borderWidth: 1,
+                            borderColor: '#CBD5E1',
+                            gap: 6,
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: '#0F172A' }}>
+                            Recuperación Segura de Administrador (Conserva 100% los clientes y préstamos)
+                          </Text>
+                          <TextInput
+                            style={styles.compactInput}
+                            value={recoveryKeyInput}
+                            onChangeText={setRecoveryKeyInput}
+                            placeholder="PIN de Recuperación, NIT, Teléfono o Nombre exacto de la Oficina"
+                            placeholderTextColor={COLORS.textMuted}
+                            autoCapitalize="none"
+                          />
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TextInput
+                              style={[styles.compactInput, { flex: 1 }]}
+                              value={recoveryNewPasswordInput}
+                              onChangeText={setRecoveryNewPasswordInput}
+                              placeholder="Nueva clave Admin (mín. 6)"
+                              placeholderTextColor={COLORS.textMuted}
+                              secureTextEntry
+                              autoCapitalize="none"
+                            />
+                            <TouchableOpacity
+                              style={[styles.verifyBtn, { backgroundColor: '#047857' }]}
+                              onPress={handleRecoverAdminPassword}
+                            >
+                              <Text style={styles.verifyBtnText}>Restablecer</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
                     </View>
                   ) : null}
                 </View>
@@ -770,6 +907,21 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       editable={isFormEditable}
                     />
                   </View>
+                </View>
+
+                <View style={{ marginTop: 8 }}>
+                  <Text style={styles.fieldCaption}>
+                    PIN Maestro de Recuperación (Para recuperar clave sin perder cartera)
+                  </Text>
+                  <TextInput
+                    style={[styles.compactInput, !isFormEditable && styles.inputLocked]}
+                    value={wizRecoveryPin}
+                    onChangeText={setWizRecoveryPin}
+                    placeholder="Ej: 4589 o código secreto de emergencia"
+                    placeholderTextColor={COLORS.textMuted}
+                    autoCapitalize="none"
+                    editable={isFormEditable}
+                  />
                 </View>
               </View>
 

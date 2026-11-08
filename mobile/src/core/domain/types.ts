@@ -392,7 +392,10 @@ export interface OfficeCompanyConfig {
   allowPartialPayments?: boolean;   // ¿Permitir abonos parciales?
   maxNewLoanLimit: number;          // Límite de crédito inicial para nuevos clientes
   routeInitialCashBase: number;     // Base de efectivo entregada al cobrador en la mañana
-  officeServerUrl?: string;         // URL del servidor Desktop en Red Local Wi-Fi (ej. http://192.168.1.10:8765)
+  officeServerUrl?: string;         // URL del servidor Desktop en Red Local Wi-Fi o Nube (ej. http://192.168.1.10:8765)
+  recoveryPin?: string;             // PIN maestro de recuperación de contraseña de Admin (sin perder cartera)
+  autoCloudSyncEnabled?: boolean;   // Sincronización automática en segundo plano cuando hay conexión
+  lastSyncedAt?: string;            // Fecha/hora ISO de la última sincronización exitosa
   isSetupCompleted?: boolean;       // Indica si la oficina ya creó sus credenciales personalizadas y rutas
 }
 
