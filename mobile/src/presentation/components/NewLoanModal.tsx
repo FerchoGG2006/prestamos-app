@@ -482,6 +482,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 onPress={() => {
                   setWithLoan(true);
                   setIsCardMigration(true);
+                  setCustomerMode('NEW');
                 }}
               >
                 <ClipboardList size={13} color={withLoan && isCardMigration ? '#0F766E' : '#64748B'} />
@@ -497,7 +498,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </Text>
               </TouchableOpacity>
 
-              {customerMode === 'NEW' && (
+              {customerMode === 'NEW' && !isCardMigration && (
                 <TouchableOpacity
                   style={[
                     {
@@ -537,43 +538,45 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             {/* 1. SELECCIONAR O CREAR TITULAR */}
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.label}>1. Titular del Crédito</Text>
-              <View style={styles.modeSwitchContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.modeSwitchBtn,
-                    customerMode === 'EXISTING' && styles.modeSwitchBtnActive,
-                  ]}
-                  onPress={() => setCustomerMode('EXISTING')}
-                >
-                  <Users size={12} color={customerMode === 'EXISTING' ? '#FFFFFF' : '#475569'} />
-                  <Text
+              {!isCardMigration && customers.length > 0 && (
+                <View style={styles.modeSwitchContainer}>
+                  <TouchableOpacity
                     style={[
-                      styles.modeSwitchText,
-                      customerMode === 'EXISTING' && styles.modeSwitchTextActive,
+                      styles.modeSwitchBtn,
+                      customerMode === 'EXISTING' && styles.modeSwitchBtnActive,
                     ]}
+                    onPress={() => setCustomerMode('EXISTING')}
                   >
-                    Existente ({customers.length})
-                  </Text>
-                </TouchableOpacity>
+                    <Users size={12} color={customerMode === 'EXISTING' ? '#FFFFFF' : '#475569'} />
+                    <Text
+                      style={[
+                        styles.modeSwitchText,
+                        customerMode === 'EXISTING' && styles.modeSwitchTextActive,
+                      ]}
+                    >
+                      Existente ({customers.length})
+                    </Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={[
-                    styles.modeSwitchBtn,
-                    customerMode === 'NEW' && styles.modeSwitchBtnActive,
-                  ]}
-                  onPress={() => setCustomerMode('NEW')}
-                >
-                  <UserPlus size={12} color={customerMode === 'NEW' ? '#FFFFFF' : '#475569'} />
-                  <Text
+                  <TouchableOpacity
                     style={[
-                      styles.modeSwitchText,
-                      customerMode === 'NEW' && styles.modeSwitchTextActive,
+                      styles.modeSwitchBtn,
+                      customerMode === 'NEW' && styles.modeSwitchBtnActive,
                     ]}
+                    onPress={() => setCustomerMode('NEW')}
                   >
-                    Nuevo Cliente
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                    <UserPlus size={12} color={customerMode === 'NEW' ? '#FFFFFF' : '#475569'} />
+                    <Text
+                      style={[
+                        styles.modeSwitchText,
+                        customerMode === 'NEW' && styles.modeSwitchTextActive,
+                      ]}
+                    >
+                      Nuevo Cliente
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             {customerMode === 'EXISTING' ? (
@@ -1199,27 +1202,6 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </View>
           ) : null}
 
-          {isCardMigration && (
-            <TouchableOpacity
-              style={[
-                styles.confirmBtn,
-                {
-                  backgroundColor: '#0F766E',
-                  marginBottom: 8,
-                  paddingVertical: 11,
-                },
-                isSubmitting && { opacity: 0.5 },
-              ]}
-              onPress={() => handleCreateLoan(true)}
-              disabled={isSubmitting}
-            >
-              <FilePlus2 size={16} color="#ffffff" style={{ marginRight: 8 }} />
-              <Text style={styles.confirmBtnText}>
-                {isSubmitting ? 'Guardando...' : 'Guardar y Agregar Otro del Taco'}
-              </Text>
-            </TouchableOpacity>
-          )}
-
           <TouchableOpacity
             style={[styles.confirmBtn, isSubmitting && { opacity: 0.5 }]}
             onPress={() => handleCreateLoan(false)}
@@ -1232,9 +1214,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 : !withLoan
                   ? 'Guardar Solo Cliente'
                   : isCardMigration
-                    ? customerMode === 'NEW'
-                      ? 'Registrar Cliente y Pasar Cartulina'
-                      : 'Pasar Cartulina a Digital'
+                    ? 'Registrar Cliente y Pasar Cartulina'
                     : customerMode === 'NEW'
                       ? 'Registrar Cliente y Desembolsar'
                       : 'Confirmar y Desembolsar'}

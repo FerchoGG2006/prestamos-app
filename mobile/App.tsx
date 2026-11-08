@@ -25,6 +25,27 @@ if (typeof window !== 'undefined' && typeof Node !== 'undefined' && Node.prototy
   if (typeof document !== 'undefined' && document.documentElement) {
     document.documentElement.setAttribute('translate', 'no');
     document.documentElement.classList.add('notranslate');
+
+    // Bloquear auto-zoom en iPhone (iOS Safari / PWA) al tocar labels o inputs
+    let viewportMeta = document.querySelector('meta[name="viewport"]');
+    if (!viewportMeta && document.head) {
+      viewportMeta = document.createElement('meta');
+      viewportMeta.setAttribute('name', 'viewport');
+      document.head.appendChild(viewportMeta);
+    }
+    if (viewportMeta) {
+      viewportMeta.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover'
+      );
+    }
+    document.addEventListener(
+      'gesturestart',
+      (e) => {
+        e.preventDefault();
+      },
+      { passive: false }
+    );
   }
 }
 
@@ -213,13 +234,25 @@ export default function App() {
         document.head.appendChild(style);
       }
       style.textContent = `
+        html, body {
+          touch-action: manipulation !important;
+          -webkit-text-size-adjust: 100% !important;
+          text-size-adjust: 100% !important;
+          overscroll-behavior-y: none;
+        }
         *, *::before, *::after {
           font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
+          touch-action: manipulation;
+          -webkit-tap-highlight-color: transparent;
         }
         body, input, textarea, button, select, option {
           font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        }
+        /* Regla crítica iOS Safari: cualquier input/textarea/select < 16px provoca zoom automático en iPhone */
+        input, textarea, select {
+          font-size: 16px !important;
         }
       `;
     }
