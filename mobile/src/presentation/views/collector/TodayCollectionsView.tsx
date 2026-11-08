@@ -30,6 +30,7 @@ import {
   openWhatsAppReceipt,
 } from '../../../core/utils/whatsapp-receipt';
 import { CustomerOptionsModal } from '../../components/CustomerOptionsModal';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import {
   Search,
   Check,
@@ -168,8 +169,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   const dockScrollClearance = insets.bottom + 140;
   const [activeFilter, setActiveFilter] = useState<FilterType>(initialFilter);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 180);
+  const [visibleLimit, setVisibleLimit] = useState<number>(35);
   const [summaryPeriodFilter, setSummaryPeriodFilter] = useState<'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'ALL'>('TODAY');
   const [showSummaryFilterModal, setShowSummaryFilterModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    setVisibleLimit(35);
+  }, [activeFilter, debouncedSearchQuery]);
 
   const summaryFilterLabel = React.useMemo(() => {
     switch (summaryPeriodFilter) {
@@ -521,11 +528,11 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     MONTHLY: customerCardsData.filter((i) => i.activeLoan.frequency === 'MONTHLY').length,
   };
 
-  // Filtrado combinado (Estado + Modalidad de Pago + Buscador + Ordenamiento)
+  // Filtrado combinado (Estado + Modalidad de Pago + Buscador con Debounce + Ordenamiento)
   const filteredCards = customerCardsData
     .filter((item) => {
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
+      if (debouncedSearchQuery.trim()) {
+        const q = debouncedSearchQuery.toLowerCase();
         const matchName = item.customer.fullName?.toLowerCase().includes(q) ?? false;
         const matchDoc = item.customer.documentNumber?.toLowerCase().includes(q) ?? false;
         const matchBiz = item.customer.businessName?.toLowerCase().includes(q) ?? false;
@@ -1790,9 +1797,49 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             </Text>
           </View>
         ) : activeFilter === 'PAGADOS' ? (
-          filteredCards.map((item, index) => renderCompletedCard(item, index))
+          <>
+            {filteredCards.slice(0, visibleLimit).map((item, index) => renderCompletedCard(item, index))}
+            {filteredCards.length > visibleLimit && (
+              <TouchableOpacity
+                style={{
+                  marginVertical: 10,
+                  paddingVertical: 11,
+                  borderRadius: 12,
+                  backgroundColor: '#EFF6FF',
+                  borderWidth: 1,
+                  borderColor: '#BFDBFE',
+                  alignItems: 'center',
+                }}
+                onPress={() => setVisibleLimit((prev) => prev + 35)}
+              >
+                <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#2563EB' }}>
+                  Mostrar más clientes ({filteredCards.length - visibleLimit} restantes)
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
         ) : activeFilter !== 'TODOS' ? (
-          filteredCards.map((item, index) => renderPendingCard(item, index))
+          <>
+            {filteredCards.slice(0, visibleLimit).map((item, index) => renderPendingCard(item, index))}
+            {filteredCards.length > visibleLimit && (
+              <TouchableOpacity
+                style={{
+                  marginVertical: 10,
+                  paddingVertical: 11,
+                  borderRadius: 12,
+                  backgroundColor: '#EFF6FF',
+                  borderWidth: 1,
+                  borderColor: '#BFDBFE',
+                  alignItems: 'center',
+                }}
+                onPress={() => setVisibleLimit((prev) => prev + 35)}
+              >
+                <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#2563EB' }}>
+                  Mostrar más paradas ({filteredCards.length - visibleLimit} restantes)
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
         ) : (
           <>
             {/* SECCIÓN 1: PARADAS PENDIENTES */}
@@ -1808,7 +1855,25 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               </View>
             )}
 
-            {pendingRouteCards.map((item, index) => renderPendingCard(item, index))}
+            {pendingRouteCards.slice(0, visibleLimit).map((item, index) => renderPendingCard(item, index))}
+            {pendingRouteCards.length > visibleLimit && (
+              <TouchableOpacity
+                style={{
+                  marginVertical: 10,
+                  paddingVertical: 11,
+                  borderRadius: 12,
+                  backgroundColor: '#EFF6FF',
+                  borderWidth: 1,
+                  borderColor: '#BFDBFE',
+                  alignItems: 'center',
+                }}
+                onPress={() => setVisibleLimit((prev) => prev + 35)}
+              >
+                <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#2563EB' }}>
+                  Mostrar más paradas ({pendingRouteCards.length - visibleLimit} restantes)
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {/* AVISO DE TODA LA RUTA COMPLETADA */}
             {pendingRouteCards.length === 0 && completedRouteCards.length > 0 && (

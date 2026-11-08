@@ -63,7 +63,11 @@ export function compressWebImageDataUrl(
           return;
         }
         ctx.drawImage(img, 0, 0, width, height);
-        const compressed = canvas.toDataURL('image/jpeg', quality);
+        // Punto 02: Servir y almacenar imágenes en WebP (35% más ligero que JPEG) con fallback automático a JPEG
+        let compressed = canvas.toDataURL('image/webp', quality);
+        if (!compressed || !compressed.startsWith('data:image/webp')) {
+          compressed = canvas.toDataURL('image/jpeg', quality);
+        }
         resolve(compressed && compressed.length < rawDataUrl.length ? compressed : rawDataUrl);
       };
       img.onerror = () => resolve(rawDataUrl);

@@ -26,7 +26,7 @@ interface ClientMediaAttachmentProps {
   title?: string;
 }
 
-export const ClientMediaAttachment: React.FC<ClientMediaAttachmentProps> = ({
+const ClientMediaAttachmentComponent: React.FC<ClientMediaAttachmentProps> = ({
   value,
   onChange,
   title = 'Foto o Video del Cliente',
@@ -445,3 +445,6 @@ const styles = StyleSheet.create({
     color: COLORS.danger,
   },
 });
+
+export const ClientMediaAttachment = React.memo(ClientMediaAttachmentComponent);
+

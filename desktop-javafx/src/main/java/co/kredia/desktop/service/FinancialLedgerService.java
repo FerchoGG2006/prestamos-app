@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.*;
@@ -16,6 +17,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 
 /**
  * Servicio Financiero Transaccional para Kredia Desktop (JavaFX + SQLite).
@@ -34,9 +37,11 @@ public class FinancialLedgerService {
     private static final BigDecimal DEFAULT_PAPERWORK_RATE = new BigDecimal("5000");
     private static final BigDecimal DEFAULT_INTEREST_RATE = new BigDecimal("0.20");
 
+    private static final int POOL_SIZE = 8;
     private final String jdbcUrl;
     private final DelinquencyCalculator delinquencyCalculator;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final BlockingQueue<Connection> connectionPool = new ArrayBlockingQueue<>(POOL_SIZE);
 
     public FinancialLedgerService(String sqliteFilePath, DelinquencyCalculator delinquencyCalculator) {
         this.jdbcUrl = "jdbc:sqlite:" + sqliteFilePath;
@@ -44,8 +49,46 @@ public class FinancialLedgerService {
         initializeSchema();
     }
 
+    private Connection createPhysicalConnection() throws SQLException {
+        Connection raw = DriverManager.getConnection(jdbcUrl);
+        try (Statement st = raw.createStatement()) {
+            st.execute("PRAGMA foreign_keys = ON;");
+            st.execute("PRAGMA journal_mode = WAL;");
+            st.execute("PRAGMA synchronous = NORMAL;");
+            st.execute("PRAGMA temp_store = MEMORY;");
+            st.execute("PRAGMA busy_timeout = 5000;");
+        }
+        return raw;
+    }
+
+    /**
+     * Item 25: Pool de conexiones SQLite en modo WAL.
+     * Reutiliza conexiones abiertas y las devuelve automaticamente al pool al invocar close().
+     */
     private Connection openConnection() throws SQLException {
-        return DriverManager.getConnection(jdbcUrl);
+        Connection raw = connectionPool.poll();
+        if (raw == null || raw.isClosed()) {
+            raw = createPhysicalConnection();
+        }
+        final Connection delegate = raw;
+        return (Connection) Proxy.newProxyInstance(
+                Connection.class.getClassLoader(),
+                new Class<?>[]{Connection.class},
+                (proxy, method, args) -> {
+                    if ("close".equals(method.getName())) {
+                        if (!delegate.isClosed()) {
+                            if (!delegate.getAutoCommit()) {
+                                delegate.setAutoCommit(true);
+                            }
+                            if (!connectionPool.offer(delegate)) {
+                                delegate.close();
+                            }
+                        }
+                        return null;
+                    }
+                    return method.invoke(delegate, args);
+                }
+        );
     }
 
     private void initializeSchema() {
@@ -171,6 +214,13 @@ public class FinancialLedgerService {
                     reason TEXT
                 );
             """);
+            // Item 17: Indices compuestos para las consultas mas frecuentes de cartera y recaudo
+            st.execute("CREATE INDEX IF NOT EXISTS idx_customers_route_order ON customers(route_id, order_index);");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_loans_route_status ON loans(route_id, status, customer_id);");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_installments_loan_pending ON installments(loan_id, installment_number, status);");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_payments_route_date ON payments(route_id, status, created_at);");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_allocations_payment ON payment_allocations(payment_id, loan_id);");
+            st.execute("CREATE INDEX IF NOT EXISTS idx_settlements_route_date ON settlements(route_id, date, status);");
         } catch (SQLException e) {
             throw new IllegalStateException("Error inicializando base de datos SQLite cartera.db", e);
         }
@@ -693,8 +743,16 @@ public class FinancialLedgerService {
 
     public List<LoanRecord> listAllLoans() {
         List<LoanRecord> list = new ArrayList<>();
+        String sql = """
+            SELECT id, loan_number, customer_id, route_id, collector_id,
+                   principal, interest_rate, interest_amount, total_agreed,
+                   installment_count, installment_amount, paperwork_fee,
+                   is_taco_migration, status, start_date, end_date, notes, created_at
+            FROM loans
+            ORDER BY created_at DESC
+        """;
         try (Connection conn = openConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT * FROM loans ORDER BY created_at DESC");
+             PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 list.add(new LoanRecord(
@@ -726,8 +784,13 @@ public class FinancialLedgerService {
 
     public List<CustomerRecord> listAllCustomers() {
         List<CustomerRecord> list = new ArrayList<>();
+        String sql = """
+            SELECT id, full_name, document_number, phone, address, neighborhood, route_id, order_index, created_at
+            FROM customers
+            ORDER BY order_index ASC
+        """;
         try (Connection conn = openConnection();
-             PreparedStatement ps = conn.prepareStatement("SELECT * FROM customers ORDER BY order_index ASC");
+             PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
                 list.add(new CustomerRecord(
@@ -897,21 +960,39 @@ public class FinancialLedgerService {
     }
 
     /**
-     * Exporta el paquete JSON completo desde SQLite para responder a /api/sync/pull.
+     * Exporta el paquete JSON completo o paginado desde SQLite para responder a /api/sync/pull.
      */
     public String exportMobileSyncJson(String routeIdFilter) {
+        return exportMobileSyncJson(routeIdFilter, 500, 0);
+    }
+
+    public String exportMobileSyncJson(String routeIdFilter, int limit, int offset) {
+        int safeLimit = Math.max(1, limit);
+        int safeOffset = Math.max(0, offset);
         try (Connection conn = openConnection()) {
             ObjectNode root = objectMapper.createObjectNode();
             root.put("packageVersion", "1.0.0");
             root.put("exportedAt", Instant.now().toString());
             root.put("operatingDate", LocalDate.now().toString());
+            root.put("limit", safeLimit);
+            root.put("offset", safeOffset);
 
+            List<CustomerRecord> allCusts = listAllCustomers();
             ArrayNode custArr = root.putArray("newCustomers");
-            for (CustomerRecord c : listAllCustomers()) {
+            int custIndex = 0;
+            int custAdded = 0;
+            for (CustomerRecord c : allCusts) {
                 if (routeIdFilter != null && !routeIdFilter.isBlank() && !"ALL".equals(routeIdFilter)
                         && !routeIdFilter.equals(c.routeId())) {
                     continue;
                 }
+                if (custIndex++ < safeOffset) {
+                    continue;
+                }
+                if (custAdded >= safeLimit) {
+                    break;
+                }
+                custAdded++;
                 ObjectNode cn = custArr.addObject();
                 cn.put("id", c.id());
                 cn.put("fullName", c.fullName());

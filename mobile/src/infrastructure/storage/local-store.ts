@@ -54,6 +54,7 @@ import {
   encryptBackupData,
   decryptBackupData,
 } from '../../core/utils/security';
+import { perfMonitor } from '../telemetry/perf-monitor';
 
 export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   companyName: '',
@@ -166,15 +167,18 @@ class LocalStore {
   private auditLogs: AuditLog[] = [];
   private officeConfig: OfficeCompanyConfig = { ...DEFAULT_OFFICE_CONFIG };
 
-  // Índices en memoria O(1) para alto rendimiento con +20.000 registros históricos
+  // Índices en memoria O(1) y caché estilo Redis para los datos más consultados (Puntos 03, 08, 10 y 17)
   private installmentsByLoanId = new Map<string, Installment[]>();
   private paymentsByLoanId = new Map<string, Payment[]>();
   private activeLoanByCustomerId = new Map<string, Loan>();
+  private metricsCache = new Map<string, DailyRouteMetrics>();
+  private inFlightRequests = new Map<string, Promise<any>>();
 
   private isInitialized = false;
   private listeners: Array<() => void> = [];
 
   private rebuildIndexes(): void {
+    this.metricsCache.clear();
     this.installmentsByLoanId.clear();
     for (let i = 0; i < this.installments.length; i++) {
       const inst = this.installments[i];
@@ -1211,6 +1215,12 @@ class LocalStore {
    * Calcula las métricas en tiempo real para el Hero Balance Card, Quick Pills y Gráficos (Figma 7020-3430)
    */
   public getDailyRouteMetrics(todayStr: string, routeIdFilter?: string): DailyRouteMetrics {
+    const cacheKey = `${todayStr}::${routeIdFilter || 'ALL'}`;
+    const cached = this.metricsCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    return perfMonitor.traceSync(`getDailyRouteMetrics(${cacheKey})`, () => {
     const filterByRoute = Boolean(routeIdFilter && routeIdFilter !== 'ALL');
     const scopedLoans = filterByRoute
       ? this.loans.filter((l) => l.routeId === routeIdFilter)
@@ -1470,7 +1480,7 @@ class LocalStore {
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
 
-    return {
+    const computedMetrics: DailyRouteMetrics = {
       plenoCollected: collectedToday,
       collectedToday,
       expectedDailyGoal,
@@ -1498,6 +1508,9 @@ class LocalStore {
       salidasRefinancedBalance,
       salidasNetCashDisbursed,
     };
+    this.metricsCache.set(cacheKey, computedMetrics);
+    return computedMetrics;
+    });
   }
 
   // --- MUTACIONES OPERATIVAS Y FINANCIERAS ---
@@ -3085,37 +3098,48 @@ class LocalStore {
     const baseUrl = (serverUrl || this.officeConfig.officeServerUrl || 'http://192.168.1.10:8765')
       .trim()
       .replace(/\/+$/, '');
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
-    try {
-      const res = await fetch(`${baseUrl}/api/sync/status`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!res.ok) {
+    const dedupKey = `status:${baseUrl}`;
+    const existing = this.inFlightRequests.get(dedupKey);
+    if (existing) {
+      return existing;
+    }
+    const promise = (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        const res = await fetch(`${baseUrl}/api/sync/status`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (!res.ok) {
+          return {
+            ok: false,
+            statusText: `Servidor respondió HTTP ${res.status}`,
+          };
+        }
+        const data = await res.json().catch(() => ({}));
+        return {
+          ok: true,
+          statusText: data.message || 'Conectado a Oficina Central',
+          companyName: data.companyName || this.officeConfig.companyName,
+        };
+      } catch (err: any) {
+        clearTimeout(timer);
         return {
           ok: false,
-          statusText: `Servidor respondió HTTP ${res.status}`,
+          statusText:
+            err?.name === 'AbortError'
+              ? 'Tiempo de espera agotado (5s). Verifique IP y red Wi-Fi.'
+              : `No se pudo conectar a ${baseUrl}. Verifique que el PC de Oficina esté encendido en la misma red Wi-Fi.`,
         };
+      } finally {
+        this.inFlightRequests.delete(dedupKey);
       }
-      const data = await res.json().catch(() => ({}));
-      return {
-        ok: true,
-        statusText: data.message || 'Conectado a Oficina Central',
-        companyName: data.companyName || this.officeConfig.companyName,
-      };
-    } catch (err: any) {
-      clearTimeout(timer);
-      return {
-        ok: false,
-        statusText:
-          err?.name === 'AbortError'
-            ? 'Tiempo de espera agotado (5s). Verifique IP y red Wi-Fi.'
-            : `No se pudo conectar a ${baseUrl}. Verifique que el PC de Oficina esté encendido en la misma red Wi-Fi.`,
-      };
-    }
+    })();
+    this.inFlightRequests.set(dedupKey, promise);
+    return promise;
   }
 
   public async pushSyncToOfficeServer(
@@ -3163,36 +3187,58 @@ class LocalStore {
 
   public async pullRouteFromOfficeServer(
     serverUrl: string | undefined,
-    routeId?: string
+    routeId?: string,
+    limit: number = 500,
+    offset: number = 0
   ): Promise<{ importedCustomers: number; importedLoans: number }> {
     const baseUrl = (serverUrl || this.officeConfig.officeServerUrl || 'http://192.168.1.10:8765')
       .trim()
       .replace(/\/+$/, '');
-    const query = routeId && routeId !== 'ALL' ? `?routeId=${encodeURIComponent(routeId)}` : '';
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    try {
-      const res = await fetch(`${baseUrl}/api/sync/pull${query}`, {
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!res.ok) {
-        throw new Error(`El servidor de Oficina respondió HTTP ${res.status}`);
-      }
-      const rawText = await res.text();
-      const result = await this.importMobileSyncPackage(rawText);
-      await this.updateOfficeConfig({ officeServerUrl: baseUrl });
-      return result;
-    } catch (err: any) {
-      clearTimeout(timer);
-      throw new Error(
-        err?.name === 'AbortError'
-          ? 'Tiempo de espera agotado al descargar cartera desde el PC de Oficina.'
-          : err?.message || 'Error al descargar cartera desde el PC de Oficina.'
-      );
+    const params: string[] = [];
+    if (routeId && routeId !== 'ALL') {
+      params.push(`routeId=${encodeURIComponent(routeId)}`);
     }
+    params.push(`limit=${Math.max(1, limit)}`);
+    params.push(`offset=${Math.max(0, offset)}`);
+    const query = params.length > 0 ? `?${params.join('&')}` : '';
+
+    const dedupKey = `pull:${baseUrl}:${query}`;
+    const existing = this.inFlightRequests.get(dedupKey);
+    if (existing) {
+      return existing;
+    }
+
+    const promise = (async () => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      try {
+        const res = await fetch(`${baseUrl}/api/sync/pull${query}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (!res.ok) {
+          throw new Error(`El servidor de Oficina respondió HTTP ${res.status}`);
+        }
+        const rawText = await res.text();
+        const result = await this.importMobileSyncPackage(rawText);
+        await this.updateOfficeConfig({ officeServerUrl: baseUrl });
+        return result;
+      } catch (err: any) {
+        clearTimeout(timer);
+        throw new Error(
+          err?.name === 'AbortError'
+            ? 'Tiempo de espera agotado al descargar cartera desde el PC de Oficina.'
+            : err?.message || 'Error al descargar cartera desde el PC de Oficina.'
+        );
+      } finally {
+        this.inFlightRequests.delete(dedupKey);
+      }
+    })();
+
+    this.inFlightRequests.set(dedupKey, promise);
+    return promise;
   }
 
   /**

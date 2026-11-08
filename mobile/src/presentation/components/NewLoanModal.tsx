@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Customer, Loan, LoanFrequency } from '../../core/domain/types';
 import { ClientMediaAttachment, ClientMediaValue } from './ClientMediaAttachment';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { formatCOP, addDays as addDaysToDate } from '../../core/config/business-rules';
 import {
   calculateLoanSummary,
@@ -247,15 +248,19 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
     }
   };
 
-  const filteredCustomers = customers.filter((c) => {
-    const q = customerSearch.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      c.fullName?.toLowerCase().includes(q) ||
-      c.documentNumber?.toLowerCase().includes(q) ||
-      c.neighborhood?.toLowerCase().includes(q)
-    );
-  });
+  const debouncedCustomerSearch = useDebouncedValue(customerSearch, 180);
+
+  const filteredCustomers = useMemo(() => {
+    const q = debouncedCustomerSearch.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter((c) => {
+      return (
+        c.fullName?.toLowerCase().includes(q) ||
+        c.documentNumber?.toLowerCase().includes(q) ||
+        c.neighborhood?.toLowerCase().includes(q)
+      );
+    });
+  }, [customers, debouncedCustomerSearch]);
 
   const handleCreateLoan = async (keepOpenForNextTaco: boolean = false) => {
     setFormError('');

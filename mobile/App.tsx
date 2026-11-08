@@ -144,6 +144,9 @@ import { formatAccountStatementReminder, openWhatsAppReceipt } from './src/core/
 import { LoginView } from './src/presentation/views/auth/LoginView';
 import { safeStorage } from './src/infrastructure/storage/local-store';
 import { cloudSyncEngine } from './src/infrastructure/sync/cloud-sync';
+import { RouteSkeletonLoader } from './src/presentation/components/SkeletonLoader';
+import { useDebouncedValue } from './src/presentation/hooks/useDebouncedValue';
+import { perfMonitor } from './src/infrastructure/telemetry/perf-monitor';
 import {
   checkAndDownloadUpdate,
   checkAllUpdates,
@@ -214,15 +217,20 @@ export default function App() {
     timeZone: 'America/Bogota',
   });
 
-  // Tipografía unificada Manrope (Google Fonts oficial con renderizado nítido)
+  // Tipografía unificada Manrope (local + carga asíncrona no bloqueante de respaldo)
   useEffect(() => {
+    perfMonitor.initRealUserMonitoring();
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
       const linkId = 'google-font-manrope';
       if (!document.getElementById(linkId)) {
         const link = document.createElement('link');
         link.id = linkId;
         link.rel = 'stylesheet';
-        link.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap';
+        link.media = 'print';
+        link.onload = () => {
+          link.media = 'all';
+        };
+        link.href = 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap';
         document.head.appendChild(link);
       }
 
@@ -520,6 +528,9 @@ function MainApp({
     activeLoan?: Loan | null;
   }>({ visible: false, customer: null, activeLoan: null });
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const debouncedCustomerSearch = useDebouncedValue(customerSearchQuery, 180);
+  const [visibleDirectoryLimit, setVisibleDirectoryLimit] = useState<number>(40);
+  const [isStoreHydrating, setIsStoreHydrating] = useState<boolean>(true);
   const [customerFilterTab, setCustomerFilterTab] = useState<
     'ALL' | 'ACTIVE' | 'UP_TO_DATE' | 'OVERDUE' | 'NO_LOAN'
   >('ALL');
@@ -736,6 +747,7 @@ function MainApp({
 
     localStore.initialize().then(() => {
       syncFromStore();
+      setIsStoreHydrating(false);
       cloudSyncEngine.initializeAutoSync().catch(() => {});
       safeStorage.getItem('@prestamos_logged_user_id').then((savedUserId) => {
         const allUsers = localStore.getUsers();
@@ -1130,7 +1142,9 @@ function MainApp({
           detailCustomer ? { paddingBottom: insets.bottom } : null,
         ]}
       >
-        {detailCustomer ? (
+        {isStoreHydrating ? (
+          <RouteSkeletonLoader />
+        ) : detailCustomer ? (
           <CustomerDetailView
             customer={detailCustomer}
             loans={loans}
@@ -1195,7 +1209,7 @@ function MainApp({
             initialFilter={routeInitialFilter}
           />
         ) : collectorTab === 'CLIENTES' ? (() => {
-          const q = customerSearchQuery.trim().toLowerCase();
+          const q = debouncedCustomerSearch.trim().toLowerCase();
           const filteredCustomers = routeScopedCustomers.filter((c) => {
             if (q) {
               const matchName = c.fullName?.toLowerCase().includes(q);
@@ -1409,161 +1423,181 @@ function MainApp({
                     ) : null}
                   </View>
                 ) : (
-                  filteredCustomers.map((c) => {
-                    const activeLoan = routeScopedLoans.find(
-                      (l) => l.customerId === c.id && l.status === 'ACTIVE'
-                    );
-                    const isOverdue =
-                      activeLoan &&
-                      installments.some(
-                        (i) =>
-                          i.loanId === activeLoan.id &&
-                          i.pendingAmount > 0 &&
-                          i.dueDate < todayStr
+                  <>
+                    {filteredCustomers.slice(0, visibleDirectoryLimit).map((c) => {
+                      const activeLoan = routeScopedLoans.find(
+                        (l) => l.customerId === c.id && l.status === 'ACTIVE'
                       );
+                      const isOverdue =
+                        activeLoan &&
+                        installments.some(
+                          (i) =>
+                            i.loanId === activeLoan.id &&
+                            i.pendingAmount > 0 &&
+                            i.dueDate < todayStr
+                        );
 
-                    const initials = (c.fullName || 'CL')
-                      .split(' ')
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .map((w) => w[0].toUpperCase())
-                      .join('');
+                      const initials = (c.fullName || 'CL')
+                        .split(' ')
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((w) => w[0].toUpperCase())
+                        .join('');
 
-                    const officeLabel =
-                      localStore.getOfficeConfig().companyName || 'Kredia';
+                      const officeLabel =
+                        localStore.getOfficeConfig().companyName || 'Kredia';
 
-                    return (
-                      <View key={c.id} style={styles.customerCardWrapper}>
-                        <View style={styles.customerCardMainTouch}>
-                          <TouchableOpacity
-                            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                            activeOpacity={0.7}
-                            onPress={() => setDetailCustomer(c)}
-                          >
-                            <View
-                              style={[
-                                styles.customerAvatarCircle,
-                                activeLoan
-                                  ? isOverdue
-                                    ? { backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA' }
-                                    : { backgroundColor: '#F0FDFA', borderWidth: 1, borderColor: '#99F6E4' }
-                                  : { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
-                              ]}
+                      return (
+                        <View key={c.id} style={styles.customerCardWrapper}>
+                          <View style={styles.customerCardMainTouch}>
+                            <TouchableOpacity
+                              style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                              activeOpacity={0.7}
+                              onPress={() => setDetailCustomer(c)}
                             >
-                              <Text
+                              <View
                                 style={[
-                                  styles.customerAvatarText,
-                                  {
-                                    color: activeLoan
-                                      ? isOverdue
-                                        ? '#DC2626'
-                                        : '#0D9488'
-                                      : '#64748B',
-                                  },
+                                  styles.customerAvatarCircle,
+                                  activeLoan
+                                    ? isOverdue
+                                      ? { backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#FECACA' }
+                                      : { backgroundColor: '#F0FDFA', borderWidth: 1, borderColor: '#99F6E4' }
+                                    : { backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
                                 ]}
                               >
-                                {initials}
-                              </Text>
-                            </View>
-
-                            <View style={{ flex: 1, marginLeft: 10, marginRight: 8 }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <Text style={styles.customerItemName} numberOfLines={1}>
-                                  {c.fullName}
-                                </Text>
-                                <View
+                                <Text
                                   style={[
-                                    styles.semanticLoanPill,
-                                    activeLoan
-                                      ? isOverdue
-                                        ? {
-                                            backgroundColor: '#FEF2F2',
-                                            borderColor: '#FECACA',
-                                          }
-                                        : {
-                                            backgroundColor: '#F0FDFA',
-                                            borderColor: '#99F6E4',
-                                          }
-                                      : {
-                                          backgroundColor: '#F8FAFC',
-                                          borderColor: '#E2E8F0',
-                                        },
+                                    styles.customerAvatarText,
+                                    {
+                                      color: activeLoan
+                                        ? isOverdue
+                                          ? '#DC2626'
+                                          : '#0D9488'
+                                        : '#64748B',
+                                    },
                                   ]}
                                 >
-                                  <Text
-                                    style={[
-                                      styles.loanTagText,
-                                      {
-                                        color: activeLoan
-                                          ? isOverdue
-                                            ? '#DC2626'
-                                            : '#0D9488'
-                                          : '#64748B',
-                                      },
-                                    ]}
-                                  >
-                                    {activeLoan
-                                      ? isOverdue
-                                        ? `! Mora • ${activeLoan.loanNumber}`
-                                        : `Al Día • ${activeLoan.loanNumber}`
-                                      : '○ Libre'}
-                                  </Text>
-                                </View>
+                                  {initials}
+                                </Text>
                               </View>
 
-                              <Text style={styles.customerItemSub} numberOfLines={1}>
-                                CC {c.documentNumber || 'S/D'} • {c.neighborhood}
-                                {c.businessName ? ` • ${c.businessName}` : ''}
-                              </Text>
+                              <View style={{ flex: 1, marginLeft: 10, marginRight: 8 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <Text style={styles.customerItemName} numberOfLines={1}>
+                                    {c.fullName}
+                                  </Text>
+                                  <View
+                                    style={[
+                                      styles.semanticLoanPill,
+                                      activeLoan
+                                        ? isOverdue
+                                          ? {
+                                              backgroundColor: '#FEF2F2',
+                                              borderColor: '#FECACA',
+                                            }
+                                          : {
+                                              backgroundColor: '#F0FDFA',
+                                              borderColor: '#99F6E4',
+                                            }
+                                        : {
+                                            backgroundColor: '#F8FAFC',
+                                            borderColor: '#E2E8F0',
+                                          },
+                                    ]}
+                                  >
+                                    <Text
+                                      style={[
+                                        styles.loanTagText,
+                                        {
+                                          color: activeLoan
+                                            ? isOverdue
+                                              ? '#DC2626'
+                                              : '#0D9488'
+                                            : '#64748B',
+                                        },
+                                      ]}
+                                    >
+                                      {activeLoan
+                                        ? isOverdue
+                                          ? `! Mora • ${activeLoan.loanNumber}`
+                                          : `Al Día • ${activeLoan.loanNumber}`
+                                        : '○ Libre'}
+                                    </Text>
+                                  </View>
+                                </View>
+
+                                <Text style={styles.customerItemSub} numberOfLines={1}>
+                                  CC {c.documentNumber || 'S/D'} • {c.neighborhood}
+                                  {c.businessName ? ` • ${c.businessName}` : ''}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+
+                            {/* Acciones Ejecutivas Compactas en la misma fila */}
+                            <View style={styles.customerInlineActions}>
+                              <TouchableOpacity
+                                style={[styles.inlineIconBtn, { backgroundColor: '#F0FDFA', borderColor: '#CCFBF1' }]}
+                                activeOpacity={0.7}
+                                onPress={() => {
+                                  const clean = (c.phone || '').replace(/[^\d+]/g, '');
+                                  Linking.openURL(`tel:${clean}`).catch(() => {});
+                                }}
+                              >
+                                <Phone size={13} color="#0D9488" />
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={[styles.inlineIconBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}
+                                activeOpacity={0.7}
+                                onPress={() => {
+                                  let digits = (c.phone || '').replace(/\D/g, '');
+                                  if (digits.length === 10) digits = `57${digits}`;
+                                  const msg = encodeURIComponent(
+                                    `Hola ${c.fullName || 'Cliente'}, te contactamos de ${officeLabel}.`
+                                  );
+                                  Linking.openURL(`https://wa.me/${digits}?text=${msg}`).catch(() => {});
+                                }}
+                              >
+                                <MessageCircle size={13} color="#059669" />
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={[styles.inlineIconBtn, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}
+                                activeOpacity={0.7}
+                                onPress={() =>
+                                  setCustomerOptionsModalData({
+                                    visible: true,
+                                    customer: c,
+                                    activeLoan: activeLoan || null,
+                                  })
+                                }
+                              >
+                                <MoreVertical size={14} color="#475569" />
+                              </TouchableOpacity>
                             </View>
-                          </TouchableOpacity>
-
-                          {/* Acciones Ejecutivas Compactas en la misma fila */}
-                          <View style={styles.customerInlineActions}>
-                            <TouchableOpacity
-                              style={[styles.inlineIconBtn, { backgroundColor: '#F0FDFA', borderColor: '#CCFBF1' }]}
-                              activeOpacity={0.7}
-                              onPress={() => {
-                                const clean = (c.phone || '').replace(/[^\d+]/g, '');
-                                Linking.openURL(`tel:${clean}`).catch(() => {});
-                              }}
-                            >
-                              <Phone size={13} color="#0D9488" />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={[styles.inlineIconBtn, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}
-                              activeOpacity={0.7}
-                              onPress={() => {
-                                let digits = (c.phone || '').replace(/\D/g, '');
-                                if (digits.length === 10) digits = `57${digits}`;
-                                const msg = encodeURIComponent(
-                                  `Hola ${c.fullName || 'Cliente'}, te contactamos de ${officeLabel}.`
-                                );
-                                Linking.openURL(`https://wa.me/${digits}?text=${msg}`).catch(() => {});
-                              }}
-                            >
-                              <MessageCircle size={13} color="#059669" />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={[styles.inlineIconBtn, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}
-                              activeOpacity={0.7}
-                              onPress={() =>
-                                setCustomerOptionsModalData({
-                                  visible: true,
-                                  customer: c,
-                                  activeLoan: activeLoan || null,
-                                })
-                              }
-                            >
-                              <MoreVertical size={14} color="#475569" />
-                            </TouchableOpacity>
                           </View>
                         </View>
-                      </View>
-                    );
-                  })
+                      );
+                    })}
+                    {filteredCustomers.length > visibleDirectoryLimit && (
+                      <TouchableOpacity
+                        style={{
+                          marginVertical: 12,
+                          paddingVertical: 11,
+                          borderRadius: 12,
+                          backgroundColor: '#EFF6FF',
+                          borderWidth: 1,
+                          borderColor: '#BFDBFE',
+                          alignItems: 'center',
+                        }}
+                        onPress={() => setVisibleDirectoryLimit((prev) => prev + 40)}
+                      >
+                        <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#2563EB' }}>
+                          Mostrar más clientes ({filteredCustomers.length - visibleDirectoryLimit} restantes)
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )}
               </ScrollView>
             </View>

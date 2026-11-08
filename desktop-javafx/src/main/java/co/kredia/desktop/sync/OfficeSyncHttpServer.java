@@ -81,12 +81,23 @@ public class OfficeSyncHttpServer {
             try {
                 String query = exchange.getRequestURI().getQuery();
                 String routeFilter = null;
-                if (query != null && query.contains("routeId=")) {
-                    routeFilter = query.substring(query.indexOf("routeId=") + 8);
-                    int amp = routeFilter.indexOf('&');
-                    if (amp >= 0) routeFilter = routeFilter.substring(0, amp);
+                int limit = 500;
+                int offset = 0;
+                if (query != null) {
+                    for (String param : query.split("&")) {
+                        String[] kv = param.split("=", 2);
+                        if (kv.length == 2) {
+                            if ("routeId".equals(kv[0])) {
+                                routeFilter = kv[1];
+                            } else if ("limit".equals(kv[0])) {
+                                try { limit = Integer.parseInt(kv[1]); } catch (NumberFormatException ignored) {}
+                            } else if ("offset".equals(kv[0])) {
+                                try { offset = Integer.parseInt(kv[1]); } catch (NumberFormatException ignored) {}
+                            }
+                        }
+                    }
                 }
-                String payload = ledgerService.exportMobileSyncJson(routeFilter);
+                String payload = ledgerService.exportMobileSyncJson(routeFilter, limit, offset);
                 sendJson(exchange, 200, payload);
             } catch (Exception e) {
                 sendJson(exchange, 500, "{\"ok\":false,\"message\":\"" + e.getMessage().replace("\"", "'") + "\"}");
