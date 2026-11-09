@@ -1270,49 +1270,89 @@ class LocalStore {
     //    - El Administrativo permanece inmutable.
     // =========================================================================
 
-    // Base asignada inicial o cupo administrativo (ej: $5.000.000 COP)
-    const baseCapital = totalAssignedCashBase > 0
-      ? totalAssignedCashBase
-      : (totalTarget > 0 ? totalTarget : 0);
-
     // Préstamos válidos colocados en la ruta (activos, cancelados por pago completo y renovados; excluye anulados)
     const validLoans = scopedLoans.filter(
       (l) => l.status === 'ACTIVE' || l.status === 'PAID' || l.status === 'RENEWED' || l.status === 'DEFAULTED'
     );
 
-    // Interés/utilidad pactada y generada por todos los créditos colocados:
-    // Permanece en el patrimonio tanto mientras el crédito está activo como cuando ya se pagó por completo.
-    // Nunca se borra al pagar la última cuota.
-    const totalEarnedInterest = validLoans.reduce(
-      (sum, l) => sum + Math.max(0, l.interestAmount || ((l.totalAgreed || 0) - (l.principal || 0))),
-      0
-    );
+    // Total de cartera pactada colocada en créditos activos
+    const activeLoansAgreedTotal = activeLoans.reduce((sum, l) => sum + (l.totalAgreed || 0), 0);
 
-    // Administrativo / Patrimonio operativo total:
-    // Arranca en el capital base y SUBE únicamente con los intereses generados (+ inyecciones de capital).
-    // NO baja jamás al cobrar cuotas; el administrativo permanece intacto.
-    const totalAdministrativeCapital = Math.max(
-      baseCapital,
-      baseCapital +
-        totalEarnedInterest +
-        capitalInjectedToday -
-        expensesToday -
-        recaudoRetiradoToday -
-        paperworkRetiradoToday
+    // Lo efectivamente amortizado / pagado en cuotas de los créditos activos:
+    // (Total acordado original - Saldo pendiente actual en calle)
+    const activeLoansAmortized = Math.max(0, activeLoansAgreedTotal - activeCapitalInStreet);
+
+    // Todos los abonos en efectivo completados en la ruta
+    const scopedCompletedPayments = this.payments.filter(
+      (p) => p.status === 'COMPLETED' && (!filterByRoute || scopedLoanIds.has(p.loanId))
     );
+    const totalCashCollectedAllTime = scopedCompletedPayments
+      .filter((p) => p.paymentMethod === 'CASH')
+      .reduce((sum, p) => sum + p.amountReceived, 0);
+
+    // El efectivo real recaudado de cuotas es el mayor entre los pagos registrados en el sistema
+    // y la amortización real de cuotas (para contemplar créditos con abonos registrados)
+    const effectiveCashFromInstallments = Math.max(totalCashCollectedAllTime, activeLoansAmortized);
+
+    // Movimientos de salidas de efectivo físicamente desembolsadas de la caja
+    const totalDisbursedCashAllTime = scopedCashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          (cm.category === 'LOAN_DISBURSEMENT' || cm.category === 'RENEWAL_DISBURSEMENT')
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const totalCancelledLoansRefundAllTime = scopedCashMovements
+      .filter(
+        (cm) => cm.type === 'INCOME' && cm.category === 'LOAN_CANCELLATION'
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const netDisbursedFromBase = Math.max(0, totalDisbursedCashAllTime - totalCancelledLoansRefundAllTime);
+
+    const totalExpensesAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'EXPENSE')
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const totalRecaudoRetiradoAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RECAUDO_OFICINA')
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const totalPaperworkRetiradoAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RETIRO_PAPELERIA')
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const totalCapitalInjectedAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'INCOME' && cm.category === 'CAPITAL_INJECTION')
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    // Fondo inicial de efectivo asignado físicamente a la caja (si la oficina fondeó la caja)
+    const initialCashRemaining = totalAssignedCashBase > 0
+      ? Math.max(0, totalAssignedCashBase - netDisbursedFromBase)
+      : 0;
 
     // Base en oficina / efectivo en mano:
-    // Toda cuota cobrada (sea capital o rédito/interés) ingresa íntegra a la base disponible.
-    // Base = Administrativo - Cartera en calle - Cobros digitales en banco.
-    // Al cobrar una cuota:
-    // 1. Cartera en calle baja en el valor total de la cuota.
-    // 2. Base en mano sube exactamente en ese mismo valor total.
-    // 3. El Administrativo se mantiene 100% inalterado.
+    // Sube exactamente con cada peso ingresado en cuotas de ese crédito (+ inyecciones)
+    // y resta gastos operativos y retiros de efectivo a la administración.
     const cashAvailableInHand = Math.max(
       0,
-      totalAdministrativeCapital -
-        activeCapitalInStreet -
-        collectedDigitalToday
+      initialCashRemaining +
+        effectiveCashFromInstallments +
+        totalCapitalInjectedAllTime -
+        totalExpensesAllTime -
+        totalRecaudoRetiradoAllTime -
+        totalPaperworkRetiradoAllTime
+    );
+
+    // Patrimonio Operativo / Capital Administrativo Total:
+    // Es la suma real inmutable de la Cartera Activa en Calle + la Base en Oficina + el Recaudo Digital en banco.
+    // Al registrar el crédito: Cartera ($1.120.000) + Base ($0) = Administrativo ($1.120.000).
+    // Al ingresar los $500.000: Cartera ($620.000) + Base ($500.000) = Administrativo ($1.120.000, quieto).
+    const realOperatingAssets = activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday;
+    const totalAdministrativeCapital = Math.max(
+      totalAssignedCashBase,
+      realOperatingAssets
     );
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
