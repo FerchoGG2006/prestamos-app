@@ -54,7 +54,6 @@ import {
   encryptBackupData,
   decryptBackupData,
 } from '../../core/utils/security';
-import { perfMonitor } from '../telemetry/perf-monitor';
 
 export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   companyName: '',
@@ -77,8 +76,6 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   allowRouteReorder: false,
   allowPartialPayments: true,
   officeServerUrl: 'http://192.168.1.10:8765',
-  recoveryPin: '',
-  autoCloudSyncEnabled: true,
   isSetupCompleted: false,
 };
 
@@ -97,7 +94,6 @@ const STORAGE_KEYS = {
   NON_PAYMENT_VISITS: '@prestamos_mobile_non_payments_v1',
   AUDIT_LOGS: '@prestamos_mobile_audit_v1',
   OFFICE_CONFIG: '@prestamos_mobile_office_config_v1',
-  ARCHIVED_LEDGER: '@prestamos_mobile_archived_ledger_v1',
 };
 
 /**
@@ -167,48 +163,8 @@ class LocalStore {
   private auditLogs: AuditLog[] = [];
   private officeConfig: OfficeCompanyConfig = { ...DEFAULT_OFFICE_CONFIG };
 
-  // Índices en memoria O(1) y caché estilo Redis para los datos más consultados (Puntos 03, 08, 10 y 17)
-  private installmentsByLoanId = new Map<string, Installment[]>();
-  private paymentsByLoanId = new Map<string, Payment[]>();
-  private activeLoanByCustomerId = new Map<string, Loan>();
-  private metricsCache = new Map<string, DailyRouteMetrics>();
-  private inFlightRequests = new Map<string, Promise<any>>();
-
   private isInitialized = false;
   private listeners: Array<() => void> = [];
-
-  private rebuildIndexes(): void {
-    this.metricsCache.clear();
-    this.installmentsByLoanId.clear();
-    for (let i = 0; i < this.installments.length; i++) {
-      const inst = this.installments[i];
-      const bucket = this.installmentsByLoanId.get(inst.loanId);
-      if (bucket) {
-        bucket.push(inst);
-      } else {
-        this.installmentsByLoanId.set(inst.loanId, [inst]);
-      }
-    }
-
-    this.paymentsByLoanId.clear();
-    for (let i = 0; i < this.payments.length; i++) {
-      const pay = this.payments[i];
-      const bucket = this.paymentsByLoanId.get(pay.loanId);
-      if (bucket) {
-        bucket.push(pay);
-      } else {
-        this.paymentsByLoanId.set(pay.loanId, [pay]);
-      }
-    }
-
-    this.activeLoanByCustomerId.clear();
-    for (let i = 0; i < this.loans.length; i++) {
-      const loan = this.loans[i];
-      if (loan.status === 'ACTIVE' && !this.activeLoanByCustomerId.has(loan.customerId)) {
-        this.activeLoanByCustomerId.set(loan.customerId, loan);
-      }
-    }
-  }
 
   public subscribe(listener: () => void): () => void {
     this.listeners.push(listener);
@@ -218,7 +174,6 @@ class LocalStore {
   }
 
   private notify() {
-    this.rebuildIndexes();
     this.listeners.forEach((l) => l());
   }
 
@@ -619,24 +574,6 @@ class LocalStore {
   public getCustomers(): Customer[] { return this.customers; }
   public getLoans(): Loan[] { return this.loans; }
   public getInstallments(): Installment[] { return this.installments; }
-  public getInstallmentsByLoanId(loanId: string): Installment[] {
-    if (this.installmentsByLoanId.size === 0 && this.installments.length > 0) {
-      this.rebuildIndexes();
-    }
-    return this.installmentsByLoanId.get(loanId) || [];
-  }
-  public getPaymentsByLoanId(loanId: string): Payment[] {
-    if (this.paymentsByLoanId.size === 0 && this.payments.length > 0) {
-      this.rebuildIndexes();
-    }
-    return this.paymentsByLoanId.get(loanId) || [];
-  }
-  public getActiveLoanByCustomerId(customerId: string): Loan | undefined {
-    if (this.activeLoanByCustomerId.size === 0 && this.loans.length > 0) {
-      this.rebuildIndexes();
-    }
-    return this.activeLoanByCustomerId.get(customerId);
-  }
   public getActiveSession(): CollectionSession {
     if (!this.activeSession) {
       const today = getLocalTodayStr();
@@ -695,78 +632,6 @@ class LocalStore {
   }
 
   /**
-   * Recuperación Segura de Contraseña del Administrador (Sin perder cartera ni clientes):
-   * Permite restablecer la clave de Administrador verificando el PIN Maestro de Recuperación,
-   * el NIT/Teléfono de la oficina o el nombre exacto de la empresa registrada.
-   */
-  public async recoverAdminPassword(params: {
-    recoveryKey: string;
-    newAdminPassword: string;
-  }): Promise<User> {
-    const cleanKey = (params.recoveryKey || '').trim().toLowerCase();
-    const cleanNewPass = (params.newAdminPassword || '').trim();
-
-    if (!cleanKey) {
-      throw new Error('Ingresa el PIN de Recuperación, NIT, teléfono o nombre de tu oficina.');
-    }
-    if (cleanNewPass.length < 6 || cleanNewPass === '123' || cleanNewPass === '123456') {
-      throw new Error('La nueva clave de Administrador debe tener al menos 6 caracteres seguros.');
-    }
-
-    const storedPin = (this.officeConfig.recoveryPin || '').trim().toLowerCase();
-    const storedTaxId = (this.officeConfig.taxId || '').trim().toLowerCase();
-    const storedPhone = (this.officeConfig.supportPhone || '').trim().toLowerCase();
-    const storedCompany = (this.officeConfig.companyName || '').trim().toLowerCase();
-
-    let isAuthorized = false;
-    if (storedPin && cleanKey === storedPin) {
-      isAuthorized = true;
-    } else if (storedTaxId && storedTaxId.length >= 4 && cleanKey === storedTaxId) {
-      isAuthorized = true;
-    } else if (storedPhone && storedPhone.length >= 6 && cleanKey === storedPhone) {
-      isAuthorized = true;
-    } else if (!storedPin && storedCompany && cleanKey === storedCompany) {
-      isAuthorized = true;
-    }
-
-    if (!isAuthorized) {
-      throw new Error(
-        'Código de recuperación inválido. Verifica tu PIN de recuperación, NIT o teléfono oficial de la oficina.'
-      );
-    }
-
-    const adminIdx = this.users.findIndex((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
-    if (adminIdx === -1) {
-      throw new Error('No se encontró un usuario Administrador registrado.');
-    }
-
-    const updatedAdmin: User = {
-      ...this.users[adminIdx],
-      password: hashPassword(cleanNewPass),
-    };
-    this.users[adminIdx] = updatedAdmin;
-
-    const audit: AuditLog = {
-      id: `audit-rec-adm-${Date.now()}`,
-      userId: updatedAdmin.id,
-      timestamp: new Date().toISOString(),
-      entity: 'CONFIG',
-      entityId: updatedAdmin.id,
-      action: 'UPDATE',
-      reason: 'Recuperación autorizada de clave de Administrador sin pérdida de cartera.',
-    };
-    this.auditLogs.unshift(audit);
-
-    await Promise.all([
-      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
-      safeStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(this.auditLogs)),
-    ]);
-
-    this.notify();
-    return updatedAdmin;
-  }
-
-  /**
    * Configuración integral de la Oficina:
    * Crea las credenciales del Administrador y configura las N rutas elegidas con sus credenciales y parámetros a gusto de la oficina.
    */
@@ -774,7 +639,6 @@ class LocalStore {
     companyName: string;
     city?: string;
     supportPhone?: string;
-    recoveryPin?: string;
     adminName: string;
     adminUsername: string;
     adminPassword: string;
@@ -930,7 +794,6 @@ class LocalStore {
       companyName: params.companyName.trim() || this.officeConfig.companyName,
       city: params.city?.trim() || this.officeConfig.city,
       supportPhone: params.supportPhone?.trim() || this.officeConfig.supportPhone,
-      recoveryPin: params.recoveryPin !== undefined ? params.recoveryPin.trim() : this.officeConfig.recoveryPin,
       defaultInterestRate: rateFraction,
       paperworkFeeEnabled: params.paperworkFeeEnabled ?? this.officeConfig.paperworkFeeEnabled ?? true,
       paperworkRate: params.paperworkRate ?? this.officeConfig.paperworkRate ?? 5000,
@@ -1215,12 +1078,6 @@ class LocalStore {
    * Calcula las métricas en tiempo real para el Hero Balance Card, Quick Pills y Gráficos (Figma 7020-3430)
    */
   public getDailyRouteMetrics(todayStr: string, routeIdFilter?: string): DailyRouteMetrics {
-    const cacheKey = `${todayStr}::${routeIdFilter || 'ALL'}`;
-    const cached = this.metricsCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-    return perfMonitor.traceSync(`getDailyRouteMetrics(${cacheKey})`, () => {
     const filterByRoute = Boolean(routeIdFilter && routeIdFilter !== 'ALL');
     const scopedLoans = filterByRoute
       ? this.loans.filter((l) => l.routeId === routeIdFilter)
@@ -1229,17 +1086,18 @@ class LocalStore {
     const activeLoanIds = new Set(activeLoans.map((l) => l.id));
     const scopedLoanIds = new Set(scopedLoans.map((l) => l.id));
 
-    // Capital activo en la calle y mora fáctica calculados en O(1) por préstamo activo usando índices en memoria
-    let activeCapitalInStreet = 0;
+    // Capital activo en la calle (suma de pendingAmount en cuotas de créditos activos)
+    const activeCapitalInStreet = this.installments
+      .filter((i) => activeLoanIds.has(i.loanId))
+      .reduce((sum, i) => sum + i.pendingAmount, 0);
+
+    // Mora fáctica acumulada y conteo de clientes en mora
     let overdueTotalAmount = 0;
     let overdueCustomersCount = 0;
     let expectedTodayFromInstallments = 0;
 
     activeLoans.forEach((loan) => {
-      const loanInsts = this.getInstallmentsByLoanId(loan.id);
-      for (let k = 0; k < loanInsts.length; k++) {
-        activeCapitalInStreet += loanInsts[k].pendingAmount;
-      }
+      const loanInsts = this.installments.filter((i) => i.loanId === loan.id);
       const delinq = calculateDelinquencyMetrics(loanInsts, todayStr);
       if (delinq.hasDelinquency) {
         overdueTotalAmount += delinq.overdueAmount;
@@ -1316,10 +1174,7 @@ class LocalStore {
 
     // Desglose de Salidas / Salientes (Préstamos Paridos & Renovaciones, excluyendo migraciones de cartulina física)
     const isMigratedCardLoan = (l: Loan) =>
-      Boolean(
-        l.notes?.startsWith('Migrado de cartulina física') ||
-        l.notes?.startsWith('Migrado de cartulina fisica')
-      );
+      Boolean(l.notes?.startsWith('Migrado de cartulina física'));
     const todayNewLoans = scopedLoans.filter(
       (l) =>
         l.createdAt.startsWith(todayStr) &&
@@ -1420,13 +1275,41 @@ class LocalStore {
       (l) => l.status === 'ACTIVE' || l.status === 'PAID' || l.status === 'RENEWED' || l.status === 'DEFAULTED'
     );
 
-    const manualBaseCapital = totalAssignedCashBase > 0
-      ? totalAssignedCashBase
-      : (totalTarget > 0 ? totalTarget : 0);
+    // Total de cartera pactada colocada en créditos activos
+    const activeLoansAgreedTotal = activeLoans.reduce((sum, l) => sum + (l.totalAgreed || 0), 0);
 
-    const totalCapitalInjectedAllTime = scopedCashMovements
-      .filter((cm) => cm.type === 'INCOME' && cm.category === 'CAPITAL_INJECTION')
+    // Lo efectivamente amortizado / pagado en cuotas de los créditos activos:
+    // (Total acordado original - Saldo pendiente actual en calle)
+    const activeLoansAmortized = Math.max(0, activeLoansAgreedTotal - activeCapitalInStreet);
+
+    // Todos los abonos en efectivo completados en la ruta
+    const scopedCompletedPayments = this.payments.filter(
+      (p) => p.status === 'COMPLETED' && (!filterByRoute || scopedLoanIds.has(p.loanId))
+    );
+    const totalCashCollectedAllTime = scopedCompletedPayments
+      .filter((p) => p.paymentMethod === 'CASH')
+      .reduce((sum, p) => sum + p.amountReceived, 0);
+
+    // El efectivo real recaudado de cuotas es el mayor entre los pagos registrados en el sistema
+    // y la amortización real de cuotas (para contemplar créditos con abonos registrados)
+    const effectiveCashFromInstallments = Math.max(totalCashCollectedAllTime, activeLoansAmortized);
+
+    // Movimientos de salidas de efectivo físicamente desembolsadas de la caja
+    const totalDisbursedCashAllTime = scopedCashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          (cm.category === 'LOAN_DISBURSEMENT' || cm.category === 'RENEWAL_DISBURSEMENT')
+      )
       .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const totalCancelledLoansRefundAllTime = scopedCashMovements
+      .filter(
+        (cm) => cm.type === 'INCOME' && cm.category === 'LOAN_CANCELLATION'
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const netDisbursedFromBase = Math.max(0, totalDisbursedCashAllTime - totalCancelledLoansRefundAllTime);
 
     const totalExpensesAllTime = scopedCashMovements
       .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'EXPENSE')
@@ -1436,72 +1319,45 @@ class LocalStore {
       .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RECAUDO_OFICINA')
       .reduce((sum, cm) => sum + cm.amount, 0);
 
-    // Reconstrucción cronológica exacta de la Base Disponible (cashAvailableInHand):
-    // 1. Parte de la base manual (si existe) + inyecciones de capital.
-    // 2. Cada cartulina del taco aporta a la Base las cuotas ya cobradas en papel + abonos posteriores.
-    // 3. Un "Nuevo Préstamo" posterior descuenta su capital (principal) de la Base únicamente si había
-    //    Base acumulada suficiente para cubrirlo; si la Base era menor al capital (porque el administrador
-    //    estaba ingresando clientes iniciales de la ruta desde $0), se trata como cartera inicial aportada
-    //    a la ruta sin destruir la Base existente ni dejar Cartera en Calle > Administrativo.
-    const chronologicalLoans = [...validLoans].reverse();
-    let runningCashBase = manualBaseCapital + totalCapitalInjectedAllTime;
+    const totalPaperworkRetiradoAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RETIRO_PAPELERIA')
+      .reduce((sum, cm) => sum + cm.amount, 0);
 
-    for (let idx = 0; idx < chronologicalLoans.length; idx++) {
-      const l = chronologicalLoans[idx];
-      const loanInsts = this.getInstallmentsByLoanId(l.id);
-      const currentPending =
-        l.status === 'ACTIVE' || l.status === 'DEFAULTED'
-          ? loanInsts.reduce((s, i) => s + i.pendingAmount, 0)
-          : 0;
+    const totalCapitalInjectedAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'INCOME' && cm.category === 'CAPITAL_INJECTION')
+      .reduce((sum, cm) => sum + cm.amount, 0);
 
-      const renewalRecord =
-        l.status === 'RENEWED'
-          ? this.renewals.find((r) => r.previousLoanId === l.id)
-          : undefined;
+    // Fondo inicial de efectivo asignado físicamente a la caja (si la oficina fondeó la caja)
+    const initialCashRemaining = totalAssignedCashBase > 0
+      ? Math.max(0, totalAssignedCashBase - netDisbursedFromBase)
+      : 0;
 
-      const collectedFromLoan =
-        l.status === 'RENEWED'
-          ? Math.max(0, (l.totalAgreed || 0) - (renewalRecord?.previousBalanceDeducted || 0))
-          : Math.max(0, (l.totalAgreed || 0) - currentPending);
-
-      if (isMigratedCardLoan(l)) {
-        runningCashBase += collectedFromLoan;
-      } else if (l.previousLoanId) {
-        const asNewRenewal = this.renewals.find((r) => r.newLoanId === l.id);
-        const netCapitalOut = asNewRenewal
-          ? Math.max(0, asNewRenewal.newPrincipal - asNewRenewal.previousBalanceDeducted)
-          : l.principal;
-        if (runningCashBase >= netCapitalOut) {
-          runningCashBase -= netCapitalOut;
-        }
-        runningCashBase += collectedFromLoan;
-      } else {
-        if (runningCashBase >= l.principal) {
-          runningCashBase -= l.principal;
-        }
-        runningCashBase += collectedFromLoan;
-      }
-    }
-
+    // Base en oficina / efectivo en mano:
+    // Sube exactamente con cada peso ingresado en cuotas de ese crédito (+ inyecciones)
+    // y resta gastos operativos y retiros de efectivo a la administración.
     const cashAvailableInHand = Math.max(
       0,
-      runningCashBase -
+      initialCashRemaining +
+        effectiveCashFromInstallments +
+        totalCapitalInjectedAllTime -
         totalExpensesAllTime -
         totalRecaudoRetiradoAllTime -
-        collectedDigitalToday
+        totalPaperworkRetiradoAllTime
     );
 
-    // Administrativo / Patrimonio operativo total:
-    // Siempre cumple la identidad contable exacta:
-    // Administrativo = Cartera en Calle + Base en Oficina + Recaudo Digital
+    // Patrimonio Operativo / Capital Administrativo Total:
+    // Es la suma real inmutable de la Cartera Activa en Calle + la Base en Oficina + el Recaudo Digital en banco.
+    // Al registrar el crédito: Cartera ($1.120.000) + Base ($0) = Administrativo ($1.120.000).
+    // Al ingresar los $500.000: Cartera ($620.000) + Base ($500.000) = Administrativo ($1.120.000, quieto).
+    const realOperatingAssets = activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday;
     const totalAdministrativeCapital = Math.max(
-      0,
-      activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
+      totalAssignedCashBase,
+      realOperatingAssets
     );
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
 
-    const computedMetrics: DailyRouteMetrics = {
+    return {
       plenoCollected: collectedToday,
       collectedToday,
       expectedDailyGoal,
@@ -1529,9 +1385,6 @@ class LocalStore {
       salidasRefinancedBalance,
       salidasNetCashDisbursed,
     };
-    this.metricsCache.set(cacheKey, computedMetrics);
-    return computedMetrics;
-    });
   }
 
   // --- MUTACIONES OPERATIVAS Y FINANCIERAS ---
@@ -1917,7 +1770,7 @@ class LocalStore {
     );
     const isPaperworkEnabled = this.officeConfig.paperworkFeeEnabled ?? true;
     const paperworkFee =
-      !isPaperworkEnabled
+      isMigration || !isPaperworkEnabled
         ? 0
         : calculatePaperworkFee(params.principal, {
             rate: this.officeConfig.paperworkRate || 5000,
@@ -1932,34 +1785,11 @@ class LocalStore {
     const routeId = params.routeId || customer.routeId || 'route-norte';
 
     // Si es migración de cartulina física y no enviaron fecha de inicio explícita,
-    // calculamos el inicio hacia atrás en días hábiles (saltando domingos si excludeSundays está activo)
-    // para que las cuotas ya pagadas queden en el pasado y la próxima cuota pendiente toque hoy sin mora falsa
-    const computeBackwardStartDate = (refDateStr: string, paidCount: number, freq: LoanFrequency): string => {
-      if (paidCount <= 0) return refDateStr;
-      if (freq !== 'DAILY') {
-        const stepDays = freq === 'WEEKLY' ? 7 : freq === 'BIWEEKLY' ? 15 : 30;
-        return addDaysToDate(refDateStr, -(paidCount * stepDays));
-      }
-      const excludeSundays = this.officeConfig.excludeSundays ?? true;
-      const cursor = new Date(refDateStr + 'T00:00:00');
-      let remaining = paidCount + 1;
-      while (remaining > 0) {
-        cursor.setDate(cursor.getDate() - 1);
-        if (excludeSundays && cursor.getDay() === 0) {
-          continue;
-        }
-        remaining--;
-      }
-      const yyyy = cursor.getFullYear();
-      const mm = String(cursor.getMonth() + 1).padStart(2, '0');
-      const dd = String(cursor.getDate()).padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
-    };
-
+    // calculamos el inicio hacia atrás según las cuotas ya pagadas para que la próxima cuota caiga hoy
     const effectiveStartDate =
       params.startDate ||
       (isMigration && paidSet.size > 0
-        ? computeBackwardStartDate(params.todayStr, paidSet.size, params.frequency || 'DAILY')
+        ? addDaysToDate(params.todayStr, -(paidSet.size + 1))
         : params.todayStr);
 
     const rawInstallments = generateInstallments(
@@ -2341,7 +2171,16 @@ class LocalStore {
 
     this.cashMovements.unshift(movement);
 
-    // La inyección de capital ya incrementa automáticamente la Base Disponible y el Administrativo mediante totalCapitalInjectedAllTime
+    if (params.increaseTargetAdmin) {
+      const routeIdx = this.routes.findIndex((r) => r.id === targetRouteId);
+      if (routeIdx >= 0) {
+        this.routes[routeIdx] = {
+          ...this.routes[routeIdx],
+          targetAdministrative: (this.routes[routeIdx].targetAdministrative || 20000000) + params.amount,
+        };
+        await safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
+      }
+    }
 
     await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
     this.notify();
@@ -2414,15 +2253,14 @@ class LocalStore {
     const isPaperworkEnabled = this.officeConfig.paperworkFeeEnabled ?? true;
     const pRate = this.officeConfig.paperworkRate || 5000;
 
-    // 1. Préstamos nuevos y cartulinas del taco digitalizadas con papelería
+    // 1. Préstamos nuevos con papelería
     this.loans.forEach((l) => {
       if (isFilter && l.routeId !== routeId) return;
       if (l.status === 'CANCELLED') return;
-      if (l.previousLoanId) return; // Las renovaciones se contabilizan en el bloque 2
+      if (l.notes && l.notes.startsWith('Migrado de cartulina')) return;
       const fee = isPaperworkEnabled ? calculatePaperworkFee(l.principal, { rate: pRate, base: 100000, calculationMode: 'PROPORTIONAL' }) : 0;
       if (fee > 0) {
         const cust = this.customers.find((c) => c.id === l.customerId);
-        const isTaco = Boolean(l.notes && l.notes.startsWith('Migrado de cartulina'));
         items.push({
           id: "pap-loan-" + l.id,
           date: l.createdAt,
@@ -2430,9 +2268,7 @@ class LocalStore {
           customerName: cust ? cust.fullName : 'Cliente',
           loanNumber: l.loanNumber,
           amount: fee,
-          notes: isTaco
-            ? "Papelería de cartulina del taco ($" + l.principal.toLocaleString('es-CO') + ")"
-            : "Papelería en crédito nuevo de $" + l.principal.toLocaleString('es-CO'),
+          notes: "Papelería en crédito nuevo de $" + l.principal.toLocaleString('es-CO'),
           routeId: l.routeId,
         });
       }
@@ -2983,71 +2819,6 @@ class LocalStore {
   }
 
   /**
-   * Fase 3: Compactación y Archivado de Cuotas de Créditos Cerrados (PAID / RENEWED / CANCELLED)
-   * Mueve las cuotas ya liquidadas a la bóveda fría (@prestamos_mobile_archived_ledger_v1)
-   * conservando intactos los encabezados de los préstamos para que el Administrativo, la Base Disponible,
-   * la Cartera en Calle y la Papelería permanezcan 100% inalterados.
-   */
-  public async archiveCompletedHistory(
-    daysThreshold: number = 0
-  ): Promise<{ archivedInstallmentsCount: number; closedLoansCount: number }> {
-    const cutoffDateStr =
-      daysThreshold > 0 ? addDaysToDate(getLocalTodayStr(), -daysThreshold) : '9999-12-31';
-
-    const archivableLoanIds = new Set<string>();
-    for (const loan of this.loans) {
-      if (
-        (loan.status === 'PAID' || loan.status === 'RENEWED' || loan.status === 'CANCELLED') &&
-        (loan.updatedAt || loan.createdAt) <= cutoffDateStr
-      ) {
-        archivableLoanIds.add(loan.id);
-      }
-    }
-
-    if (archivableLoanIds.size === 0) {
-      return { archivedInstallmentsCount: 0, closedLoansCount: 0 };
-    }
-
-    const toArchive: Installment[] = [];
-    const activeInstallments: Installment[] = [];
-
-    for (const inst of this.installments) {
-      if (archivableLoanIds.has(inst.loanId) && inst.pendingAmount <= 0) {
-        toArchive.push(inst);
-      } else {
-        activeInstallments.push(inst);
-      }
-    }
-
-    if (toArchive.length === 0) {
-      return { archivedInstallmentsCount: 0, closedLoansCount: archivableLoanIds.size };
-    }
-
-    let existingArchive: Installment[] = [];
-    try {
-      const raw = await safeStorage.getItem(STORAGE_KEYS.ARCHIVED_LEDGER);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) existingArchive = parsed;
-      }
-    } catch {}
-
-    const mergedArchive = [...existingArchive, ...toArchive];
-    this.installments = activeInstallments;
-
-    await Promise.all([
-      safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
-      safeStorage.setItem(STORAGE_KEYS.ARCHIVED_LEDGER, JSON.stringify(mergedArchive)),
-    ]);
-
-    this.notify();
-    return {
-      archivedInstallmentsCount: toArchive.length,
-      closedLoansCount: archivableLoanIds.size,
-    };
-  }
-
-  /**
    * Limpia toda la cartera (clientes, préstamos, cuotas, pagos, etc.)
    * dejando el sistema 100% en blanco listo para registrar clientes reales uno a uno.
    */
@@ -3142,48 +2913,37 @@ class LocalStore {
     const baseUrl = (serverUrl || this.officeConfig.officeServerUrl || 'http://192.168.1.10:8765')
       .trim()
       .replace(/\/+$/, '');
-    const dedupKey = `status:${baseUrl}`;
-    const existing = this.inFlightRequests.get(dedupKey);
-    if (existing) {
-      return existing;
-    }
-    const promise = (async () => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000);
-      try {
-        const res = await fetch(`${baseUrl}/api/sync/status`, {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-        if (!res.ok) {
-          return {
-            ok: false,
-            statusText: `Servidor respondió HTTP ${res.status}`,
-          };
-        }
-        const data = await res.json().catch(() => ({}));
-        return {
-          ok: true,
-          statusText: data.message || 'Conectado a Oficina Central',
-          companyName: data.companyName || this.officeConfig.companyName,
-        };
-      } catch (err: any) {
-        clearTimeout(timer);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    try {
+      const res = await fetch(`${baseUrl}/api/sync/status`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
         return {
           ok: false,
-          statusText:
-            err?.name === 'AbortError'
-              ? 'Tiempo de espera agotado (5s). Verifique IP y red Wi-Fi.'
-              : `No se pudo conectar a ${baseUrl}. Verifique que el PC de Oficina esté encendido en la misma red Wi-Fi.`,
+          statusText: `Servidor respondió HTTP ${res.status}`,
         };
-      } finally {
-        this.inFlightRequests.delete(dedupKey);
       }
-    })();
-    this.inFlightRequests.set(dedupKey, promise);
-    return promise;
+      const data = await res.json().catch(() => ({}));
+      return {
+        ok: true,
+        statusText: data.message || 'Conectado a Oficina Central',
+        companyName: data.companyName || this.officeConfig.companyName,
+      };
+    } catch (err: any) {
+      clearTimeout(timer);
+      return {
+        ok: false,
+        statusText:
+          err?.name === 'AbortError'
+            ? 'Tiempo de espera agotado (5s). Verifique IP y red Wi-Fi.'
+            : `No se pudo conectar a ${baseUrl}. Verifique que el PC de Oficina esté encendido en la misma red Wi-Fi.`,
+      };
+    }
   }
 
   public async pushSyncToOfficeServer(
@@ -3231,58 +2991,36 @@ class LocalStore {
 
   public async pullRouteFromOfficeServer(
     serverUrl: string | undefined,
-    routeId?: string,
-    limit: number = 500,
-    offset: number = 0
+    routeId?: string
   ): Promise<{ importedCustomers: number; importedLoans: number }> {
     const baseUrl = (serverUrl || this.officeConfig.officeServerUrl || 'http://192.168.1.10:8765')
       .trim()
       .replace(/\/+$/, '');
-    const params: string[] = [];
-    if (routeId && routeId !== 'ALL') {
-      params.push(`routeId=${encodeURIComponent(routeId)}`);
-    }
-    params.push(`limit=${Math.max(1, limit)}`);
-    params.push(`offset=${Math.max(0, offset)}`);
-    const query = params.length > 0 ? `?${params.join('&')}` : '';
-
-    const dedupKey = `pull:${baseUrl}:${query}`;
-    const existing = this.inFlightRequests.get(dedupKey);
-    if (existing) {
-      return existing;
-    }
-
-    const promise = (async () => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-      try {
-        const res = await fetch(`${baseUrl}/api/sync/pull${query}`, {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-        if (!res.ok) {
-          throw new Error(`El servidor de Oficina respondió HTTP ${res.status}`);
-        }
-        const rawText = await res.text();
-        const result = await this.importMobileSyncPackage(rawText);
-        await this.updateOfficeConfig({ officeServerUrl: baseUrl });
-        return result;
-      } catch (err: any) {
-        clearTimeout(timer);
-        throw new Error(
-          err?.name === 'AbortError'
-            ? 'Tiempo de espera agotado al descargar cartera desde el PC de Oficina.'
-            : err?.message || 'Error al descargar cartera desde el PC de Oficina.'
-        );
-      } finally {
-        this.inFlightRequests.delete(dedupKey);
+    const query = routeId && routeId !== 'ALL' ? `?routeId=${encodeURIComponent(routeId)}` : '';
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(`${baseUrl}/api/sync/pull${query}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) {
+        throw new Error(`El servidor de Oficina respondió HTTP ${res.status}`);
       }
-    })();
-
-    this.inFlightRequests.set(dedupKey, promise);
-    return promise;
+      const rawText = await res.text();
+      const result = await this.importMobileSyncPackage(rawText);
+      await this.updateOfficeConfig({ officeServerUrl: baseUrl });
+      return result;
+    } catch (err: any) {
+      clearTimeout(timer);
+      throw new Error(
+        err?.name === 'AbortError'
+          ? 'Tiempo de espera agotado al descargar cartera desde el PC de Oficina.'
+          : err?.message || 'Error al descargar cartera desde el PC de Oficina.'
+      );
+    }
   }
 
   /**
@@ -3565,7 +3303,7 @@ class LocalStore {
   }
 
   /**
-   * Ítem 6: Reordenar cliente hacia arriba o abajo en su ruta (/)
+   * Ítem 6: Reordenar cliente hacia arriba o abajo en su ruta (⬆ / ⬇)
    */
   public async reorderRouteCustomer(
     customerId: string,
