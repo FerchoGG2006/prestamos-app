@@ -1934,7 +1934,11 @@ function MainApp({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>Buscar Actualizaciones</Text>
-                    <Text style={styles.operationMenuSubtitle}>Consultar parches OTA e instalador APK (v{CURRENT_APP_VERSION})</Text>
+                    <Text style={styles.operationMenuSubtitle}>
+                      {Platform.OS === 'web'
+                        ? `Actualizar app web (v${CURRENT_APP_VERSION})`
+                        : `Consultar parches OTA e instalador APK (v${CURRENT_APP_VERSION})`}
+                    </Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
@@ -2024,7 +2028,11 @@ function MainApp({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>Buscar Actualizaciones</Text>
-                    <Text style={styles.operationMenuSubtitle}>Consultar parches OTA e instalador APK (v{CURRENT_APP_VERSION})</Text>
+                    <Text style={styles.operationMenuSubtitle}>
+                      {Platform.OS === 'web'
+                        ? `Actualizar app web (v${CURRENT_APP_VERSION})`
+                        : `Consultar parches OTA e instalador APK (v${CURRENT_APP_VERSION})`}
+                    </Text>
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>

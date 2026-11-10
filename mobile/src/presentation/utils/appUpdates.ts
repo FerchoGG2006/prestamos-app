@@ -1,8 +1,8 @@
 import * as Updates from 'expo-updates';
 import { Alert, Platform, Linking } from 'react-native';
 
-export const CURRENT_APP_VERSION = '1.2.2';
-export const CURRENT_VERSION_CODE = 6;
+export const CURRENT_APP_VERSION = '1.2.3';
+export const CURRENT_VERSION_CODE = 7;
 export const CLOUD_VERSION_URL =
   'https://raw.githubusercontent.com/FerchoGG2006/prestamos-app/main/version.json';
 
@@ -55,11 +55,34 @@ export function compareSemver(v1: string, v2: string): number {
  * Escenario B: Comprueba y descarga parches OTA silenciosos en segundo plano con expo-updates.
  */
 export async function checkAndDownloadUpdate(silent: boolean = true): Promise<boolean> {
-  if (__DEV__ || Platform.OS === 'web') {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined') {
+      if (!silent) {
+        // En modo Web manual, recargar la página limpia bajo el mismo dominio preservando localStorage
+        try {
+          if ('caches' in window) {
+            const keys = await window.caches.keys();
+            await Promise.all(keys.map((k) => window.caches.delete(k)));
+          }
+        } catch {}
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set('reload', Date.now().toString());
+          window.location.replace(url.toString());
+        } catch {
+          window.location.reload();
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (__DEV__) {
     if (!silent) {
       Alert.alert(
-        'Modo Desarrollo / Web',
-        'Las actualizaciones OTA en la nube aplican exclusivamente a la app instalada en dispositivos móviles (Android / iOS).'
+        'Modo Desarrollo',
+        'Las actualizaciones OTA en la nube aplican exclusivamente a la app instalada en dispositivos móviles.'
       );
     }
     return false;
@@ -336,9 +359,16 @@ export async function checkAllUpdates(options?: {
       );
     }
   } else if (!silent && !apkCheck.needsUpdate) {
-    Alert.alert(
-      'Sistema al Día',
-      `Kredia móvil se encuentra en la versión más reciente (v${CURRENT_APP_VERSION}, compilación ${CURRENT_VERSION_CODE}). No hay actualizaciones de APK pendientes.`
-    );
+    if (Platform.OS === 'web') {
+      Alert.alert(
+        'Sistema al Día',
+        `Kredia Web se encuentra en la versión más reciente (v${CURRENT_APP_VERSION}).`
+      );
+    } else {
+      Alert.alert(
+        'Sistema al Día',
+        `Kredia móvil se encuentra en la versión más reciente (v${CURRENT_APP_VERSION}, compilación ${CURRENT_VERSION_CODE}). No hay actualizaciones de APK pendientes.`
+      );
+    }
   }
 }

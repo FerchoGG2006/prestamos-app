@@ -10,6 +10,8 @@ import {
   Alert,
   PanResponder,
   Linking,
+  Platform,
+  RefreshControl,
 } from 'react-native';
 import {
   Customer,
@@ -173,6 +175,24 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   const [visibleLimit, setVisibleLimit] = useState<number>(35);
   const [summaryPeriodFilter, setSummaryPeriodFilter] = useState<'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'ALL'>('TODAY');
   const [showSummaryFilterModal, setShowSummaryFilterModal] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+
+  const handleRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        if ('caches' in window) {
+          const keys = await window.caches.keys();
+          await Promise.all(keys.map((k) => window.caches.delete(k)));
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.set('t', Date.now().toString());
+        window.location.replace(url.toString());
+        return;
+      }
+    } catch {}
+    setTimeout(() => setRefreshing(false), 500);
+  }, []);
 
   useEffect(() => {
     setVisibleLimit(35);
@@ -636,6 +656,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         contentContainerStyle={[styles.scrollContent, { paddingBottom: dockScrollClearance }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#2563EB"
+            colors={['#2563EB']}
+          />
+        }
       >
         {/* 2. FILA DE FILTRO DISCRETO: SELECTOR DE RUTA + EN LÍNEA */}
         <View style={styles.adminFilterBarContainer}>
@@ -976,6 +1004,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       contentContainerStyle={[styles.scrollContent, { paddingBottom: dockScrollClearance }]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor="#2563EB"
+          colors={['#2563EB']}
+        />
+      }
     >
       {/* 1. HERO FINTECH LIMPIO: COBRO PLENO DE LA RUTA */}
       <View style={styles.cleanHeroCard}>
@@ -1464,6 +1500,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       contentContainerStyle={[styles.scrollContent, { paddingBottom: dockScrollClearance }]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor="#2563EB"
+          colors={['#2563EB']}
+        />
+      }
     >
       {/* ENCABEZADO PULIDO Y NÍTIDO DE HOJA DE RUTA */}
       <View style={styles.routeHeaderSection}>
