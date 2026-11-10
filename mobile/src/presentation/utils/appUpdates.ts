@@ -1,8 +1,52 @@
 import * as Updates from 'expo-updates';
 import { Alert, Platform, Linking } from 'react-native';
 
-export const CURRENT_APP_VERSION = '1.2.3';
-export const CURRENT_VERSION_CODE = 7;
+export const CURRENT_APP_VERSION = '1.2.4';
+export const CURRENT_VERSION_CODE = 8;
+export const WEB_BUILD_LABEL = 'web 1.2.4 (2026-11-10)';
+
+/**
+ * Auto-actualizador Web (iPhone / acceso directo en pantalla de inicio):
+ * Descarga index.html sin caché, compara el bundle publicado con el que está corriendo
+ * y, si cambió, recarga en el MISMO dominio (localStorage intacto: oficina, clientes, pagos).
+ */
+export async function checkWebBundleUpdate(): Promise<boolean> {
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+  try {
+    const current = Array.from(document.querySelectorAll('script[src]'))
+      .map((s) => (s as HTMLScriptElement).getAttribute('src') || '')
+      .find((src) => src.includes('/_expo/static/js/web/'));
+    if (!current) return false;
+    const res = await fetch(`/?_v=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return false;
+    const html = await res.text();
+    const match = html.match(/\/_expo\/static\/js\/web\/[^"']+\.js/);
+    if (!match || current.includes(match[0])) return false;
+    try {
+      if ('caches' in window) {
+        const keys = await window.caches.keys();
+        await Promise.all(keys.map((k) => window.caches.delete(k)));
+      }
+    } catch {}
+    window.location.replace(`${window.location.origin}/?_v=${Date.now()}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let webAutoUpdaterStarted = false;
+export function startWebAutoUpdater(): void {
+  if (webAutoUpdaterStarted || Platform.OS !== 'web' || typeof document === 'undefined') return;
+  webAutoUpdaterStarted = true;
+  checkWebBundleUpdate();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkWebBundleUpdate();
+  });
+  setInterval(() => checkWebBundleUpdate(), 10 * 60 * 1000);
+}
 export const CLOUD_VERSION_URL =
   'https://raw.githubusercontent.com/FerchoGG2006/prestamos-app/main/version.json';
 

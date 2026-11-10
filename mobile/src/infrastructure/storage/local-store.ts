@@ -1471,14 +1471,13 @@ class LocalStore {
         const netCapitalOut = asNewRenewal
           ? Math.max(0, asNewRenewal.newPrincipal - asNewRenewal.previousBalanceDeducted)
           : l.principal;
-        if (runningCashBase >= netCapitalOut) {
-          runningCashBase -= netCapitalOut;
-        }
+        // Solo sale de la Base el efectivo que realmente había disponible; el faltante
+        // se considera capital aportado externamente (no puede quedar Base negativa ni
+        // ignorarse por completo el desembolso cuando la Base era parcial).
+        runningCashBase -= Math.min(Math.max(0, runningCashBase), netCapitalOut);
         runningCashBase += collectedFromLoan;
       } else {
-        if (runningCashBase >= l.principal) {
-          runningCashBase -= l.principal;
-        }
+        runningCashBase -= Math.min(Math.max(0, runningCashBase), l.principal);
         runningCashBase += collectedFromLoan;
       }
     }

@@ -153,6 +153,8 @@ import {
   checkApkVersion,
   AppVersionInfo,
   CURRENT_APP_VERSION,
+  WEB_BUILD_LABEL,
+  startWebAutoUpdater,
 } from './src/presentation/utils/appUpdates';
 import { AppUpdateModal } from './src/presentation/components/AppUpdateModal';
 import { IosInstallPrompt } from './src/presentation/components/IosInstallPrompt';
@@ -781,6 +783,8 @@ function MainApp({
     });
     // Verificación de actualizaciones (OTA y nuevo instalador APK) en el arranque de la app
     performAppUpdatesCheck(true);
+    // Web/iPhone: detectar automáticamente nuevas publicaciones en el mismo dominio
+    startWebAutoUpdater();
     return () => unsubscribe();
   }, []);
 
@@ -1936,7 +1940,7 @@ function MainApp({
                     <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>Buscar Actualizaciones</Text>
                     <Text style={styles.operationMenuSubtitle}>
                       {Platform.OS === 'web'
-                        ? `Actualizar app web (v${CURRENT_APP_VERSION})`
+                        ? `Actualizar app · ${WEB_BUILD_LABEL}`
                         : `Consultar parches OTA e instalador APK (v${CURRENT_APP_VERSION})`}
                     </Text>
                   </View>
@@ -2030,7 +2034,7 @@ function MainApp({
                     <Text style={[styles.operationMenuTitle, { color: '#2563EB' }]}>Buscar Actualizaciones</Text>
                     <Text style={styles.operationMenuSubtitle}>
                       {Platform.OS === 'web'
-                        ? `Actualizar app web (v${CURRENT_APP_VERSION})`
+                        ? `Actualizar app · ${WEB_BUILD_LABEL}`
                         : `Consultar parches OTA e instalador APK (v${CURRENT_APP_VERSION})`}
                     </Text>
                   </View>
