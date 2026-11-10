@@ -330,34 +330,7 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
 
   const handleDeletePress = () => {
     if (!onDeleteCustomer) return;
-    const hasActive = !!activeLoan;
-    const alertTitle = hasActive
-      ? 'Cliente con Crédito Activo'
-      : 'Eliminar Cliente';
-    const alertMessage = hasActive
-      ? `El cliente ${customer.fullName} tiene un crédito activo (${activeLoan?.loanNumber || 'en curso'}). Si lo elimina, el crédito se archivará como cancelado. ¿Desea continuar de todas formas?`
-      : `¿Está seguro de eliminar a ${customer.fullName}? Esta acción lo removerá de la ruta y del directorio.`;
-
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm(`${alertTitle}\n\n${alertMessage}`);
-      if (confirmed) {
-        onDeleteCustomer(customer, hasActive);
-      }
-    } else {
-      Alert.alert(
-        alertTitle,
-        alertMessage,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: hasActive ? 'Eliminar de todas formas' : 'Eliminar',
-            style: 'destructive',
-            onPress: () => { onDeleteCustomer(customer, hasActive); onBack?.(); },
-          },
-        ],
-        { cancelable: true }
-      );
-    }
+    onDeleteCustomer(customer, !!activeLoan);
   };
 
   return (

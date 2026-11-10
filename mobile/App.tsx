@@ -136,6 +136,7 @@ import { ExpenseModal } from './src/presentation/components/ExpenseModal';
 import { OfficeConfigModal } from './src/presentation/components/OfficeConfigModal';
 import { RecaudoModal, RecaudoModalTab } from './src/presentation/components/RecaudoModal';
 import { CustomerOptionsModal } from './src/presentation/components/CustomerOptionsModal';
+import { ConfirmDeleteCustomerModal } from './src/presentation/components/ConfirmDeleteCustomerModal';
 import { EditCustomerModal } from './src/presentation/components/EditCustomerModal';
 import { ErrorBoundary } from './src/presentation/components/ErrorBoundary';
 import { RouteSelectorModal } from './src/presentation/components/RouteSelectorModal';
@@ -186,6 +187,7 @@ import {
   Calculator,
   RefreshCw,
   Home,
+  CheckCircle2,
 } from 'lucide-react-native';
 import { verifyPassword } from './src/core/utils/security';
 import { useFonts } from 'expo-font';
@@ -529,6 +531,20 @@ function MainApp({
     customer: Customer | null;
     activeLoan?: Loan | null;
   }>({ visible: false, customer: null, activeLoan: null });
+  const [deleteCustomerModalData, setDeleteCustomerModalData] = useState<{
+    visible: boolean;
+    customer: Customer | null;
+    activeLoan?: Loan | null;
+  }>({ visible: false, customer: null, activeLoan: null });
+  const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
+  const [inAppToastMessage, setInAppToastMessage] = useState<string>('');
+
+  const showToast = (msg: string) => {
+    setInAppToastMessage(msg);
+    setTimeout(() => {
+      setInAppToastMessage('');
+    }, 3500);
+  };
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const debouncedCustomerSearch = useDebouncedValue(customerSearchQuery, 180);
   const [visibleDirectoryLimit, setVisibleDirectoryLimit] = useState<number>(40);
@@ -658,39 +674,47 @@ function MainApp({
     }
   };
 
-  const handleDeleteCustomer = async (customer: Customer, force?: boolean) => {
-    // Seguridad Operativa: Los cobradores no pueden eliminar clientes, solo la Administración
-    const isSessionAdmin =
-      userRole === 'ADMIN' ||
-      currentUser?.role === 'ADMIN' ||
-      currentUser?.role === 'SUPER_ADMIN';
-    if (!isSessionAdmin) {
-      const msg = 'Acceso Denegado: Los cobradores no tienen autorización para eliminar clientes. Esta acción debe ser solicitada a la administración de la oficina.';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Acceso Denegado', msg);
-      }
-      return;
-    }
+  const handleDeleteCustomer = (customer: Customer, force?: boolean) => {
+    const custActiveLoan = loans.find(
+      (l) =>
+        l.customerId === customer.id &&
+        (l.status === 'ACTIVE' || l.status === 'DEFAULTED')
+    );
+    // Cierra modal de opciones si estuviera abierto para enfocar el diálogo de confirmación
+    setCustomerOptionsModalData({ visible: false, customer: null, activeLoan: null });
+    setDeleteCustomerModalData({
+      visible: true,
+      customer,
+      activeLoan: custActiveLoan || null,
+    });
+  };
 
+  const handleConfirmDeleteCustomer = async () => {
+    if (!deleteCustomerModalData.customer) return;
+    setIsDeletingCustomer(true);
     try {
-      const res = await localStore.deleteCustomer(customer.id, force, undefined, 'ADMIN');
-      if (detailCustomer?.id === customer.id) {
+      const targetCustomer = deleteCustomerModalData.customer;
+      const res = await localStore.deleteCustomer(
+        targetCustomer.id,
+        true,
+        undefined,
+        'ADMIN'
+      );
+      setDeleteCustomerModalData({ visible: false, customer: null, activeLoan: null });
+      if (detailCustomer?.id === targetCustomer.id) {
         setDetailCustomer(null);
       }
+      setCustomerOptionsModalData({ visible: false, customer: null, activeLoan: null });
       syncFromStore();
-      if (Platform.OS === 'web') {
-        window.alert(res.message);
-      } else {
-        Alert.alert('Éxito', res.message);
-      }
+      showToast(res.message || `Cliente ${targetCustomer.fullName} eliminado exitosamente.`);
     } catch (err: any) {
       if (Platform.OS === 'web') {
-        window.alert(err.message || 'Error al eliminar cliente');
+        window.alert(err?.message || 'No fue posible eliminar el cliente.');
       } else {
-        Alert.alert('Aviso', err.message || 'Error al eliminar cliente');
+        Alert.alert('Aviso', err?.message || 'No fue posible eliminar el cliente.');
       }
+    } finally {
+      setIsDeletingCustomer(false);
     }
   };
 
@@ -1005,6 +1029,14 @@ function MainApp({
         backgroundColor={COLORS.bgPrimary}
         translucent={false}
       />
+
+      {/* Toast Notificación Flotante In-App */}
+      {inAppToastMessage ? (
+        <View style={styles.floatingToastContainer}>
+          <CheckCircle2 size={16} color="#15803D" style={{ marginRight: 8 }} />
+          <Text style={styles.floatingToastText}>{inAppToastMessage}</Text>
+        </View>
+      ) : null}
 
       {/* Top Bar Móvil con Rol Claramente Identificado y Segregación Total (Se oculta en Ficha 360 para vista limpia) */}
       {!detailCustomer && (
@@ -2174,6 +2206,17 @@ function MainApp({
         onDeleteCustomer={handleDeleteCustomer}
       />
 
+      <ConfirmDeleteCustomerModal
+        visible={deleteCustomerModalData.visible}
+        customer={deleteCustomerModalData.customer}
+        activeLoan={deleteCustomerModalData.activeLoan}
+        isDeleting={isDeletingCustomer}
+        onClose={() =>
+          setDeleteCustomerModalData({ visible: false, customer: null, activeLoan: null })
+        }
+        onConfirm={handleConfirmDeleteCustomer}
+      />
+
       <EditCustomerModal
         visible={editCustomerModalData.visible}
         customer={editCustomerModalData.customer}
@@ -3200,5 +3243,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: COLORS.danger,
+  },
+  floatingToastContainer: {
+    position: 'absolute',
+    top: 14,
+    left: 20,
+    right: 20,
+    zIndex: 9999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DCFCE7',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  floatingToastText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#14532D',
+    flex: 1,
   },
 });

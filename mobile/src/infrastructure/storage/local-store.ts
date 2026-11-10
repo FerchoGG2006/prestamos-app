@@ -1789,11 +1789,10 @@ class LocalStore {
     }
     const customer = this.customers[customerIndex];
 
-    const activeLoans = this.loans.filter(
-      (l) => l.customerId === customerId && l.status === 'ACTIVE'
-    );
+    const customerLoans = this.loans.filter((l) => l.customerId === customerId);
+    const customerLoanIds = new Set(customerLoans.map((l) => l.id));
 
-    // Registrar en auditoría
+    // Registrar en auditoría la eliminación completa con trazabilidad inmutable
     const audit: AuditLog = {
       id: `audit-${Date.now()}`,
       userId: customer.assignedCollectorId || 'usr-col-1',
@@ -1802,31 +1801,47 @@ class LocalStore {
       entityId: customer.id,
       action: 'DELETE',
       previousValue: JSON.stringify(customer),
+      reason: `Eliminación de cliente ${customer.fullName} (${customerLoans.length} crédito(s) saneado(s)).`,
     };
     this.auditLogs.unshift(audit);
 
-    // Remover cliente de la lista activa
+    // 1. Remover cliente del directorio activo
     this.customers.splice(customerIndex, 1);
 
-    // Si tenía créditos activos, cancelarlos y liberar las cuotas para que la cartera en calle cuadre de inmediato
-    if (activeLoans.length > 0) {
-      const cancelledLoanIds = new Set(activeLoans.map((l) => l.id));
-      this.loans = this.loans.map((l) =>
-        cancelledLoanIds.has(l.id)
-          ? { ...l, status: 'CANCELLED' as const, updatedAt: getLocalTodayStr() }
-          : l
-      );
-      this.installments = this.installments.map((i) =>
-        cancelledLoanIds.has(i.loanId)
-          ? { ...i, pendingAmount: 0 }
-          : i
-      );
-    }
+    // 2. Remover los créditos del cliente
+    this.loans = this.loans.filter((l) => l.customerId !== customerId);
+
+    // 3. Remover cuotas de los créditos del cliente
+    this.installments = this.installments.filter((i) => !customerLoanIds.has(i.loanId));
+
+    // 4. Remover pagos asociados para que no queden recaudos fantasma
+    this.payments = this.payments.filter(
+      (p) => p.customerId !== customerId && !customerLoanIds.has(p.loanId)
+    );
+
+    // 5. Remover desembolsos y movimientos de caja directos del crédito
+    this.cashMovements = this.cashMovements.filter(
+      (cm) => !cm.referenceId || (!customerLoanIds.has(cm.referenceId) && cm.referenceId !== customerId)
+    );
+
+    // 6. Remover promesas y visitas
+    this.promises = this.promises.filter((pr) => pr.customerId !== customerId);
+    this.nonPaymentVisits = this.nonPaymentVisits.filter((np) => np.customerId !== customerId);
+
+    // 7. Remover renovaciones vinculadas
+    this.renewals = this.renewals.filter(
+      (r) => !customerLoanIds.has(r.previousLoanId) && !customerLoanIds.has(r.newLoanId)
+    );
 
     await Promise.all([
       safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
       safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
       safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
+      safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments)),
+      safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
+      safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
+      safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify(this.nonPaymentVisits)),
+      safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify(this.renewals)),
       safeStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(this.auditLogs)),
     ]);
 
