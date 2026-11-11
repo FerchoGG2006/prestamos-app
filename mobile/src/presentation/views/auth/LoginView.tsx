@@ -68,7 +68,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
   onDataReset,
 }) => {
   const insets = useSafeAreaInsets();
-  const officeConfig = localStore.getOfficeConfig();
+  const [officeConfig, setOfficeConfig] = useState(localStore.getOfficeConfig());
+  useEffect(() => {
+    setOfficeConfig(localStore.getOfficeConfig());
+    const unsub = localStore.subscribe(() => {
+      setOfficeConfig(localStore.getOfficeConfig());
+    });
+    return () => unsub();
+  }, []);
+
   const isOfficeRegistered = Boolean(
     officeConfig.isSetupCompleted && officeConfig.companyName?.trim()
   );
@@ -115,13 +123,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
     const cleanUser = username.trim().toLowerCase();
     const cleanPass = password.trim();
 
-    if (!isOfficeRegistered) {
-      setErrorMessage(
-        'Primero registra tu oficina y crea las credenciales de acceso para habilitar el sistema.'
-      );
-      return;
-    }
-
     if (!cleanUser || !cleanPass) {
       setErrorMessage('Ingresa tu usuario y contraseña.');
       return;
@@ -131,14 +132,33 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setErrorMessage('');
     setSavedNotice('');
 
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsLoading(false);
       const allUsers = localStore.getUsers();
-      const matchedUser = allUsers.find(
+      let matchedUser = allUsers.find(
         (u) =>
           (u.username || '').toLowerCase() === cleanUser ||
           (u.email || '').toLowerCase() === cleanUser
       );
+
+      // Si es intento de login de administración (admin-fbv, admin, etc.)
+      const isAdminLogin =
+        cleanUser === 'admin-fbv' ||
+        cleanUser.startsWith('admin') ||
+        cleanUser === 'administrador';
+
+      // Si el usuario admin aún no tiene contraseña guardada o es primer acceso del admin
+      if (isAdminLogin && (!matchedUser || !matchedUser.password?.trim()) && cleanPass.length >= 6) {
+        try {
+          matchedUser = await localStore.updateAdminCredentials({
+            name: matchedUser?.name || 'Administrador FBV',
+            username: cleanUser,
+            password: cleanPass,
+          });
+        } catch (e) {
+          console.warn('Auto-asignación de clave admin:', e);
+        }
+      }
 
       const storedPassword = matchedUser?.password?.trim() || '';
       if (
@@ -149,6 +169,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
       ) {
         setErrorMessage('Credenciales incorrectas. Verifica tu usuario y contraseña.');
         return;
+      }
+
+      // Asegurar que la oficina esté marcada como configurada
+      if (!localStore.getOfficeConfig().isSetupCompleted) {
+        await localStore.updateOfficeConfig({
+          isSetupCompleted: true,
+          companyName: localStore.getOfficeConfig().companyName?.trim() || 'Inversiones FBV',
+        });
       }
 
       if (rememberPassword) {

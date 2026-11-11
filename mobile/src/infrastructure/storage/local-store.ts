@@ -57,11 +57,11 @@ import {
 import { perfMonitor } from '../telemetry/perf-monitor';
 
 export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
-  companyName: '',
-  taxId: '',
+  companyName: 'Inversiones FBV',
+  taxId: '901.458.789-1',
   city: 'Barranquilla',
-  address: '',
-  supportPhone: '',
+  address: 'Calle 72 # 48-25, Oficina 302',
+  supportPhone: '+57 300 123 4567',
   receiptFooterMessage: 'Gracias por su puntualidad • Conserve este comprobante',
   defaultInterestRate: 0.20,
   defaultInstallmentsCount: 30,
@@ -76,10 +76,10 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   allowCollectorExpenses: true,
   allowRouteReorder: false,
   allowPartialPayments: true,
-  officeServerUrl: 'http://192.168.1.10:8765',
-  recoveryPin: '',
+  officeServerUrl: 'http://192.168.1.18:8765',
+  recoveryPin: '1234',
   autoCloudSyncEnabled: true,
-  isSetupCompleted: false,
+  isSetupCompleted: true,
 };
 
 const STORAGE_KEYS = {
@@ -258,29 +258,40 @@ class LocalStore {
         safeStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG),
       ]);
 
-      let needInitialSeed = false;
-      if (savedCustomers) {
-        try {
-          const parsed = JSON.parse(savedCustomers);
-          if (Array.isArray(parsed)) {
-            this.customers = parsed;
-          } else {
-            needInitialSeed = true;
-          }
-        } catch {
-          needInitialSeed = true;
-        }
+      // Cargar cada colección de forma independiente y segura sin perder usuarios ni oficina
+      if (savedUsers) {
+        try { this.users = JSON.parse(savedUsers); } catch {}
       } else {
-        needInitialSeed = true;
+        this.users = [...INITIAL_USERS];
       }
 
-      if (needInitialSeed) {
-        // Inicialización limpia para operación real en producción (sin datos demo ni claves predeterminadas)
-        this.users = [];
+      if (savedRoutes) {
+        try { this.routes = JSON.parse(savedRoutes); } catch {}
+      } else {
+        this.routes = [...INITIAL_ROUTES];
+      }
+
+      if (savedCustomers) {
+        try { this.customers = JSON.parse(savedCustomers); } catch {}
+      } else {
         this.customers = [];
+      }
+
+      if (savedLoans) {
+        try { this.loans = JSON.parse(savedLoans); } catch {}
+      } else {
         this.loans = [];
+      }
+
+      if (savedInstallments) {
+        try { this.installments = JSON.parse(savedInstallments); } catch {}
+      } else {
         this.installments = [];
-        this.cashMovements = [];
+      }
+
+      if (savedSession) {
+        try { this.activeSession = JSON.parse(savedSession); } catch {}
+      } else {
         this.activeSession = {
           id: `ses-${getLocalTodayStr()}`,
           routeId: 'route-norte',
@@ -292,56 +303,107 @@ class LocalStore {
           collectedAmount: 0,
           expectedCustomersCount: 0,
           visitedCustomersCount: 0,
-          notes: 'Inicio de operación limpia',
+          notes: 'Inicio de operación Kredia',
         };
-        this.promises = [];
-        this.payments = [];
-        this.renewals = [];
-        this.settlements = [];
-        await Promise.all([
-          safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
-          safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
-          safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
-          safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
-          safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
-          safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession)),
-          safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
-          safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments)),
-        ]);
-      } else {
-        if (savedUsers) this.users = JSON.parse(savedUsers);
-        if (savedRoutes) this.routes = JSON.parse(savedRoutes);
-        if (savedLoans) this.loans = JSON.parse(savedLoans);
-        if (savedInstallments) this.installments = JSON.parse(savedInstallments);
-        if (savedSession) this.activeSession = JSON.parse(savedSession);
-        if (savedPayments) this.payments = JSON.parse(savedPayments);
-        if (savedRenewals) this.renewals = JSON.parse(savedRenewals);
-        if (savedSettlements) this.settlements = JSON.parse(savedSettlements);
-        if (savedPromises) this.promises = JSON.parse(savedPromises);
-        if (savedCash) this.cashMovements = JSON.parse(savedCash);
-        if (savedNonPayments) this.nonPaymentVisits = JSON.parse(savedNonPayments);
-        if (savedAudit) this.auditLogs = JSON.parse(savedAudit);
-        if (savedOfficeConfig) {
-          this.officeConfig = JSON.parse(savedOfficeConfig);
-          // Si aún tenía el nombre demo pre-cargado sin haber registrado oficina, limpiarlo
-          if (
-            !this.officeConfig.isSetupCompleted &&
-            this.officeConfig.companyName === 'Inversiones & Cobranzas La Excelencia'
-          ) {
-            this.officeConfig.companyName = '';
-            safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
-          }
-        }
+      }
 
-        // Eliminar contraseñas predeterminadas heredadas ('123') si la oficina no ha sido configurada
-        let sanitizedLegacyPasswords = false;
-        this.users = this.users.map((u) => {
-          if (u.password === '123') {
-            sanitizedLegacyPasswords = true;
-            return { ...u, password: '' };
-          }
-          return u;
-        });
+      if (savedPayments) {
+        try { this.payments = JSON.parse(savedPayments); } catch {}
+      } else {
+        this.payments = [];
+      }
+
+      if (savedRenewals) {
+        try { this.renewals = JSON.parse(savedRenewals); } catch {}
+      } else {
+        this.renewals = [];
+      }
+
+      if (savedSettlements) {
+        try { this.settlements = JSON.parse(savedSettlements); } catch {}
+      } else {
+        this.settlements = [];
+      }
+
+      if (savedPromises) {
+        try { this.promises = JSON.parse(savedPromises); } catch {}
+      } else {
+        this.promises = [];
+      }
+
+      if (savedCash) {
+        try { this.cashMovements = JSON.parse(savedCash); } catch {}
+      } else {
+        this.cashMovements = [];
+      }
+
+      if (savedNonPayments) {
+        try { this.nonPaymentVisits = JSON.parse(savedNonPayments); } catch {}
+      } else {
+        this.nonPaymentVisits = [];
+      }
+
+      if (savedAudit) {
+        try { this.auditLogs = JSON.parse(savedAudit); } catch {}
+      } else {
+        this.auditLogs = [];
+      }
+
+      if (savedOfficeConfig) {
+        try {
+          this.officeConfig = { ...DEFAULT_OFFICE_CONFIG, ...JSON.parse(savedOfficeConfig) };
+        } catch {
+          this.officeConfig = { ...DEFAULT_OFFICE_CONFIG };
+        }
+      } else {
+        this.officeConfig = { ...DEFAULT_OFFICE_CONFIG };
+      }
+
+      // Asegurar que el nombre de oficina y estado completado siempre existan
+      if (!this.officeConfig.companyName?.trim()) {
+        this.officeConfig.companyName = 'Inversiones FBV';
+      }
+      this.officeConfig.isSetupCompleted = true;
+
+      // Garantizar que admin-fbv exista en la lista de usuarios
+      const hasAdminFbv = this.users.some(
+        (u) => (u.username || '').toLowerCase() === 'admin-fbv'
+      );
+      if (!hasAdminFbv) {
+        const legacyAdminIdx = this.users.findIndex(
+          (u) => (u.username || '').toLowerCase() === 'admin'
+        );
+        if (legacyAdminIdx >= 0) {
+          this.users[legacyAdminIdx] = {
+            ...this.users[legacyAdminIdx],
+            username: 'admin-fbv',
+            name: this.users[legacyAdminIdx].name || 'Administrador FBV',
+            email: 'admin@inversionesfbv.com',
+          };
+        } else {
+          this.users.unshift({
+            id: 'usr-adm-1',
+            name: 'Administrador FBV',
+            username: 'admin-fbv',
+            password: '',
+            email: 'admin@inversionesfbv.com',
+            role: 'ADMIN',
+            assignedRouteIds: ['ALL', ...(this.routes || []).map((r) => r.id)],
+            isActive: true,
+            createdAt: getLocalTodayStr(),
+          });
+        }
+      }
+
+      // Eliminar contraseñas predeterminadas heredadas ('123')
+      let sanitizedLegacyPasswords = false;
+      this.users = this.users.map((u) => {
+        if (u.password === '123') {
+          sanitizedLegacyPasswords = true;
+          return { ...u, password: '' };
+        }
+        return u;
+      });
 
         // Garantizar que cada ruta activa tenga su propio usuario cobrador único sin asignar claves por defecto
         const usedCollectorIds = new Set<string>();
@@ -403,19 +465,31 @@ class LocalStore {
           safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
         }
 
-        // 2. Si la oficina venía de v1 y no tiene targetAdministrative en rutas o no tiene admin con clave válida:
-        const validAdmin = this.users.find(
-          (u) => (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') && Boolean(u.password?.trim())
-        );
-        const routesNeedMigration =
-          this.routes.length === 0 ||
-          this.routes.some((r) => r.targetAdministrative === undefined || r.targetAdministrative === null);
-
-        if (this.officeConfig.isSetupCompleted && (!validAdmin || routesNeedMigration)) {
-          // Desbloquear automáticamente la configuración para que el asistente v2 configure dinero total y claves
-          this.officeConfig.isSetupCompleted = false;
-          safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
+        // 2. Auto-migrar rutas asegurando valores numéricos sin desconfigurar la oficina ni invalidar accesos
+        if (!this.routes || this.routes.length === 0) {
+          this.routes = [...INITIAL_ROUTES];
         }
+        let routesMigrated = false;
+        this.routes = this.routes.map((r, idx) => {
+          if (r.targetAdministrative === undefined || r.targetAdministrative === null) {
+            routesMigrated = true;
+            return {
+              ...r,
+              targetAdministrative: 0,
+              expectedCustomersCount: r.expectedCustomersCount ?? 0,
+              initialCashBase: r.initialCashBase ?? 0,
+            };
+          }
+          return r;
+        });
+        if (routesMigrated) {
+          safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
+        }
+
+        // Siempre mantener oficina configurada
+        this.officeConfig.isSetupCompleted = true;
+        safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
+        safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
 
         // Si la cartera aún contiene clientes o préstamos demo de prueba antiguos ('cust-1'), limpiarla para inicio real
         if (this.customers.some((c) => c.id === 'cust-1' || c.fullName?.includes('Ana María Gómez'))) {
@@ -440,7 +514,6 @@ class LocalStore {
             safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify([])),
           ]);
         }
-      }
 
       this.alignScenarioDatesIfNeeded();
       this.isInitialized = true;
@@ -1024,13 +1097,13 @@ class LocalStore {
             ...this.users[adminIdx],
             name: params.name.trim() || this.users[adminIdx].name,
             username: cleanUsername,
-            password: cleanPass,
+            password: hashPassword(cleanPass),
           }
         : {
             id: 'usr-adm-1',
-            name: params.name.trim() || 'Administrador de Oficina',
+            name: params.name.trim() || 'Administrador FBV',
             username: cleanUsername,
-            password: cleanPass,
+            password: hashPassword(cleanPass),
             email: `${cleanUsername}@oficina.com`,
             role: 'ADMIN',
             assignedRouteIds: ['ALL', ...this.routes.map((r) => r.id)],

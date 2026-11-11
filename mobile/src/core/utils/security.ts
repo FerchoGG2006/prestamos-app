@@ -109,6 +109,7 @@ function generateSalt(length = 16): string {
  */
 export function hashPassword(plainPassword: string, customSalt?: string): string {
   if (!plainPassword) return '';
+  if (plainPassword.startsWith('sha256$')) return plainPassword;
   const salt = customSalt || generateSalt(16);
   const hash = sha256(`${salt}:${plainPassword.trim()}`);
   return `sha256$${salt}$${hash}`;

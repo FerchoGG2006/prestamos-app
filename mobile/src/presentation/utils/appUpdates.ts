@@ -1,9 +1,9 @@
 import * as Updates from 'expo-updates';
 import { Alert, Platform, Linking } from 'react-native';
 
-export const CURRENT_APP_VERSION = '1.2.4';
-export const CURRENT_VERSION_CODE = 8;
-export const WEB_BUILD_LABEL = 'web 1.2.4 (2026-11-10)';
+export const CURRENT_APP_VERSION = '1.2.5';
+export const CURRENT_VERSION_CODE = 9;
+export const WEB_BUILD_LABEL = 'web 1.2.5 (2026-11-10)';
 
 /**
  * Auto-actualizador Web (iPhone / acceso directo en pantalla de inicio):

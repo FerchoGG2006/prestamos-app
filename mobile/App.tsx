@@ -66,6 +66,7 @@ import {
   AppState,
   AppStateStatus,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 
 // En React Native Web, Alert.alert() no muestra diálogo por defecto; conectamos con window.alert / window.confirm
@@ -2366,6 +2367,24 @@ function MainApp({
       <IosInstallPrompt />
     </SafeAreaView>
   );
+
+  // Si el almacenamiento local aún se está hidratando, esperar antes de renderizar
+  if (isStoreHydrating) {
+    return (
+      <SafeAreaView
+        style={[
+          styles.safeArea,
+          {
+            backgroundColor: COLORS.bgPrimary,
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
+    );
+  }
 
   // Si no hay sesión iniciada, muestra la pantalla de autenticación y selección de rol
   if (!currentUser) {
