@@ -33,6 +33,7 @@ import {
 } from '../../../core/utils/whatsapp-receipt';
 import { CustomerOptionsModal } from '../../components/CustomerOptionsModal';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { forceReloadWebBundle, WEB_BUILD_LABEL } from '../../utils/appUpdates';
 import {
   Search,
   Check,
@@ -181,13 +182,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     setRefreshing(true);
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        if ('caches' in window) {
-          const keys = await window.caches.keys();
-          await Promise.all(keys.map((k) => window.caches.delete(k)));
-        }
-        const url = new URL(window.location.href);
-        url.searchParams.set('t', Date.now().toString());
-        window.location.replace(url.toString());
+        await forceReloadWebBundle();
         return;
       }
     } catch {}
@@ -692,6 +687,37 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           </View>
         </View>
 
+        {/* BARRA DE ACTUALIZACIÓN EN VIVO (WEB / IPHONE) */}
+        {Platform.OS === 'web' && (
+          <TouchableOpacity
+            onPress={() => forceReloadWebBundle()}
+            activeOpacity={0.7}
+            style={{
+              marginHorizontal: 16,
+              marginBottom: 10,
+              paddingVertical: 7,
+              paddingHorizontal: 12,
+              backgroundColor: '#EFF6FF',
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: '#BFDBFE',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={12} color="#2563EB" />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#1D4ED8' }}>
+                Kredia • {WEB_BUILD_LABEL}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: '#2563EB' }}>
+              🔄 Forzar Actualización
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* 3. HÉROE: PATRIMONIO OPERATIVO (UNA SOLA TARJETA BLANCA LIMPIA) */}
         <View style={styles.patrimonioHeroCard}>
           <View style={styles.patrimonioTopRow}>
@@ -1133,6 +1159,30 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               Base disponible para prestar hoy: <Text style={{ fontWeight: '800', color: '#1D4ED8' }}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
             </Text>
           </View>
+          {Platform.OS === 'web' && (
+            <TouchableOpacity
+              onPress={() => forceReloadWebBundle()}
+              activeOpacity={0.7}
+              style={{
+                marginTop: 8,
+                paddingVertical: 7,
+                paddingHorizontal: 10,
+                backgroundColor: '#F1F5F9',
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: '#CBD5E1',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              <RefreshCw size={12} color="#475569" />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
+                {WEB_BUILD_LABEL} · Forzar Actualización de Fórmulas
+              </Text>
+            </TouchableOpacity>
+          )}
           {customers.length === 0 && (
             <View
               style={{

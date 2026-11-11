@@ -9,8 +9,9 @@ echo.
 echo Para tener la aplicacion como APP PURA en el iPhone (sin Expo Go):
 echo.
 echo 1. Desde el iPhone, abre Safari y entra a:
-echo    http://192.168.1.18:8082
-echo    (O tambien por la nube publica: https://cartera-movil.expo.app)
+echo    http://192.168.1.11:8082
+echo    (o http://192.168.1.18:8082 segun la IP que tenga tu PC)
+echo    (O tambien por la nube publica permanente: https://cartera-movil.expo.app)
 echo    (Asegurate de que el iPhone este conectado a la misma red Wi-Fi si usas la IP local)
 echo.
 echo 2. En Safari, toca el boton Compartir (el cuadrito con la flecha hacia arriba).

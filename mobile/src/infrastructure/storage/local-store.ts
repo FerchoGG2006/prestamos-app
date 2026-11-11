@@ -1520,9 +1520,7 @@ class LocalStore {
       (l) => l.status === 'ACTIVE' || l.status === 'PAID' || l.status === 'RENEWED' || l.status === 'DEFAULTED'
     );
 
-    const manualBaseCapital = totalAssignedCashBase > 0
-      ? totalAssignedCashBase
-      : (totalTarget > 0 ? totalTarget : 0);
+    const manualBaseCapital = Math.max(0, totalAssignedCashBase || 0);
 
     const totalCapitalInjectedAllTime = scopedCashMovements
       .filter((cm) => cm.type === 'INCOME' && cm.category === 'CAPITAL_INJECTION')

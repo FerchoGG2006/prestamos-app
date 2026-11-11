@@ -1,9 +1,28 @@
 import * as Updates from 'expo-updates';
 import { Alert, Platform, Linking } from 'react-native';
 
-export const CURRENT_APP_VERSION = '1.2.5';
-export const CURRENT_VERSION_CODE = 9;
-export const WEB_BUILD_LABEL = 'web 1.2.5 (2026-11-10)';
+export const CURRENT_APP_VERSION = '1.2.6';
+export const CURRENT_VERSION_CODE = 10;
+export const WEB_BUILD_LABEL = 'web 1.2.6 (2026-11-10)';
+
+export async function forceReloadWebBundle(): Promise<void> {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return;
+  }
+  try {
+    if ('caches' in window) {
+      const keys = await window.caches.keys();
+      await Promise.all(keys.map((k) => window.caches.delete(k)));
+    }
+  } catch {}
+  try {
+    if (window.navigator?.serviceWorker) {
+      const regs = await window.navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch {}
+  window.location.replace(`${window.location.origin}/?_v=${Date.now()}`);
+}
 
 /**
  * Auto-actualizador Web (iPhone / acceso directo en pantalla de inicio):
