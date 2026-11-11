@@ -1577,10 +1577,22 @@ class LocalStore {
       return sum + collectedFromLoan;
     }, 0);
 
+    // Capital desembolsado en préstamos nuevos (excluye cartulinas físicas migradas del taco)
+    const totalPrincipalDisbursed = validLoans
+      .filter((l) => !isMigratedCardLoan(l) && !l.previousLoanId)
+      .reduce((sum, l) => sum + (l.principal || 0), 0);
+
+    const totalRenewalsDisbursed = this.renewals
+      .filter((r) => !filterByRoute || scopedLoanIds.has(r.newLoanId))
+      .reduce((sum, r) => sum + (r.actualCashDisbursed || 0), 0);
+
+    const totalCapitalOut = totalPrincipalDisbursed + totalRenewalsDisbursed;
+
     const cashAvailableInHand = Math.max(
       0,
       initialBase +
         totalCollectedFromLoans -
+        totalCapitalOut -
         totalExpensesAllTime -
         totalRecaudoRetiradoAllTime -
         collectedDigitalToday
