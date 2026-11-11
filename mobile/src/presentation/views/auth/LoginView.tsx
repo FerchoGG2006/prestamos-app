@@ -33,6 +33,7 @@ import {
 import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
 import { verifyPassword } from '../../../core/utils/security';
 import { COLORS, FONT_FAMILY } from '../../theme/colors';
+import { WEB_BUILD_LABEL } from '../../utils/appUpdates';
 
 interface LoginViewProps {
   users: User[];
@@ -670,6 +671,46 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 : 'Registrar mi oficina y crear credenciales'}
             </Text>
           </TouchableOpacity>
+
+          {/* Indicador de versión y botón de actualización forzada */}
+          <View style={{ marginTop: 18, alignItems: 'center', paddingBottom: 24 }}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={async () => {
+                if (typeof window !== 'undefined') {
+                  try {
+                    if ('caches' in window) {
+                      const keys = await window.caches.keys();
+                      await Promise.all(keys.map((k) => window.caches.delete(k)));
+                    }
+                  } catch {}
+                  window.location.replace(`${window.location.origin}/?_v=${Date.now()}`);
+                }
+              }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: '#F1F5F9',
+                paddingVertical: 6,
+                paddingHorizontal: 14,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: '#E2E8F0',
+              }}
+            >
+              <RotateCcw size={12} color="#64748B" style={{ marginRight: 6 }} />
+              <Text
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: '700',
+                  color: '#475569',
+                  fontFamily: FONT_FAMILY,
+                }}
+              >
+                Kredia • {WEB_BUILD_LABEL} · Forzar Actualización
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 

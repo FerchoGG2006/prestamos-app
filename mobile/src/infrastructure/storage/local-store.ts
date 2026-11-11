@@ -58,10 +58,10 @@ import { perfMonitor } from '../telemetry/perf-monitor';
 
 export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   companyName: 'Inversiones FBV',
-  taxId: '901.458.789-1',
-  city: 'Barranquilla',
-  address: 'Calle 72 # 48-25, Oficina 302',
-  supportPhone: '+57 300 123 4567',
+  taxId: '',
+  city: '',
+  address: '',
+  supportPhone: '',
   receiptFooterMessage: 'Gracias por su puntualidad • Conserve este comprobante',
   defaultInterestRate: 0.20,
   defaultInstallmentsCount: 30,
@@ -77,7 +77,7 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   allowRouteReorder: false,
   allowPartialPayments: true,
   officeServerUrl: 'http://192.168.1.18:8765',
-  recoveryPin: '1234',
+  recoveryPin: '',
   autoCloudSyncEnabled: true,
   isSetupCompleted: true,
 };
@@ -485,6 +485,33 @@ class LocalStore {
         if (routesMigrated) {
           safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
         }
+
+        // Purgar rutas y cobradores genéricos demo si se habían cargado
+        const hasDemoRoutes = this.routes.some((r) => r.id === 'route-centro' || r.id === 'route-sur');
+        if (hasDemoRoutes) {
+          this.routes = this.routes.filter((r) => r.id !== 'route-centro' && r.id !== 'route-sur');
+          if (this.routes.length === 0) {
+            this.routes = [...INITIAL_ROUTES];
+          }
+          this.users = this.users.filter(
+            (u) =>
+              u.id !== 'usr-col-2' &&
+              u.id !== 'usr-col-3' &&
+              u.id !== 'usr-sup-1' &&
+              u.id !== 'usr-adm-2' &&
+              u.username !== 'ruta2' &&
+              u.username !== 'ruta3' &&
+              u.username !== 'supervisor'
+          );
+          safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
+          safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
+        }
+
+        // Purgar datos genéricos de oficina heredados
+        if (this.officeConfig.taxId === '901.458.789-1') this.officeConfig.taxId = '';
+        if (this.officeConfig.address === 'Calle 72 # 48-25, Oficina 302') this.officeConfig.address = '';
+        if (this.officeConfig.supportPhone === '+57 300 123 4567') this.officeConfig.supportPhone = '';
+        if (this.officeConfig.city === 'Barranquilla') this.officeConfig.city = '';
 
         // Siempre mantener oficina configurada
         this.officeConfig.isSetupCompleted = true;
