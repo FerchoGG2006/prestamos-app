@@ -1551,9 +1551,8 @@ class LocalStore {
     //    - La BASE EN MANO SE AUMENTA (el dinero físico cobrado ingresa a la caja/bolsillo).
     //    - El ADMINISTRATIVO SE MANTIENE INTACTO (el patrimonio total no se reduce).
     // 2. Base en Mano = Base Inicial + Inyecciones + TODO lo cobrado en cuotas
-    //                   - Desembolsos de préstamos nuevos en efectivo
-    //                   - Gastos de ruta - Retiros a oficina - Recaudo digital en banco.
-    // 3. Administrativo Total = Cartera en Calle + Base en Mano + Recaudo Digital.
+    //                   - Gastos de ruta - Retiros a oficina - Recaudo digital de hoy.
+    // 3. Administrativo Total = Cartera en Calle + Base en Oficina + Recaudo Digital de hoy.
     // =========================================================================
     const initialBase = manualBaseCapital + totalCapitalInjectedAllTime;
 
@@ -1578,42 +1577,13 @@ class LocalStore {
       return sum + collectedFromLoan;
     }, 0);
 
-    // Desembolsos netos que salieron físicamente de la caja durante la operación
-    const totalDisbursedFromBase = scopedCashMovements
-      .filter(
-        (cm) =>
-          cm.type === 'EXPENSE' &&
-          (cm.category === 'LOAN_DISBURSEMENT' || cm.category === 'RENEWAL_DISBURSEMENT')
-      )
-      .reduce((sum, cm) => sum + cm.amount, 0);
-
-    const availableBeforeDisbursements = initialBase + totalCollectedFromLoans;
-    const appliedDisbursements = Math.min(
-      Math.max(0, availableBeforeDisbursements),
-      totalDisbursedFromBase
-    );
-
-    // Cobros digitales acumulados en banco (NEQUI / Transferencia) que no están en el bolsillo físico
-    const scopedPayments = filterByRoute
-      ? this.payments.filter((p) => scopedLoanIds.has(p.loanId))
-      : this.payments;
-
-    const totalDigitalCollectedAllTime = scopedPayments
-      .filter(
-        (p) =>
-          p.status === 'COMPLETED' &&
-          (p.paymentMethod === 'TRANSFER' || p.paymentMethod === 'NEQUI')
-      )
-      .reduce((sum, p) => sum + p.amountReceived, 0);
-
     const cashAvailableInHand = Math.max(
       0,
-      availableBeforeDisbursements -
-        appliedDisbursements -
+      initialBase +
+        totalCollectedFromLoans -
         totalExpensesAllTime -
         totalRecaudoRetiradoAllTime -
-        totalPaperworkRetiradoAllTime -
-        totalDigitalCollectedAllTime
+        collectedDigitalToday
     );
 
     // Administrativo / Patrimonio operativo total:
@@ -1621,7 +1591,7 @@ class LocalStore {
     // Administrativo = Cartera en Calle + Base en Oficina + Recaudo Digital
     const totalAdministrativeCapital = Math.max(
       0,
-      activeCapitalInStreet + cashAvailableInHand + totalDigitalCollectedAllTime
+      activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
     );
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
