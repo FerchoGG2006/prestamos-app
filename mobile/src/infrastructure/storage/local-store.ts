@@ -76,7 +76,7 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   allowCollectorExpenses: true,
   allowRouteReorder: false,
   allowPartialPayments: true,
-  officeServerUrl: 'http://192.168.1.18:8765',
+  officeServerUrl: 'http://192.168.1.10:8765',
   recoveryPin: '',
   autoCloudSyncEnabled: true,
   isSetupCompleted: true,
@@ -462,6 +462,12 @@ class LocalStore {
             !(cm.category === 'ADJUSTMENT' && cm.amount === 200000) &&
             !(cm.type === 'INCOME' && cm.amount === 200000 && cm.description?.toLowerCase().includes('base'))
           );
+          safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
+        }
+
+        const hasDemoMovs = this.cashMovements.some((cm) => cm.id === 'cm-001' || cm.routeId === 'route-centro' || cm.routeId === 'route-sur');
+        if (hasDemoMovs) {
+          this.cashMovements = this.cashMovements.filter((cm) => cm.id !== 'cm-001' && cm.routeId !== 'route-centro' && cm.routeId !== 'route-sur');
           safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
         }
 

@@ -9,6 +9,7 @@
 
 import { localStore, safeStorage } from '../storage/local-store';
 import { getLocalTodayStr } from '../../core/domain/calculator';
+import { supabaseSyncService } from './supabase-client';
 
 const OUTBOX_STORAGE_KEY = '@prestamos_sync_outbox_v1';
 
@@ -104,33 +105,65 @@ class CloudSyncEngine {
   public async syncNowIfAutoEnabled(): Promise<boolean> {
     const cfg = localStore.getOfficeConfig();
     if (cfg.autoCloudSyncEnabled === false) return false;
-    const serverUrl = (cfg.officeServerUrl || '').trim();
-    if (!serverUrl || serverUrl === 'http://192.168.1.10:8765') {
-      // Solo intenta auto-sync si el usuario configuró una IP/URL real de servidor de oficina o nube
-      return false;
-    }
+    const serverUrl = (cfg.officeServerUrl || 'http://192.168.1.10:8765').trim();
     return this.syncBidirectional(serverUrl);
   }
 
   /**
    * Ejecuta sincronización bidireccional (Push de cobros/créditos locales + Pull de cartera actualizada)
-   * garantizando idempotencia y merge sin pérdida de datos.
+   * soportando Servidor LAN (192.168.1.10:8765) y Nube Multi-Tenant (Supabase) sin fricción.
    */
   public async syncBidirectional(customServerUrl?: string): Promise<boolean> {
     if (this.isSyncing) return false;
     this.isSyncing = true;
     this.lastSyncStatus = 'SYNCING';
-    this.lastSyncMessage = 'Sincronizando con servidor de oficina...';
+    this.lastSyncMessage = 'Sincronizando oficina y rutas...';
 
     const cfg = localStore.getOfficeConfig();
-    const targetUrl = (customServerUrl || cfg.officeServerUrl || '').trim();
+    const targetUrl = (customServerUrl || cfg.officeServerUrl || 'http://192.168.1.10:8765').trim();
     const todayStr = getLocalTodayStr();
+    let anySyncSuccessful = false;
 
-    try {
-      await localStore.pushSyncToOfficeServer(targetUrl, todayStr);
-      await localStore.pullRouteFromOfficeServer(targetUrl);
+    // 1. Sincronización con Servidor LAN Desktop (192.168.1.10:8765)
+    if (targetUrl) {
+      try {
+        await localStore.pushSyncToOfficeServer(targetUrl, todayStr);
+        await localStore.pullRouteFromOfficeServer(targetUrl);
+        anySyncSuccessful = true;
+      } catch (lanErr) {
+        // Si el cobrador está en la calle o fuera del alcance de la Wi-Fi de oficina
+      }
+    }
 
-      const nowIso = new Date().toISOString();
+    // 2. Sincronización Multi-Tenant con Nube (Supabase) si está conectado
+    if (supabaseSyncService.isConnected()) {
+      try {
+        const officeId = (cfg.companyName || 'Inversiones FBV')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-');
+        const formattedOfficeId = `off-${officeId || 'fbv'}`;
+
+        await supabaseSyncService.upsertOffice(formattedOfficeId, cfg);
+        await supabaseSyncService.syncUsersAndRoutes(
+          formattedOfficeId,
+          localStore.getUsers(),
+          localStore.getRoutes()
+        );
+        await supabaseSyncService.pushFullPortfolio(formattedOfficeId, {
+          customers: localStore.getCustomers(),
+          loans: localStore.getLoans(),
+          installments: localStore.getInstallments(),
+          payments: localStore.getPayments(),
+          cashMovements: localStore.getCashMovements(),
+        });
+        anySyncSuccessful = true;
+      } catch (cloudErr) {
+        console.warn('[CloudSyncEngine] Cloud sync error:', cloudErr);
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    if (anySyncSuccessful) {
       await safeStorage.removeItem(OUTBOX_STORAGE_KEY);
       this.outboxCount = 0;
       this.lastSyncStatus = 'SUCCESS';
@@ -141,7 +174,7 @@ class CloudSyncEngine {
       await localStore.updateOfficeConfig({ lastSyncedAt: nowIso });
       this.isSyncing = false;
       return true;
-    } catch (err: any) {
+    } else {
       this.lastSyncStatus = 'OFFLINE_QUEUED';
       this.lastSyncMessage =
         'Operando en modo Offline (Cambios guardados en cola local segura hasta detectar red)';
