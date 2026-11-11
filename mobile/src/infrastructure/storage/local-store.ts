@@ -1540,18 +1540,25 @@ class LocalStore {
       .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RECAUDO_OFICINA')
       .reduce((sum, cm) => sum + cm.amount, 0);
 
-    // Reconstrucción cronológica exacta de la Base Disponible (cashAvailableInHand):
-    // 1. Parte de la base manual (si existe) + inyecciones de capital.
-    // 2. Cada cartulina del taco aporta a la Base las cuotas ya cobradas en papel + abonos posteriores.
-    // 3. Un "Nuevo Préstamo" posterior descuenta su capital (principal) de la Base únicamente si había
-    //    Base acumulada suficiente para cubrirlo; si la Base era menor al capital (porque el administrador
-    //    estaba ingresando clientes iniciales de la ruta desde $0), se trata como cartera inicial aportada
-    //    a la ruta sin destruir la Base existente ni dejar Cartera en Calle > Administrativo.
-    const chronologicalLoans = [...validLoans].reverse();
-    let runningCashBase = manualBaseCapital + totalCapitalInjectedAllTime;
+    const totalPaperworkRetiradoAllTime = scopedCashMovements
+      .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RETIRO_PAPELERIA')
+      .reduce((sum, cm) => sum + cm.amount, 0);
 
-    for (let idx = 0; idx < chronologicalLoans.length; idx++) {
-      const l = chronologicalLoans[idx];
+    // =========================================================================
+    // REGLA FINANCIERA INMUTABLE DE COBRO Y PATRIMONIO OPERATIVO:
+    // 1. Al cobrar una cuota al cliente:
+    //    - La CARTERA EN CALLE SE RESTA (la deuda del cliente disminuye).
+    //    - La BASE EN MANO SE AUMENTA (el dinero físico cobrado ingresa a la caja/bolsillo).
+    //    - El ADMINISTRATIVO SE MANTIENE INTACTO (el patrimonio total no se reduce).
+    // 2. Base en Mano = Base Inicial + Inyecciones + TODO lo cobrado en cuotas
+    //                   - Desembolsos de préstamos nuevos en efectivo
+    //                   - Gastos de ruta - Retiros a oficina - Recaudo digital en banco.
+    // 3. Administrativo Total = Cartera en Calle + Base en Mano + Recaudo Digital.
+    // =========================================================================
+    const initialBase = manualBaseCapital + totalCapitalInjectedAllTime;
+
+    // Suma exacta de todo el dinero cobrado/amortizado de todos los créditos de la ruta
+    const totalCollectedFromLoans = validLoans.reduce((sum, l) => {
       const loanInsts = this.getInstallmentsByLoanId(l.id);
       const currentPending =
         l.status === 'ACTIVE' || l.status === 'DEFAULTED'
@@ -1568,30 +1575,45 @@ class LocalStore {
           ? Math.max(0, (l.totalAgreed || 0) - (renewalRecord?.previousBalanceDeducted || 0))
           : Math.max(0, (l.totalAgreed || 0) - currentPending);
 
-      if (isMigratedCardLoan(l)) {
-        runningCashBase += collectedFromLoan;
-      } else if (l.previousLoanId) {
-        const asNewRenewal = this.renewals.find((r) => r.newLoanId === l.id);
-        const netCapitalOut = asNewRenewal
-          ? Math.max(0, asNewRenewal.newPrincipal - asNewRenewal.previousBalanceDeducted)
-          : l.principal;
-        // Solo sale de la Base el efectivo que realmente había disponible; el faltante
-        // se considera capital aportado externamente (no puede quedar Base negativa ni
-        // ignorarse por completo el desembolso cuando la Base era parcial).
-        runningCashBase -= Math.min(Math.max(0, runningCashBase), netCapitalOut);
-        runningCashBase += collectedFromLoan;
-      } else {
-        runningCashBase -= Math.min(Math.max(0, runningCashBase), l.principal);
-        runningCashBase += collectedFromLoan;
-      }
-    }
+      return sum + collectedFromLoan;
+    }, 0);
+
+    // Desembolsos netos que salieron físicamente de la caja durante la operación
+    const totalDisbursedFromBase = scopedCashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          (cm.category === 'LOAN_DISBURSEMENT' || cm.category === 'RENEWAL_DISBURSEMENT')
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const availableBeforeDisbursements = initialBase + totalCollectedFromLoans;
+    const appliedDisbursements = Math.min(
+      Math.max(0, availableBeforeDisbursements),
+      totalDisbursedFromBase
+    );
+
+    // Cobros digitales acumulados en banco (NEQUI / Transferencia) que no están en el bolsillo físico
+    const scopedPayments = filterByRoute
+      ? this.payments.filter((p) => scopedLoanIds.has(p.loanId))
+      : this.payments;
+
+    const totalDigitalCollectedAllTime = scopedPayments
+      .filter(
+        (p) =>
+          p.status === 'COMPLETED' &&
+          (p.paymentMethod === 'TRANSFER' || p.paymentMethod === 'NEQUI')
+      )
+      .reduce((sum, p) => sum + p.amountReceived, 0);
 
     const cashAvailableInHand = Math.max(
       0,
-      runningCashBase -
+      availableBeforeDisbursements -
+        appliedDisbursements -
         totalExpensesAllTime -
         totalRecaudoRetiradoAllTime -
-        collectedDigitalToday
+        totalPaperworkRetiradoAllTime -
+        totalDigitalCollectedAllTime
     );
 
     // Administrativo / Patrimonio operativo total:
@@ -1599,7 +1621,7 @@ class LocalStore {
     // Administrativo = Cartera en Calle + Base en Oficina + Recaudo Digital
     const totalAdministrativeCapital = Math.max(
       0,
-      activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
+      activeCapitalInStreet + cashAvailableInHand + totalDigitalCollectedAllTime
     );
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
