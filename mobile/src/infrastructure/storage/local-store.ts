@@ -1540,18 +1540,18 @@ class LocalStore {
       .filter((cm) => cm.type === 'EXPENSE' && cm.category === 'RECAUDO_OFICINA')
       .reduce((sum, cm) => sum + cm.amount, 0);
 
-    // Reconstrucción cronológica exacta de la Base Disponible (cashAvailableInHand):
-    // 1. Parte de la base manual (si existe) + inyecciones de capital.
-    // 2. Cada cartulina del taco aporta a la Base las cuotas ya cobradas en papel + abonos posteriores.
-    // 3. Un "Nuevo Préstamo" posterior descuenta su capital (principal) de la Base únicamente si había
-    //    Base acumulada suficiente para cubrirlo; si la Base era menor al capital (porque el administrador
-    //    estaba ingresando clientes iniciales de la ruta desde $0), se trata como cartera inicial aportada
-    //    a la ruta sin destruir la Base existente ni dejar Cartera en Calle > Administrativo.
-    const chronologicalLoans = [...validLoans].reverse();
-    let runningCashBase = manualBaseCapital + totalCapitalInjectedAllTime;
+    // =========================================================================
+    // CÁLCULO FINANCIERO INMUTABLE DE BASE Y PATRIMONIO OPERATIVO:
+    // 1. Cada cuota cobrada (sea de cartulina migrada o de préstamo nuevo):
+    //    - Disminuye la Cartera en Calle en el monto cobrado (-C).
+    //    - Aumenta la Base en Efectivo en ese mismo monto exacto (+C).
+    //    - Mantiene el Capital Administrativo estrictamente intacto (Δ = 0).
+    // 2. Ningún cobro posterior en la app puede ser absorbido retroactivamente
+    //    por préstamos anteriores.
+    // =========================================================================
 
-    for (let idx = 0; idx < chronologicalLoans.length; idx++) {
-      const l = chronologicalLoans[idx];
+    // 1. Total exacto cobrado/amortizado de todos los créditos válidos de la ruta
+    const totalCollectedFromLoans = validLoans.reduce((sum, l) => {
       const loanInsts = this.getInstallmentsByLoanId(l.id);
       const currentPending =
         l.status === 'ACTIVE' || l.status === 'DEFAULTED'
@@ -1568,27 +1568,88 @@ class LocalStore {
           ? Math.max(0, (l.totalAgreed || 0) - (renewalRecord?.previousBalanceDeducted || 0))
           : Math.max(0, (l.totalAgreed || 0) - currentPending);
 
+      return sum + collectedFromLoan;
+    }, 0);
+
+    // 2. Pagos completados en la app por crédito (cobros realizados en calle posteriores a la migración)
+    const scopedPayments = filterByRoute
+      ? this.payments.filter((p) => scopedLoanIds.has(p.loanId))
+      : this.payments;
+
+    const inAppPaymentsByLoan = new Map<string, number>();
+    scopedPayments.forEach((p) => {
+      if (p.status === 'COMPLETED') {
+        inAppPaymentsByLoan.set(p.loanId, (inAppPaymentsByLoan.get(p.loanId) || 0) + p.amountReceived);
+      }
+    });
+
+    // 3. Reconstrucción del capital fijo desembolsado de la base inicial:
+    // Se calcula usando únicamente los saldos base de las cartulinas migradas
+    // para que ningún abono registrado en la app altere retroactivamente el desembolso histórico.
+    const chronologicalLoans = [...validLoans].reverse();
+    let runningBaselineCash = manualBaseCapital + totalCapitalInjectedAllTime;
+    let fixedHistoricalCapitalDisbursed = 0;
+
+    for (let idx = 0; idx < chronologicalLoans.length; idx++) {
+      const l = chronologicalLoans[idx];
+      const loanInsts = this.getInstallmentsByLoanId(l.id);
+      const currentPending =
+        l.status === 'ACTIVE' || l.status === 'DEFAULTED'
+          ? loanInsts.reduce((s, i) => s + i.pendingAmount, 0)
+          : 0;
+
+      const renewalRecord =
+        l.status === 'RENEWED'
+          ? this.renewals.find((r) => r.previousLoanId === l.id)
+          : undefined;
+
+      const totalCollected =
+        l.status === 'RENEWED'
+          ? Math.max(0, (l.totalAgreed || 0) - (renewalRecord?.previousBalanceDeducted || 0))
+          : Math.max(0, (l.totalAgreed || 0) - currentPending);
+
+      // Cobro base previo a los pagos registrados en la app
+      const inAppOnThisLoan = inAppPaymentsByLoan.get(l.id) || 0;
+      const initialCollected = Math.max(0, totalCollected - inAppOnThisLoan);
+
       if (isMigratedCardLoan(l)) {
-        runningCashBase += collectedFromLoan;
+        runningBaselineCash += initialCollected;
       } else if (l.previousLoanId) {
         const asNewRenewal = this.renewals.find((r) => r.newLoanId === l.id);
         const netCapitalOut = asNewRenewal
           ? Math.max(0, asNewRenewal.newPrincipal - asNewRenewal.previousBalanceDeducted)
           : l.principal;
-        // Solo sale de la Base el efectivo que realmente había disponible; el faltante
-        // se considera capital aportado externamente (no puede quedar Base negativa ni
-        // ignorarse por completo el desembolso cuando la Base era parcial).
-        runningCashBase -= Math.min(Math.max(0, runningCashBase), netCapitalOut);
-        runningCashBase += collectedFromLoan;
+        const deducted = Math.min(Math.max(0, runningBaselineCash), netCapitalOut);
+        fixedHistoricalCapitalDisbursed += deducted;
+        runningBaselineCash -= deducted;
+        runningBaselineCash += initialCollected;
       } else {
-        runningCashBase -= Math.min(Math.max(0, runningCashBase), l.principal);
-        runningCashBase += collectedFromLoan;
+        const deducted = Math.min(Math.max(0, runningBaselineCash), l.principal);
+        fixedHistoricalCapitalDisbursed += deducted;
+        runningBaselineCash -= deducted;
+        runningBaselineCash += initialCollected;
       }
     }
 
+    // 4. Desembolsos en efectivo de nuevos préstamos / renovaciones realizados DESPUÉS en la app
+    const appDisbursements = scopedCashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          (cm.category === 'LOAN_DISBURSEMENT' || cm.category === 'RENEWAL_DISBURSEMENT')
+      )
+      .reduce((sum, cm) => sum + cm.amount, 0);
+
+    const totalCapitalOut = fixedHistoricalCapitalDisbursed + appDisbursements;
+
+    // 5. Base en mano disponible:
+    // Base Inicial + TODO lo cobrado acumulado - Capital desembolsado - Gastos - Retiros - Recaudo digital de hoy
     const cashAvailableInHand = Math.max(
       0,
-      runningCashBase -
+      manualBaseCapital +
+        totalCapitalInjectedAllTime +
+        totalCollectedFromLoans -
+        totalCapitalOut -
         totalExpensesAllTime -
         totalRecaudoRetiradoAllTime -
         collectedDigitalToday
