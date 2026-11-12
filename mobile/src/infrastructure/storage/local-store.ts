@@ -1631,16 +1631,10 @@ class LocalStore {
       }
     }
 
-    // 4. Desembolsos en efectivo de nuevos préstamos / renovaciones realizados DESPUÉS en la app
-    const appDisbursements = scopedCashMovements
-      .filter(
-        (cm) =>
-          cm.type === 'EXPENSE' &&
-          (cm.category === 'LOAN_DISBURSEMENT' || cm.category === 'RENEWAL_DISBURSEMENT')
-      )
-      .reduce((sum, cm) => sum + cm.amount, 0);
-
-    const totalCapitalOut = fixedHistoricalCapitalDisbursed + appDisbursements;
+    // 4. Capital total desembolsado en préstamos
+    // El bucle histórico anterior ya contabiliza de forma exacta el capital desembolsado de la base,
+    // evitando duplicaciones con movimientos de caja y asegurando que cada cobro entre íntegro a la base.
+    const totalCapitalOut = fixedHistoricalCapitalDisbursed;
 
     // 5. Base en mano disponible:
     // Base Inicial + TODO lo cobrado acumulado - Capital desembolsado - Gastos - Retiros - Recaudo digital de hoy
