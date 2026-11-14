@@ -634,7 +634,9 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     // Proporción matemática de la barra de progreso de patrimonio
     const totalAdmin = metrics.totalAdministrativeCapital || 0;
     const streetCapital = metrics.activeCapitalInStreet || 0;
-    const officeCapital = metrics.cashAvailableInHand || 0;
+    const officeCash = metrics.cashAvailableInHand || 0;
+    const officeDigital = metrics.collectedDigitalToday || 0;
+    const officeCapital = officeCash + officeDigital;
     const streetRatio = totalAdmin > 0
       ? Math.min(100, Math.max(0, Math.round((streetCapital / totalAdmin) * 100)))
       : 0;
@@ -767,6 +769,21 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               <Text style={[styles.patrimonioColValue, { fontSize: getSubColFontSize(officeCapital) }]} numberOfLines={1} adjustsFontSizeToFit>
                 {maskIfPrivate(officeCapital)}
               </Text>
+              <View style={styles.patrimonioBreakdownBox}>
+                <Text style={styles.patrimonioBreakdownText} numberOfLines={1} adjustsFontSizeToFit>
+                  Efectivo: <Text style={styles.patrimonioBreakdownAmount}>{maskIfPrivate(officeCash)}</Text>
+                </Text>
+                <Text
+                  style={[styles.patrimonioBreakdownText, officeDigital > 0 && styles.patrimonioBreakdownDigital]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  Transf / Nequi:{' '}
+                  <Text style={[styles.patrimonioBreakdownAmount, officeDigital > 0 && styles.patrimonioBreakdownDigitalAmount]}>
+                    {maskIfPrivate(officeDigital)}
+                  </Text>
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -3831,6 +3848,27 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     marginTop: 4,
     fontVariant: ['tabular-nums'],
+  },
+  patrimonioBreakdownBox: {
+    marginTop: 6,
+    gap: 2,
+  },
+  patrimonioBreakdownText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    color: '#64748B',
+    fontVariant: ['tabular-nums'],
+  },
+  patrimonioBreakdownAmount: {
+    fontWeight: '600',
+    color: '#334155',
+  },
+  patrimonioBreakdownDigital: {
+    color: '#2563EB',
+  },
+  patrimonioBreakdownDigitalAmount: {
+    fontWeight: '700',
+    color: '#1D4ED8',
   },
   patrimonioVerticalDivider: {
     width: 1,
