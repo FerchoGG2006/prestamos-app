@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  Animated,
 } from 'react-native';
 import { User, Route } from '../../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +34,11 @@ import {
 import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
 import { verifyPassword } from '../../../core/utils/security';
 import { COLORS, FONT_FAMILY } from '../../theme/colors';
+import {
+  StagedView,
+  TactilePressable,
+  useShakeAnimation,
+} from '../../components/MotionPrimitives';
 import { WEB_BUILD_LABEL } from '../../utils/appUpdates';
 
 interface LoginViewProps {
@@ -89,6 +95,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
   const [savedNotice, setSavedNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { translateX: cardShakeX, triggerShake } = useShakeAnimation();
 
   useEffect(() => {
     safeStorage.getItem('@prestamos_remembered_credentials').then((raw) => {
@@ -126,6 +133,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
     if (!cleanUser || !cleanPass) {
       setErrorMessage('Ingresa tu usuario y contraseña.');
+      triggerShake();
       return;
     }
 
@@ -169,6 +177,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         !verifyPassword(cleanPass, storedPassword)
       ) {
         setErrorMessage('Credenciales incorrectas. Verifica tu usuario y contraseña.');
+        triggerShake();
         return;
       }
 
@@ -556,7 +565,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </View>
 
           {/* Tarjeta Blanca de Acceso */}
-          <View style={styles.card}>
+          <StagedView>
+          <Animated.View style={[styles.card, { transform: [{ translateX: cardShakeX }] }]}>
             {savedNotice ? (
               <View style={styles.successBox}>
                 <CheckCircle2 size={14} color={COLORS.success} />
@@ -633,9 +643,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <Text style={styles.rememberText}>Recordar contraseña en este dispositivo</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
+            <TactilePressable
               style={[styles.submitBtn, isLoading && { opacity: 0.7 }]}
-              activeOpacity={0.85}
               onPress={handleLogin}
               disabled={isLoading}
             >
@@ -643,8 +652,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 6 }} />
               )}
               <Text style={styles.submitBtnText}>Iniciar Jornada</Text>
-            </TouchableOpacity>
-          </View>
+            </TactilePressable>
+          </Animated.View>
+          </StagedView>
 
           {/* Botón para Registrar o Configurar Oficina y Credenciales */}
           <TouchableOpacity

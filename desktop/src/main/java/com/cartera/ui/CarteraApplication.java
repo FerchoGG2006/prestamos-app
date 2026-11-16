@@ -14,6 +14,7 @@ import com.cartera.payments.application.ReversePaymentUseCase;
 import com.cartera.reports.application.ExcelReportExporter;
 import com.cartera.sync.application.MobileSyncProcessorService;
 import com.cartera.sync.infrastructure.LanSyncServerService;
+import com.cartera.ui.util.MotionUtil;
 import com.cartera.ui.views.CashManagementView;
 import com.cartera.ui.views.ConfigurationView;
 import com.cartera.ui.views.CreditHistoryView;
@@ -283,12 +284,15 @@ public final class CarteraApplication extends Application {
             navigateTo("Inicio");
         }
         appRoot.getChildren().setAll(root);
+        MotionUtil.transitionView(root);
+        MotionUtil.showToast(appRoot, "Sesión iniciada: " + session.fullName(), MotionUtil.ToastType.SUCCESS);
     }
 
     private void onLogout() {
         authService.logout();
         loginView.reset();
         appRoot.getChildren().setAll(loginView);
+        MotionUtil.transitionView(loginView);
     }
 
     private Node sidebar() {
@@ -338,6 +342,7 @@ public final class CarteraApplication extends Application {
         btnLogout.setStyle("-fx-text-fill: #dc2626; -fx-padding: 8 14; -fx-font-size: 13px;");
         btnLogout.setMaxWidth(Double.MAX_VALUE);
         btnLogout.setOnAction(e -> onLogout());
+        MotionUtil.installTactileButton(btnLogout);
         box.getChildren().add(btnLogout);
 
         var versionLabel = new Label("Sistema Cartera v1.4 • Operación Segura");
@@ -393,6 +398,7 @@ public final class CarteraApplication extends Application {
         button.getStyleClass().add("nav-button");
         button.setMaxWidth(Double.MAX_VALUE);
         button.setOnAction(e -> navigateTo(actionKey));
+        MotionUtil.installTactileButton(button);
         navButtons.put(actionKey, button);
         return button;
     }
@@ -625,6 +631,7 @@ public final class CarteraApplication extends Application {
         });
 
         mainContainer.setCenter(viewNode);
+        MotionUtil.transitionView(viewNode);
     }
 
     @Override

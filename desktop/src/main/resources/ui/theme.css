@@ -78,6 +78,7 @@
     -fx-text-fill: #475569;
     -fx-alignment: CENTER-LEFT;
     -fx-padding: 12 16;
+    -fx-min-height: 40px;
     -fx-font-size: 13px;
     -fx-background-radius: 12;
     -fx-cursor: hand;
@@ -175,7 +176,8 @@
     -fx-text-fill: white;
     -fx-font-size: 13px;
     -fx-font-weight: bold;
-    -fx-padding: 8 16;
+    -fx-padding: 9 18;
+    -fx-min-height: 38px;
     -fx-background-radius: 999;
     -fx-cursor: hand;
     cursor: pointer;
@@ -794,4 +796,41 @@
     -fx-text-fill: #475569;
     -fx-font-size: 11px;
     -fx-font-weight: bold;
+}
+
+/* Notificaciones Toast Flotantes (Feedback & Secondary Action) */
+.ux-toast {
+    -fx-background-color: #0f172a;
+    -fx-background-radius: 999;
+    -fx-padding: 10 18;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.28), 16, 0, 0, 6);
+}
+
+.ux-toast-success {
+    -fx-background-color: #065f46;
+}
+
+.ux-toast-error {
+    -fx-background-color: #991b1b;
+}
+
+.ux-toast-info {
+    -fx-background-color: #1e293b;
+}
+
+.ux-toast-icon {
+    -fx-background-color: rgba(255, 255, 255, 0.18);
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 11px;
+    -fx-font-weight: 800;
+    -fx-min-width: 22px;
+    -fx-min-height: 22px;
+    -fx-alignment: center;
+    -fx-background-radius: 999;
+}
+
+.ux-toast-text {
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 13px;
+    -fx-font-weight: 600;
 }

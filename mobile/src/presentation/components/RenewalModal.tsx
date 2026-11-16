@@ -397,6 +397,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                       onPress={() => handleSelectFrequency(f.key, f.defaultCount)}
                     >
                       <Text
+                        numberOfLines={1}
                         style={[
                           styles.freqTabBtnText,
                           isSelected && styles.freqTabBtnTextActive,
@@ -425,6 +426,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                       onPress={() => setInstallmentCountStr(String(cnt))}
                     >
                       <Text
+                        numberOfLines={1}
                         style={[
                           styles.countPillText,
                           effectiveInstallmentCount === cnt && styles.countPillTextActive,
@@ -830,12 +832,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   countPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 9999,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: COLORS.inputBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   countPillActive: {
     backgroundColor: COLORS.surfaceLavender,

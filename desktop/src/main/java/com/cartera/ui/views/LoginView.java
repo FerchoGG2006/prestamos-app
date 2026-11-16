@@ -6,6 +6,7 @@ import com.cartera.infrastructure.security.AuthService;
 import com.cartera.infrastructure.security.AuthService.RouteSetupItem;
 import com.cartera.infrastructure.security.UserSession;
 import com.cartera.infrastructure.security.UserSessionContext;
+import com.cartera.ui.util.MotionUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -50,6 +51,7 @@ public class LoginView extends StackPane {
     private final Label lblSuccess = new Label();
     private final Button btnLogin = new Button("Ingresar");
     private final Button btnSetup = new Button("Registrar mi oficina y crear credenciales");
+    private VBox loginCard;
 
     public LoginView(AuthService authService, Consumer<UserSession> onLoginSuccess) {
         this.authService = authService;
@@ -89,10 +91,10 @@ public class LoginView extends StackPane {
         header.getChildren().addAll(emblem, appTitle, subtitle, lblActiveOfficeBadge);
 
         // Tarjeta Blanca: solo Usuario y Contraseña
-        VBox card = new VBox(12);
-        card.setAlignment(Pos.CENTER_LEFT);
-        card.setPadding(new Insets(22));
-        card.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 20; -fx-border-color: #e2e8f0; -fx-border-radius: 20; -fx-border-width: 1;");
+        loginCard = new VBox(12);
+        loginCard.setAlignment(Pos.CENTER_LEFT);
+        loginCard.setPadding(new Insets(22));
+        loginCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 20; -fx-border-color: #e2e8f0; -fx-border-radius: 20; -fx-border-width: 1;");
 
         lblSuccess.setVisible(false);
         lblSuccess.setManaged(false);
@@ -122,16 +124,21 @@ public class LoginView extends StackPane {
         txtPassword.setOnAction(e -> doLogin());
 
         btnLogin.setMaxWidth(Double.MAX_VALUE);
+        btnLogin.setMinHeight(42);
         btnLogin.setStyle("-fx-background-color: #0d9488; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 12; -fx-cursor: hand;");
         btnLogin.setOnAction(e -> doLogin());
+        MotionUtil.installTactileButton(btnLogin);
 
-        card.getChildren().addAll(lblSuccess, lblError, lblUser, txtUsername, lblPass, txtPassword, btnLogin);
+        loginCard.getChildren().addAll(lblSuccess, lblError, lblUser, txtUsername, lblPass, txtPassword, btnLogin);
 
+        btnSetup.setMinHeight(36);
         btnSetup.setStyle("-fx-background-color: #ffffff; -fx-border-color: #e2e8f0; -fx-border-radius: 20; -fx-background-radius: 20; -fx-text-fill: #475569; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 7 16; -fx-cursor: hand;");
         btnSetup.setOnAction(e -> openOfficeSetupDialog());
+        MotionUtil.installTactileButton(btnSetup);
 
-        wrapper.getChildren().addAll(header, card, btnSetup);
+        wrapper.getChildren().addAll(header, loginCard, btnSetup);
         getChildren().add(wrapper);
+        MotionUtil.transitionView(wrapper);
     }
 
     private void refreshDynamicData() {
@@ -414,6 +421,7 @@ public class LoginView extends StackPane {
         lblError.setText(message);
         lblError.setVisible(true);
         lblError.setManaged(true);
+        MotionUtil.shakeError(loginCard);
     }
 
     public void reset() {

@@ -926,7 +926,12 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 <Text style={styles.label}>
                   4. {currentFreqConfig.questionLabel} ({installmentCount} {currentFreqConfig.unitLabel})
                 </Text>
-                <View style={styles.installmentsRow}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginBottom: 14 }}
+                  contentContainerStyle={styles.installmentsRow}
+                >
                   {currentFreqConfig.options.map((cnt) => (
                     <TouchableOpacity
                       key={cnt}
@@ -937,6 +942,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       onPress={() => setInstallmentCountStr(cnt.toString())}
                     >
                       <Text
+                        numberOfLines={1}
                         style={[
                           styles.cntPillText,
                           installmentCount === cnt && { color: '#ffffff' },
@@ -946,7 +952,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       </Text>
                     </TouchableOpacity>
                   ))}
-                </View>
+                </ScrollView>
               </View>
             )}
 
@@ -1695,16 +1701,18 @@ const styles = StyleSheet.create({
   installmentsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 14,
+    paddingRight: 8,
   },
   cntPill: {
-    flex: 1,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    minHeight: 38,
     borderRadius: 9999,
     backgroundColor: COLORS.surfaceSoft,
     borderWidth: 1,
     borderColor: COLORS.microBorder,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cntPillActive: {
     backgroundColor: COLORS.dockBg,

@@ -24,6 +24,7 @@ import { formatCOP } from '../../core/config/business-rules';
 import { calculateDelinquencyMetrics, getLocalTodayStr } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
+import { SuccessPop, TactilePressable } from './MotionPrimitives';
 import {
   formatDigitalPaymentReceipt,
   openWhatsAppReceipt,
@@ -248,7 +249,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.receiptTicketCard}>
+              <SuccessPop style={styles.receiptTicketCard}>
                 <View style={styles.semanticApprovedPill}>
                   <Sparkles size={13} color={COLORS.success} />
                   <Text style={styles.semanticApprovedPillText}>
@@ -290,7 +291,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
                 <View style={styles.dashedLineSimple} />
 
-                <TouchableOpacity
+                <TactilePressable
                   style={styles.whatsappReceiptBtn}
                   onPress={handleSendWhatsAppReceipt}
                 >
@@ -298,12 +299,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   <Text style={styles.whatsappReceiptBtnText}>
                     Enviar Recibo por WhatsApp al Cliente
                   </Text>
-                </TouchableOpacity>
+                </TactilePressable>
 
-                <TouchableOpacity style={styles.doneBtn} onPress={onClose}>
+                <TactilePressable style={styles.doneBtn} onPress={onClose}>
                   <Text style={styles.doneBtnText}>Volver a la Ruta</Text>
-                </TouchableOpacity>
-              </View>
+                </TactilePressable>
+              </SuccessPop>
             </ScrollView>
           ) : (
             /* FORMULARIO DE ABONO RÁPIDO CON FILLED INPUTS + FLOATING LABELS INTERNOS (Patrón #5 + Mejora IA #3) */
@@ -485,7 +486,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
               {/* Footer */}
               <View style={styles.footer}>
-                <TouchableOpacity
+                <TactilePressable
                   style={[
                     styles.confirmBtn,
                     (isSubmitting || isOverpaying || isBelowPartialPolicy || currentNumericAmount <= 0) &&
@@ -502,7 +503,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                       ? 'Aplicando Abono...'
                       : `Confirmar Cobro (${formatCOP(currentNumericAmount)})`}
                   </Text>
-                </TouchableOpacity>
+                </TactilePressable>
               </View>
             </>
           )}
@@ -868,21 +869,27 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     backgroundColor: COLORS.success,
-    height: 48,
+    minHeight: 50,
+    paddingHorizontal: 20,
+    paddingVertical: 13,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   whatsappReceiptBtnText: {
     fontFamily: FONT_FAMILY,
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13.5,
     fontWeight: '800',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   doneBtn: {
     width: '100%',
-    height: 44,
+    minHeight: 46,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     borderRadius: 14,
     backgroundColor: COLORS.surfaceSoft,
     borderWidth: 1,
