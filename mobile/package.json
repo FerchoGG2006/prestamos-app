@@ -30,7 +30,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "node --stack-size=16384 ./node_modules/typescript/bin/tsc --noEmit"
+    "typecheck": "node --stack-size=16384 ./node_modules/typescript/bin/tsc --noEmit",
+    "test:finance": "node scripts/test-finance.cjs"
   },
   "private": true
 }

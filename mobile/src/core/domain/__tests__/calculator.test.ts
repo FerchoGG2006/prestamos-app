@@ -92,7 +92,8 @@ function runFinancialTests() {
     paymentMethod: 'CASH',
     collectorId: 'col-1',
     sessionId: 'session-today',
-    todayStr: '2026-09-19',
+    // Primera cuota venciendo hoy; la segunda conserva una fecha futura.
+    todayStr: installments[0].dueDate,
     paymentId: 'pay-002',
     idempotencyKey: 'key-002',
   });

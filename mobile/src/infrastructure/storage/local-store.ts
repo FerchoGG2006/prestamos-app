@@ -1615,13 +1615,8 @@ class LocalStore {
       if (isMigratedCardLoan(l)) {
         runningBaselineCash += initialCollected;
       } else if (l.previousLoanId) {
-        const asNewRenewal = this.renewals.find((r) => r.newLoanId === l.id);
-        const netCapitalOut = asNewRenewal
-          ? Math.max(0, asNewRenewal.newPrincipal - asNewRenewal.previousBalanceDeducted)
-          : l.principal;
-        const deducted = Math.min(Math.max(0, runningBaselineCash), netCapitalOut);
-        fixedHistoricalCapitalDisbursed += deducted;
-        runningBaselineCash -= deducted;
+        // Las renovaciones se descuentan de forma aislada fuera del tope histórico
+        // para garantizar que Base baje exactamente (newPrincipal - previousBalanceDeducted)
         runningBaselineCash += initialCollected;
       } else {
         const deducted = Math.min(Math.max(0, runningBaselineCash), l.principal);
@@ -1632,22 +1627,26 @@ class LocalStore {
     }
 
     // 4. Capital total desembolsado en préstamos
-    // El bucle histórico anterior ya contabiliza de forma exacta el capital desembolsado de la base,
-    // evitando duplicaciones con movimientos de caja y asegurando que cada cobro entre íntegro a la base.
-    const totalCapitalOut = fixedHistoricalCapitalDisbursed;
+    // El bucle histórico anterior contabiliza préstamos regulares; las renovaciones válidas
+    // se suman aparte por su desembolso total de base (efectivo neto + papelería = P_nuevo - S_ant).
+    const validLoanIds = new Set(validLoans.map((l) => l.id));
+    const totalRenewalCapitalOut = this.renewals
+      .filter((r) => validLoanIds.has(r.newLoanId))
+      .reduce((sum, r) => sum + Math.max(0, r.newPrincipal - r.previousBalanceDeducted), 0);
+
+    const totalCapitalOut = fixedHistoricalCapitalDisbursed + totalRenewalCapitalOut;
 
     // 5. Base en mano disponible:
     // Base Inicial + TODO lo cobrado acumulado - Capital desembolsado - Gastos - Retiros - Recaudo digital de hoy
-    const cashAvailableInHand = Math.max(
-      0,
+    // Preserve the ledger even when negative; clamping it would invent assets after renewal.
+    const cashAvailableInHand =
       manualBaseCapital +
-        totalCapitalInjectedAllTime +
-        totalCollectedFromLoans -
-        totalCapitalOut -
-        totalExpensesAllTime -
-        totalRecaudoRetiradoAllTime -
-        collectedDigitalToday
-    );
+      totalCapitalInjectedAllTime +
+      totalCollectedFromLoans -
+      totalCapitalOut -
+      totalExpensesAllTime -
+      totalRecaudoRetiradoAllTime -
+      collectedDigitalToday;
 
     // Administrativo / Patrimonio operativo total:
     // Siempre cumple la identidad contable exacta:
@@ -2261,6 +2260,16 @@ class LocalStore {
     const prevLoan = this.loans.find((l) => l.id === params.previousLoanId);
     if (!prevLoan) throw new Error('Crédito anterior no encontrado');
 
+    const effectiveFrequency = params.frequency ?? prevLoan.frequency ?? 'DAILY';
+    const isFixedDate = effectiveFrequency === 'FIXED_DATE';
+    const effectiveInstallmentCount = isFixedDate ? 1 : (params.installmentCount ?? prevLoan.installmentCount);
+    const effectiveRate = params.interestRate ?? prevLoan.interestRate;
+    if (!Number.isFinite(params.newPrincipal) || params.newPrincipal <= 0 ||
+        !Number.isFinite(effectiveRate) || effectiveRate < 0 ||
+        !Number.isInteger(effectiveInstallmentCount) || effectiveInstallmentCount <= 0) {
+      throw new Error('Revise el capital positivo, la tasa no negativa y la cantidad de cuotas.');
+    }
+
     const prevInstallments = this.installments.filter((i) => i.loanId === prevLoan.id);
     const previousBalanceDeducted = prevInstallments.reduce((acc, i) => acc + i.pendingAmount, 0);
 
@@ -2274,6 +2283,28 @@ class LocalStore {
       : 0;
     const effectivePaperworkFee =
       params.paperworkFee !== undefined ? params.paperworkFee : defaultPaperworkFee;
+
+    if (!Number.isFinite(effectivePaperworkFee) || effectivePaperworkFee < 0) {
+      throw new Error('La papelería no puede ser negativa ni inválida.');
+    }
+    const existing = this.renewals.find((r) => r.previousLoanId === prevLoan.id);
+    if (existing) {
+      const next = this.loans.find((l) => l.id === existing.newLoanId);
+      if (prevLoan.status === 'RENEWED' && next &&
+          existing.newPrincipal === params.newPrincipal && existing.paperworkDeducted === effectivePaperworkFee &&
+          next.interestRate === effectiveRate && next.installmentCount === effectiveInstallmentCount &&
+          next.frequency === effectiveFrequency && next.startDate === params.todayStr && next.collectorId === params.collectorId) {
+        return { renewal: existing, newLoan: next };
+      }
+      throw new Error('El crédito ya fue renovado con otras condiciones; no se duplicará la operación.');
+    }
+    if (prevLoan.status !== 'ACTIVE') {
+      throw new Error('Solo se pueden renovar créditos activos.');
+    }
+    if (this.settlements.some((settlement) => settlement.routeId === prevLoan.routeId &&
+        settlement.date === params.todayStr && settlement.status === 'SETTLED')) {
+      throw new Error('La jornada ya está cerrada y no admite nuevas renovaciones.');
+    }
 
     const renewalCalc = calculateRenewalDisbursement(
       params.newPrincipal,
@@ -2293,15 +2324,9 @@ class LocalStore {
       updatedAt: params.todayStr,
     };
 
-    const effectiveFrequency = params.frequency || prevLoan.frequency || 'DAILY';
-    const isFixedDate = effectiveFrequency === 'FIXED_DATE';
-    const effectiveInstallmentCount = isFixedDate
-      ? 1
-      : params.installmentCount || prevLoan.installmentCount;
-
     const summary = calculateLoanSummary(
       params.newPrincipal,
-      params.interestRate || prevLoan.interestRate,
+      effectiveRate,
       effectiveInstallmentCount
     );
 
@@ -2382,7 +2407,7 @@ class LocalStore {
         : inst
     );
 
-    this.loans = this.loans.map((l) => (l.id === prevLoan.id ? updatedPrevLoan : l)).concat(newLoan);
+    this.loans = [newLoan, ...this.loans.map((l) => (l.id === prevLoan.id ? updatedPrevLoan : l))];
     this.installments.push(...newInstallments);
     this.renewals.unshift(renewal);
     this.cashMovements.unshift(cashMov);

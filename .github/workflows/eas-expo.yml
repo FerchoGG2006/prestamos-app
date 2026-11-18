@@ -32,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
@@ -44,6 +44,9 @@ jobs:
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
+
+      - name: Verify renewal finance regressions (isolated storage)
+        run: npm run test:finance
 
       - name: Publish EAS Update (OTA) & iPhone WebClip Deploy on push or manual trigger
         if: github.event_name == 'push' || github.event.inputs.action == 'update'
