@@ -1,5 +1,7 @@
 package com.cartera.settlement.application;
 
+import com.cartera.settlement.application.CashLedger;
+
 import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
 import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
@@ -30,10 +32,12 @@ public class CashMovementUseCase {
     public static final String TYPE_OUTFLOW = "EGRESO";
     private static final Set<String> VALID_TYPES = Set.of(TYPE_INFLOW, TYPE_OUTFLOW);
 
+    private final com.cartera.infrastructure.persistence.repository.PaymentRepository paymentRepository;
     private final CashMovementRepository cashMovementRepository;
     private final AuditLogRepository auditLogRepository;
 
-    public CashMovementUseCase(CashMovementRepository cashMovementRepository, AuditLogRepository auditLogRepository) {
+    public CashMovementUseCase(CashMovementRepository cashMovementRepository, AuditLogRepository auditLogRepository, com.cartera.infrastructure.persistence.repository.PaymentRepository paymentRepository) {
+        this.paymentRepository = paymentRepository;
         this.cashMovementRepository = cashMovementRepository;
         this.auditLogRepository = auditLogRepository;
     }
@@ -61,7 +65,9 @@ public class CashMovementUseCase {
     public BigDecimal availableBalance(String routeId) {
         boolean all = routeId == null || "ALL".equalsIgnoreCase(routeId);
         BigDecimal balance = BigDecimal.ZERO;
+        var payments = CashLedger.index(paymentRepository.findAll());
         for (CashMovementEntity m : cashMovementRepository.findAll()) {
+            if (!CashLedger.isPhysical(m, payments)) continue;
             if (!all && !routeId.equalsIgnoreCase(SettlementUseCase.normalizeRouteId(m.getRouteId()))) continue;
             if (isInflow(m.getMovementType())) balance = balance.add(m.getAmount());
             else if (isOutflow(m.getMovementType())) balance = balance.subtract(m.getAmount());
@@ -69,10 +75,15 @@ public class CashMovementUseCase {
         return balance;
     }
 
+    public boolean isPhysical(CashMovementEntity movement) {
+        return CashLedger.isPhysical(movement,
+                CashLedger.index(paymentRepository.findAll()));
+    }
+
     @Transactional
     public CashMovementEntity register(CashMovementCommand cmd) {
         UserSession session = UserSessionContext.requireSession();
-        if (session.isCollector()) {
+        if (!session.canReverseOrCancel()) {
             throw new SecurityException("Solo un Administrador o Supervisor puede registrar movimientos de caja.");
         }
         if (cmd.movementId() == null || cmd.movementId().isBlank()) {

@@ -1,5 +1,7 @@
 package com.cartera.collections.application;
 
+import com.cartera.settlement.application.CashLedger;
+
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
@@ -63,7 +65,8 @@ public class TodayCollectionsService {
             BigDecimal overdueAmount,
             BigDecimal cashBalance,
             BigDecimal totalActiveDebt,
-            BigDecimal totalAdministrativeCapital
+            BigDecimal totalAdministrativeCapital,
+            BigDecimal digitalBalance
     ) {}
 
     public record CollectionItem(
@@ -158,21 +161,28 @@ public class TodayCollectionsService {
         }
 
         var movements = cashMovementRepository.findAll();
+        var paymentIndex = CashLedger.index(paymentRepository.findAll());
         BigDecimal cash = BigDecimal.ZERO;
+        BigDecimal digital = BigDecimal.ZERO;
         for (var m : movements) {
             if (filterByRoute && !normalizedSelectedRoute.equalsIgnoreCase(normalizeRouteId(m.getRouteId()))) {
                 continue;
             }
+            boolean physical = CashLedger.isPhysical(m, paymentIndex);
+            BigDecimal signed = BigDecimal.ZERO;
             if ("ENTRADA".equalsIgnoreCase(m.getMovementType()) || "INGRESO".equalsIgnoreCase(m.getMovementType())) {
-                cash = cash.add(m.getAmount());
+                signed = m.getAmount();
             } else if ("SALIDA".equalsIgnoreCase(m.getMovementType()) || "EGRESO".equalsIgnoreCase(m.getMovementType())) {
-                cash = cash.subtract(m.getAmount());
+                signed = m.getAmount().negate();
             }
+            if (physical) cash = cash.add(signed);
+            else if (!"DESCUENTO_NOMINA_DESCUADRE".equals(m.getCategory())) digital = digital.add(signed);
         }
 
-        BigDecimal administrative = totalActiveDebt.add(cash.max(BigDecimal.ZERO));
+        // Do not hide a negative ledger balance: preview and persisted metrics must reconcile.
+        BigDecimal administrative = totalActiveDebt.add(cash).add(digital);
 
-        return new DailyMetrics(collectedToday, pending, totalToday, overdue, cash, totalActiveDebt, administrative);
+        return new DailyMetrics(collectedToday, pending, totalToday, overdue, cash, totalActiveDebt, administrative, digital);
     }
 
     public List<CollectionItem> getTodayCollectionItems(LocalDate date) {

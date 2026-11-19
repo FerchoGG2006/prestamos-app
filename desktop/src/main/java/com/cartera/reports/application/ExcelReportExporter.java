@@ -142,7 +142,7 @@ public class ExcelReportExporter {
                     <sheet name="1_Resumen_Ejecutivo" sheetId="1" r:id="rId1"/>
                     <sheet name="2_Cartera_Activa" sheetId="2" r:id="rId2"/>
                     <sheet name="3_Cartera_En_Mora" sheetId="3" r:id="rId3"/>
-                    <sheet name="4_Historial_Recaudos" sheetId="4" r:id="rId4"/>
+                    <sheet name="4_Historial_Cobros" sheetId="4" r:id="rId4"/>
                     <sheet name="5_Libro_Diario_Caja" sheetId="5" r:id="rId5"/>
                   </sheets>
                 </workbook>
@@ -293,12 +293,12 @@ public class ExcelReportExporter {
         rows.append(rowKpiCurrency(r++, "Capital Total Colocado (Histórico)", totalPrincipal, "Colocación neta en contratos", STYLE_DEFAULT));
         rows.append(rowKpiCurrency(r++, "Intereses Proyectados Pactados", totalInterest, "Rentabilidad bruta contratada", STYLE_DEFAULT));
         rows.append(rowKpiCurrency(r++, "Total Cartera Pactada (Capital + Interés)", totalAgreed, "100% de obligaciones generadas", STYLE_DEFAULT));
-        rows.append(rowKpiCurrency(r++, "Recaudo Total Histórico Aplicado", totalCollected, "Abonos efectivos en firme", STYLE_BADGE_GREEN));
+        rows.append(rowKpiCurrency(r++, "Total Cobrado Histórico Aplicado", totalCollected, "Abonos efectivos en firme", STYLE_BADGE_GREEN));
         rows.append(rowKpiCurrency(r++, "Cartera Activa en Calle (Por Cobrar)", activePending, "Saldo vivo en préstamos activos", STYLE_DEFAULT));
         rows.append(rowKpiCurrency(r++, "Cartera Vencida / En Mora", overdueAmount, overdueAmount.signum() > 0 ? "RIESGO DE MORA ACTIVO" : "SIN MORA VENCIDA", overdueAmount.signum() > 0 ? STYLE_BADGE_RED : STYLE_BADGE_GREEN));
         rows.append(rowKpiCurrency(r++, "Disponible Neto en Caja (Tesorería)", cashBalance, "Efectivo físico disponible", STYLE_DEFAULT));
         rows.append(rowKpiCurrency(r++, "Patrimonio Administrativo (Cartera + Caja)", activePending.add(cashBalance.max(BigDecimal.ZERO)), "Valor total operativo", STYLE_BADGE_GREEN));
-        rows.append(rowKpiPercent(r++, "Índice de Recuperación de Cartera (%)", collectionRatio, "Porcentaje recaudado sobre total pactado"));
+        rows.append(rowKpiPercent(r++, "Índice de Recuperación de Cartera (%)", collectionRatio, "Porcentaje cobrado sobre total pactado"));
         rows.append(rowKpiPercent(r++, "Índice de Morosidad sobre Cartera Activa (%)", delinquencyRatio, delinquencyRatio > 0.15 ? "ALERTA DE MORA" : "SALUDABLE"));
 
         r++;
@@ -524,7 +524,7 @@ public class ExcelReportExporter {
     ) {
         StringBuilder rows = new StringBuilder();
         int r = 1;
-        rows.append(rowBanner(r++, "HISTORIAL DETALLADO DE RECAUDOS Y ABONOS DE CLIENTES", STYLE_TITLE_BANNER));
+        rows.append(rowBanner(r++, "HISTORIAL DETALLADO DE COBROS Y ABONOS DE CLIENTES", STYLE_TITLE_BANNER));
         rows.append(rowBanner(r++, "Registro completo de cobros aplicados y anulaciones auditadas", STYLE_SUBTITLE_BANNER));
         r++;
 
@@ -563,7 +563,7 @@ public class ExcelReportExporter {
         }
 
         rows.append("<row r=\"").append(r).append("\">")
-                .append(cellStr(1, r, "TOTAL RECAUDO VÁLIDO EN FIRME", STYLE_TOTALS_LABEL))
+                .append(cellStr(1, r, "TOTAL COBRADO VÁLIDO EN FIRME", STYLE_TOTALS_LABEL))
                 .append(cellStr(2, r, "", STYLE_TOTALS_LABEL))
                 .append(cellStr(3, r, "", STYLE_TOTALS_LABEL))
                 .append(cellStr(4, r, "", STYLE_TOTALS_LABEL))

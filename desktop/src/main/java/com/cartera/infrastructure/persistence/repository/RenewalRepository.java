@@ -4,4 +4,5 @@ import com.cartera.infrastructure.persistence.entity.RenewalEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RenewalRepository extends JpaRepository<RenewalEntity, String> {
+    java.util.Optional<RenewalEntity> findByPreviousLoanId(String previousLoanId);
 }

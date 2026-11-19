@@ -44,6 +44,8 @@ import java.util.UUID;
  * - Copias de seguridad automáticas y manuales de la base de datos
  */
 public class ConfigurationView extends VBox {
+    private com.cartera.infrastructure.backup.OfficeRecoveryService recovery;
+    public void setRecoveryService(com.cartera.infrastructure.backup.OfficeRecoveryService service){recovery=service;}
 
     private final SystemSettingRepository settingRepository;
     private final AppUserRepository userRepository;
@@ -289,7 +291,8 @@ public class ConfigurationView extends VBox {
         btnOpenFolder.getStyleClass().add("btn-secondary");
         btnOpenFolder.setOnAction(e -> openDbFolder());
 
-        btns.getChildren().addAll(btnInstant, btnExport, btnOpenFolder);
+        Button btnRecovery=new Button("Recuperar oficina / adjuntos");btnRecovery.setOnAction(e->{if(recovery!=null)new RecoveryDialog(ownerStage,recovery).showAndWait();});
+        btns.getChildren().addAll(btnInstant, btnExport, btnOpenFolder,btnRecovery);
 
         card.getChildren().addAll(title, desc, lblBackupCounter, btns, lblBackupFeedback);
         return card;

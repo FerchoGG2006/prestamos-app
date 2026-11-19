@@ -19,6 +19,8 @@ import com.cartera.reports.application.ExcelReportExporter;
 import com.cartera.settlement.application.SettlementUseCase;
 import com.cartera.sync.application.MobileSyncProcessorService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -33,7 +35,14 @@ import java.util.zip.ZipFile;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
+@org.springframework.transaction.annotation.Transactional
 class AuditFixesTest {
+
+    @BeforeEach void authenticate() {
+        UserSessionContext.setSession(new UserSession("usr-admin-1", "admin", "Admin", "ADMIN"));
+    }
+
+    @AfterEach void clearSession() { UserSessionContext.clear(); }
 
     @Autowired
     private CreateCustomerUseCase createCustomerUseCase;
@@ -202,7 +211,7 @@ class AuditFixesTest {
         // Intentar cerrar con descuadre sin justificación debe fallar
         assertThrows(IllegalArgumentException.class, () -> settlementUseCase.closeSettlement(
                 updatedSummary.sessionId(),
-                expected.subtract(new BigDecimal("5000")),
+                expected.add(new BigDecimal("5000")),
                 BigDecimal.ZERO,
                 null,
                 "   ",
@@ -212,10 +221,10 @@ class AuditFixesTest {
         // Cerrar con justificación válida debe funcionar
         settlementUseCase.closeSettlement(
                 updatedSummary.sessionId(),
-                expected.subtract(new BigDecimal("5000")),
-                new BigDecimal("5000"),
-                "Almuerzo cobrador",
-                "Faltante descontado por nómina",
+                expected.add(new BigDecimal("5000")),
+                BigDecimal.ZERO,
+                null,
+                "Sobrante de efectivo justificado",
                 "usr-admin-1"
         );
 

@@ -89,7 +89,7 @@ public class PaymentDialog {
         Label lblMethod = new Label("Método de pago:");
         lblMethod.setStyle("-fx-text-fill: #334155; -fx-font-weight: bold;");
         ComboBox<String> cmbMethod = new ComboBox<>();
-        cmbMethod.getItems().addAll("EFECTIVO", "TRANSFERENCIA");
+        cmbMethod.getItems().addAll("EFECTIVO", "NEQUI", "TRANSFERENCIA");
         cmbMethod.setValue("EFECTIVO");
         cmbMethod.setMaxWidth(Double.MAX_VALUE);
         cmbMethod.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 6;");

@@ -218,7 +218,7 @@ public class TodayCollectionsView extends VBox {
         lblKpiOverdue.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #dc2626;");
 
         kpiStrip.getChildren().addAll(
-                createMiniKpiCard("RECAUDADO HOY", lblKpiCollected),
+                createMiniKpiCard("COBRADO HOY", lblKpiCollected),
                 createMiniKpiCard("META DEL DÍA", lblKpiTarget),
                 createMiniKpiCard("PENDIENTES HOY", lblKpiPending),
                 createMiniKpiCard("EN MORA / VENCIDAS", lblKpiOverdue)

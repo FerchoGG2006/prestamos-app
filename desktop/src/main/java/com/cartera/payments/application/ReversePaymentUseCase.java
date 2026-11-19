@@ -1,5 +1,7 @@
 package com.cartera.payments.application;
 
+import com.cartera.infrastructure.security.FinancialAccess;
+
 import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
@@ -32,6 +34,7 @@ import java.util.UUID;
 @Service
 public class ReversePaymentUseCase {
 
+    private final FinancialAccess access;
     private final PaymentRepository paymentRepository;
     private final PaymentAllocationRepository allocationRepository;
     private final InstallmentRepository installmentRepository;
@@ -45,8 +48,9 @@ public class ReversePaymentUseCase {
             InstallmentRepository installmentRepository,
             LoanRepository loanRepository,
             CashMovementRepository cashMovementRepository,
-            AuditLogRepository auditLogRepository
+            AuditLogRepository auditLogRepository, FinancialAccess access
     ) {
+        this.access = access;
         this.paymentRepository = paymentRepository;
         this.allocationRepository = allocationRepository;
         this.installmentRepository = installmentRepository;
@@ -65,6 +69,7 @@ public class ReversePaymentUseCase {
 
     @Transactional
     public ReversePaymentResult execute(String paymentId, String reason) {
+        access.manager();
         // 1. Validación estricta de rol (Solo ADMIN y SUPERVISOR)
         Optional<UserSession> sessionOpt = UserSessionContext.getSession();
         if (sessionOpt.isEmpty() || sessionOpt.get().isCollector() || !sessionOpt.get().canReverseOrCancel()) {
@@ -89,6 +94,11 @@ public class ReversePaymentUseCase {
         LoanEntity loan = loanRepository.findById(payment.getLoanId())
                 .orElseThrow(() -> new IllegalStateException("No se encontró el crédito asociado: " + payment.getLoanId()));
 
+        if ("RENOVADO".equalsIgnoreCase(loan.getStatus()) || "ANULADO".equalsIgnoreCase(loan.getStatus()))
+            throw new IllegalStateException("Este crédito requiere corrección auditable de su renovación o anulación.");
+        access.requireOpen(loan.getRouteId(), payment.getCollectorId(), LocalDate.parse(payment.getCreatedAt().substring(0, 10)));
+        access.requireOpen(loan.getRouteId(), loan.getCollectorId(), LocalDate.parse(payment.getCreatedAt().substring(0, 10)));
+        access.requireOpen(loan.getRouteId(), payment.getCollectorId(), LocalDate.now());
         List<PaymentAllocationEntity> allocations = allocationRepository.findByPaymentId(paymentId);
         String todayStr = LocalDate.now().toString();
         int restoredCount = 0;
@@ -100,7 +110,7 @@ public class ReversePaymentUseCase {
                 BigDecimal currentPaid = inst.getPaidAmount() != null ? inst.getPaidAmount() : BigDecimal.ZERO;
                 BigDecimal newPaid = currentPaid.subtract(alloc.getAmount());
                 if (newPaid.compareTo(BigDecimal.ZERO) < 0) {
-                    newPaid = BigDecimal.ZERO;
+                    throw new IllegalStateException("Las asignaciones originales no concilian con la cuota; requiere revisión.");
                 }
                 inst.setPaidAmount(newPaid);
 
@@ -117,12 +127,10 @@ public class ReversePaymentUseCase {
                 }
                 installmentRepository.save(inst);
                 restoredCount++;
-            }
+            } else { throw new IllegalStateException("No existe la cuota original del pago; requiere revisión."); }
         }
 
-        if (!allocations.isEmpty()) {
-            allocationRepository.deleteAll(allocations);
-        }
+        // Original allocations remain immutable evidence of the applied payment.
 
         // Recalcular saldo del préstamo y reabrir si estaba FINALIZADO/PAGADO
         List<InstallmentEntity> allInstallments = installmentRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId());
@@ -148,7 +156,7 @@ public class ReversePaymentUseCase {
         CashMovementEntity reversalMovement = new CashMovementEntity(
                 UUID.randomUUID().toString(),
                 loan.getRouteId() != null ? loan.getRouteId() : "route-norte",
-                session.userId(),
+                payment.getCollectorId(),
                 payment.getSessionId(),
                 "EGRESO",
                 "ANULACION_PAGO",

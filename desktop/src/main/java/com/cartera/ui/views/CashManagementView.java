@@ -234,6 +234,7 @@ public class CashManagementView extends VBox {
 
         List<CashMovementEntity> list = cashMovementRepository.findAll().stream()
                 .filter(m -> all || route.equalsIgnoreCase(SettlementUseCase.normalizeRouteId(m.getRouteId())))
+                .filter(cashMovementUseCase::isPhysical)
                 .sorted(Comparator.comparing(CashMovementEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
         movementsList.setAll(list);

@@ -49,6 +49,11 @@ public class CustomersView extends VBox {
         CURRENCY.setMaximumFractionDigits(0);
     }
 
+    private com.cartera.customers.application.FollowUpService followUp;
+    private com.cartera.customers.application.AttachmentService attachments;
+    public void setOperationalServices(com.cartera.customers.application.FollowUpService follow,com.cartera.customers.application.AttachmentService files){followUp=follow;attachments=files;}
+    private com.cartera.customers.application.CustomerLifecycleService lifecycle;
+    public void setLifecycleService(com.cartera.customers.application.CustomerLifecycleService service) { lifecycle=service; }
     private final CustomerRepository customerRepository;
     private final com.cartera.customers.application.CreateCustomerUseCase createCustomerUseCase;
     private final LoanRepository loanRepository;
@@ -207,7 +212,8 @@ public class CustomersView extends VBox {
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
-        top.getChildren().addAll(titleBox, segmentBar, btnNewCustomer, btnRefresh);
+        Button alerts=new Button("Compromisos");alerts.setOnAction(e->{try{if(followUp==null)throw new IllegalStateException("Servicio no disponible.");CustomerOperationsDialog.showAlerts(ownerStage,followUp);}catch(Exception ex){new Alert(Alert.AlertType.ERROR,ex.getMessage()).showAndWait();}});
+        top.getChildren().addAll(titleBox, segmentBar, btnNewCustomer, alerts, btnRefresh);
         getChildren().add(top);
     }
 
@@ -613,11 +619,12 @@ public class CustomersView extends VBox {
         btnMap.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #e0f2fe; -fx-text-fill: #0369a1; -fx-border-color: #7dd3fc; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnMap.setOnAction(e -> openGoogleMaps(c));
 
-        Button btnDelete = new Button("Eliminar Cliente");
+        Button btnDelete = new Button("Dar de baja");
         btnDelete.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnDelete.setOnAction(e -> handleDeleteCustomer(c));
 
-        singleLineActionBar.getChildren().addAll(btnHistory, btnEdit, btnWhatsApp, btnMap);
+        Button operations=new Button("Seguimiento y archivos");operations.setOnAction(e->{try{if(followUp==null || attachments==null)throw new IllegalStateException("Servicios no disponibles.");new CustomerOperationsDialog(ownerStage,c,followUp,attachments,loanRepository).showAndWait();refresh();}catch(Exception ex){new Alert(Alert.AlertType.ERROR,ex.getMessage()).showAndWait();}});
+        singleLineActionBar.getChildren().addAll(btnHistory, btnEdit, operations, btnWhatsApp, btnMap);
         if (UserSessionContext.canCurrentUserReverseOrCancel()) {
             singleLineActionBar.getChildren().add(btnDelete);
         }
@@ -806,23 +813,13 @@ public class CustomersView extends VBox {
         Button btnSave = new Button("Guardar Cambios");
         btnSave.getStyleClass().add("btn-primary");
         btnSave.setOnAction(e -> {
-            if (txtName.getText().trim().isEmpty()) {
-                new Alert(Alert.AlertType.WARNING, "El nombre completo es requerido.").showAndWait();
-                return;
-            }
-            customer.setFullName(txtName.getText().trim());
-            customer.setRouteId(cmbRoute.getValue() != null ? cmbRoute.getValue().id() : null);
-            customer.setPhone(txtPhone.getText().trim());
-            customer.setAddress(txtAddress.getText().trim());
-            customer.setNeighborhood(txtNeighborhood.getText().trim());
-            customer.setBusinessName(txtBusiness.getText().trim());
-            customer.setOccupation(txtOccupation.getText().trim());
-            customerRepository.save(customer);
-
-            dialog.close();
-            refresh();
-            updateDetailCard(customer);
-            new Alert(Alert.AlertType.INFORMATION, "Cliente actualizado exitosamente.").showAndWait();
+            try {
+                if (lifecycle==null) throw new IllegalStateException("Servicio de clientes no disponible.");
+                var updated=lifecycle.update(new com.cartera.customers.application.CustomerLifecycleService.Profile(
+                    customer.getId(),txtName.getText(),txtPhone.getText(),txtAddress.getText(),txtNeighborhood.getText(),
+                    txtBusiness.getText(),txtOccupation.getText(),cmbRoute.getValue()==null ? customer.getRouteId() : cmbRoute.getValue().id()));
+                dialog.close(); refresh(); updateDetailCard(updated);
+            } catch (Exception ex) { new Alert(Alert.AlertType.ERROR,ex.getMessage()).showAndWait(); }
         });
 
         btnBox.getChildren().addAll(btnCancel, btnSave);
@@ -840,139 +837,18 @@ public class CustomersView extends VBox {
     }
 
     private void handleDeleteCustomer(CustomerEntity customer) {
-        if (!UserSessionContext.canCurrentUserReverseOrCancel()) {
-            Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.initOwner(ownerStage);
-            alert.setTitle("Acceso Denegado");
-            alert.setHeaderText("Operación no autorizada para el Cobrador");
-            alert.setContentText("Los cobradores no tienen autorización para eliminar clientes. Esta acción debe ser solicitada a la administración de la oficina.");
-            alert.showAndWait();
-            return;
-        }
-        if (customerRepository == null) return;
-        List<LoanEntity> loans = (loanRepository != null) ? loanRepository.findByCustomerId(customer.getId()) : List.of();
-        LoanEntity activeLoan = loans.stream()
-                .filter(l -> "ACTIVO".equalsIgnoreCase(l.getStatus()) || "ACTIVE".equalsIgnoreCase(l.getStatus()))
-                .findFirst()
-                .orElse(null);
-
-        String author = UserSessionContext.getSession()
-                .map(com.cartera.infrastructure.security.UserSession::userId)
-                .orElse("admin");
-        String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-
-        // Caso 1: El cliente tiene crédito activo. Como Administrador, se ofrece anular el crédito y dar de baja.
-        if (activeLoan != null) {
-            Alert confirmActive = new Alert(Alert.AlertType.CONFIRMATION);
-            confirmActive.initOwner(ownerStage);
-            confirmActive.setTitle("Acceso de Administrador — Cliente con Crédito Activo");
-            confirmActive.setHeaderText("Anular crédito activo y proceder con la baja del cliente");
-            confirmActive.setContentText("El cliente '" + customer.getFullName() + "' tiene un crédito activo (#" + activeLoan.getId() + ") con saldo en cartera.\n\n"
-                    + "Como Administrador General usted cuenta con permisos totales. ¿Desea anular el crédito activo y proceder a retirar/inactivar al cliente del sistema?");
-
-            var res = confirmActive.showAndWait();
-            if (res.isPresent() && res.get() == ButtonType.OK) {
-                try {
-                    if (cancelLoanUseCase != null) {
-                        try {
-                            cancelLoanUseCase.execute(activeLoan.getId(), "Baja de cliente autorizada por Administrador General");
-                        } catch (Exception ex) {
-                            activeLoan.setStatus("CANCELADO");
-                            if (loanRepository != null) loanRepository.save(activeLoan);
-                        }
-                    } else if (loanRepository != null) {
-                        activeLoan.setStatus("CANCELADO");
-                        loanRepository.save(activeLoan);
-                    }
-
-                    if (loans.size() > 1) {
-                        customer.setStatus("INACTIVO");
-                        customerRepository.save(customer);
-                    } else {
-                        customerRepository.delete(customer);
-                    }
-
-                    if (auditLogRepository != null) {
-                        auditLogRepository.save(new AuditLogEntity(
-                                UUID.randomUUID().toString(),
-                                author,
-                                "CUSTOMER",
-                                customer.getId(),
-                                "ELIMINAR_CLIENTE_ADMIN",
-                                customer.getFullName(),
-                                "BAJA_TOTAL",
-                                "Eliminación de cliente y anulación de crédito activo autorizada por Administrador",
-                                now
-                        ));
-                    }
-                    refresh();
-                    showPlaceholderDetail();
-                    if (loansView != null) loansView.refresh();
-                    new Alert(Alert.AlertType.INFORMATION, "Cliente y crédito activo cancelados exitosamente por Administrador.").showAndWait();
-                } catch (Exception ex) {
-                    new Alert(Alert.AlertType.ERROR, "Error al procesar la baja del cliente: " + ex.getMessage()).showAndWait();
-                }
-            }
-            return;
-        }
-
-        if (!loans.isEmpty()) {
-            Alert confirmDeactivate = new Alert(Alert.AlertType.CONFIRMATION);
-            confirmDeactivate.initOwner(ownerStage);
-            confirmDeactivate.setTitle("Acceso Administrador — Inactivar Cliente");
-            confirmDeactivate.setHeaderText("Inactivación de Cliente con Historial");
-            confirmDeactivate.setContentText("El cliente '" + customer.getFullName() + "' posee historial de créditos cerrados/renovados. Por integridad contable y preservación de auditoría, se marcará como INACTIVO.\n\n¿Desea continuar?");
-            var res = confirmDeactivate.showAndWait();
-            if (res.isPresent() && res.get() == ButtonType.OK) {
-                String prevStatus = customer.getStatus();
-                customer.setStatus("INACTIVO");
-                customerRepository.save(customer);
-                if (auditLogRepository != null) {
-                    auditLogRepository.save(new AuditLogEntity(
-                            UUID.randomUUID().toString(),
-                            author,
-                            "CUSTOMER",
-                            customer.getId(),
-                            "INACTIVAR_CLIENTE",
-                            prevStatus,
-                            "INACTIVO",
-                            "Inactivación de cliente con historial crediticio por Administrador",
-                            now
-                    ));
-                }
-                refresh();
-                updateDetailCard(customer);
-                new Alert(Alert.AlertType.INFORMATION, "Cliente marcado como INACTIVO exitosamente.").showAndWait();
-            }
-            return;
-        }
-
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-        confirm.initOwner(ownerStage);
-        confirm.setTitle("Acceso Administrador — Eliminar Cliente");
-        confirm.setHeaderText("Confirmar eliminación de cliente");
-        confirm.setContentText("¿Está seguro de eliminar definitivamente al cliente '" + customer.getFullName() + "'? No tiene préstamos asociados.");
-
-        var res = confirm.showAndWait();
-        if (res.isPresent() && res.get() == ButtonType.OK) {
-            customerRepository.delete(customer);
-            if (auditLogRepository != null) {
-                auditLogRepository.save(new AuditLogEntity(
-                        UUID.randomUUID().toString(),
-                        author,
-                        "CUSTOMER",
-                        customer.getId(),
-                        "ELIMINAR_CLIENTE",
-                        customer.getFullName(),
-                        "ELIMINADO",
-                        "Eliminación de cliente sin historial autorizada por Administrador",
-                        now
-                ));
-            }
-            refresh();
-            showPlaceholderDetail();
-            new Alert(Alert.AlertType.INFORMATION, "Cliente eliminado exitosamente.").showAndWait();
-        }
+        TextInputDialog reason=new TextInputDialog(); reason.initOwner(ownerStage);
+        reason.setTitle("Dar de baja al cliente");
+        reason.setHeaderText("Se conservará el historial. Los créditos activos deben admitir anulación.");
+        reason.setContentText("Motivo obligatorio:");
+        reason.showAndWait().ifPresent(value -> {
+            try {
+                if (lifecycle==null) throw new IllegalStateException("Servicio de clientes no disponible.");
+                lifecycle.deactivate(customer.getId(),value);
+                refresh(); showPlaceholderDetail(); if (loansView!=null) loansView.refresh();
+                new Alert(Alert.AlertType.INFORMATION,"Cliente inactivado. Historial conservado.").showAndWait();
+            } catch (Exception ex) { new Alert(Alert.AlertType.ERROR,"No se realizó la baja: " + ex.getMessage()).showAndWait(); }
+        });
     }
 
     @SuppressWarnings("unchecked")

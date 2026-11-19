@@ -10,6 +10,11 @@ plugins {
 group = 'com.cartera'
 version = '0.1.0-SNAPSHOT'
 
+if (providers.gradleProperty('isolatedBuildDir').isPresent()) {
+    layout.buildDirectory.set(file(providers.gradleProperty('isolatedBuildDir').get()))
+}
+def releaseDir = file(providers.gradleProperty('distributionDir').getOrElse("${rootDir}/dist/releases/1.1.1"))
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -55,16 +60,45 @@ tasks.named('test') {
     systemProperty 'user.country', 'CO'
 }
 
+tasks.register('renewalPreviewDemo', JavaExec) {
+    dependsOn 'testClasses'
+    group = 'verification'
+    description = 'Opens the native renewal summary against a new isolated demo database'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.cartera.renewals.ui.RenewalPreviewDemo'
+    jvmArgs '-Dfile.encoding=UTF-8', '-Duser.timezone=America/Bogota'
+}
+
+tasks.register('officeQa', JavaExec) {
+    dependsOn 'testClasses'
+    group = 'verification'
+    description = 'Opens the full native product in a new fictitious, isolated QA office'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.cartera.qa.OfficeQaLauncher'
+    workingDir rootDir
+    jvmArgs '-Dfile.encoding=UTF-8', '-Duser.timezone=America/Bogota'
+}
+
+tasks.register('officeJourneyQa', JavaExec) {
+    dependsOn 'testClasses'
+    group = 'verification'
+    description = 'Executes diagnostic financial journeys in an isolated fictitious office and records PASS/FAIL evidence'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.cartera.qa.OfficeJourneyQa'
+    workingDir rootDir
+    jvmArgs '-Dfile.encoding=UTF-8', '-Duser.timezone=America/Bogota'
+}
+
 tasks.register('packageWindows') {
-    dependsOn 'installDist'
+    dependsOn 'installDist', 'test'
     description = 'Generates standalone Windows application image using jpackage'
     group = 'distribution'
 
     doLast {
-        def distDir = file("${rootDir}/dist")
+        def distDir = releaseDir
         def appDir = file("${distDir}/SistemaCartera")
         if (appDir.exists()) {
-            delete(appDir)
+            throw new GradleException('Release output already exists. Choose a NEW -PdistributionDir; existing packages are preserved.')
         }
         distDir.mkdirs()
 
@@ -72,14 +106,14 @@ tasks.register('packageWindows') {
             commandLine 'jpackage',
                     '--type', 'app-image',
                     '--name', 'SistemaCartera',
-                    '--input', "${layout.buildDirectory.get().asFile}/install/sistema-cartera-desktop/lib",
-                    '--main-jar', 'sistema-cartera-desktop-0.1.0-SNAPSHOT-plain.jar',
+                    '--input', new File(tasks.named('installDist').get().destinationDir, 'lib').absolutePath,
+                    '--main-jar', tasks.named('jar').get().archiveFileName.get(),
                     '--main-class', 'com.cartera.ui.CarteraMain',
                     '--icon', "${projectDir}/src/main/resources/ui/app.ico",
-                    '--dest', "${rootDir}/dist",
+                    '--dest', releaseDir.absolutePath,
                     '--vendor', 'Cartera Software',
-                    '--app-version', '1.0.0',
-                    '--add-modules', 'java.se,jdk.unsupported,jdk.crypto.ec',
+                    '--app-version', '1.1.1',
+                    '--add-modules', 'java.se,jdk.unsupported,jdk.crypto.ec,jdk.httpserver',
                     '--java-options', '-Dfile.encoding=UTF-8',
                     '--java-options', '-Duser.timezone=America/Bogota',
                     '--java-options', '-Duser.language=es',
@@ -88,7 +122,7 @@ tasks.register('packageWindows') {
 
         copy {
             from "${projectDir}/packaging/windows"
-            into "${rootDir}/dist/SistemaCartera"
+            into new File(releaseDir, "SistemaCartera")
         }
     }
 }
@@ -98,10 +132,10 @@ tasks.register('packageZip', Zip) {
     description = 'Zips the standalone Windows package into a downloadable archive'
     group = 'distribution'
 
-    archiveFileName = 'SistemaCartera-v1.0.0-Windows-x64.zip'
-    destinationDirectory = file("${rootDir}/dist")
+    archiveFileName = 'SistemaCartera-v1.1.1-Windows-x64.zip'
+    destinationDirectory = releaseDir
 
-    from("${rootDir}/dist/SistemaCartera") {
+    from(new File(releaseDir,"SistemaCartera")) {
         into 'SistemaCartera'
     }
 }
@@ -112,9 +146,9 @@ tasks.register('packageInstaller') {
     group = 'distribution'
 
     doLast {
-        def isccPath = "C:\\Users\\ASUS\\AppData\\Local\\Programs\\Antigravity IDE\\resources\\app\\node_modules\\innosetup\\bin\\ISCC.exe"
+        def isccPath = providers.gradleProperty('isccPath').getOrElse(System.getenv('ISCC_EXE') ?: "C:\\Users\\ASUS\\AppData\\Local\\Programs\\Antigravity IDE\\resources\\app\\node_modules\\innosetup\\bin\\ISCC.exe")
         exec {
-            commandLine isccPath, "${projectDir}/packaging/windows/installer.iss"
+            commandLine isccPath, "/DSourceDir=${new File(releaseDir,'SistemaCartera').absolutePath}", "/DReleaseDir=${releaseDir.absolutePath}", "${projectDir}/packaging/windows/installer.iss"
         }
     }
 }
@@ -123,4 +157,14 @@ tasks.register('packageAll') {
     dependsOn 'packageZip', 'packageInstaller'
     description = 'Generates both the portable ZIP and the official Setup EXE installer'
     group = 'distribution'
+}
+
+// This launcher always creates an isolated fictitious office.
+tasks.register('parityOffice', JavaExec) {
+    dependsOn 'testClasses'
+    group = 'verification'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.cartera.qa.ParityQaLauncher'
+    workingDir rootDir
+    jvmArgs '-Dfile.encoding=UTF-8', '-Duser.timezone=America/Bogota'
 }

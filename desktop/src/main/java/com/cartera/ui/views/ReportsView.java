@@ -173,7 +173,7 @@ public class ReportsView extends VBox {
                         "1. Resumen Ejecutivo (KPIs)\n" +
                         "2. Cartera Activa y Contratos\n" +
                         "3. Cartera en Mora\n" +
-                        "4. Historial de Recaudos\n" +
+                        "4. Historial de Cobros\n" +
                         "5. Libro Diario de Caja"
                 );
                 ok.showAndWait();
@@ -235,7 +235,7 @@ public class ReportsView extends VBox {
         metrics.getChildren().addAll(
                 createMetricCard("Capital Total Colocado", lblTotalPrincipal),
                 createMetricCard("Intereses Proyectados", lblTotalInterest),
-                createMetricCard("Recaudo Total Histórico", lblTotalCollected),
+                createMetricCard("Total Cobrado Histórico", lblTotalCollected),
                 createMetricCard("Cuotas Vencidas / Riesgo", lblTotalOverdue)
         );
         return metrics;

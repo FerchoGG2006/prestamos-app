@@ -176,6 +176,8 @@ public class SettlementManagementView extends VBox {
         getChildren().add(top);
     }
 
+    private final Label lblPaymentBreakdown = new Label();
+
     private void buildMetrics() {
         HBox metrics = new HBox(16);
 
@@ -183,9 +185,11 @@ public class SettlementManagementView extends VBox {
         lblRouteExpenses.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #d97706;");
         lblNetExpected.setStyle("-fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #2563eb;");
 
-        VBox card1 = createMetricCard("1. Total Cobrado en Sistema", lblCollected, "Suma bruta de abonos recaudados");
+        VBox card1 = createMetricCard("1. Total Cobrado en Sistema", lblCollected, "Suma bruta de cuotas cobradas");
+        lblPaymentBreakdown.setStyle("-fx-font-size: 11px; -fx-text-fill: #64748b;");
+        card1.getChildren().add(lblPaymentBreakdown);
         VBox card2 = createMetricCard("2. (-) Gastos Operativos Ruta", lblRouteExpenses, "Pinchazos, datos, gasolina (Descontados)");
-        VBox card3 = createMetricCard("3. (=) Efectivo Neto a Rendir", lblNetExpected, "Monto contractual a entregar a caja");
+        VBox card3 = createMetricCard("3. (=) Efectivo Neto a Rendir", lblNetExpected, "Cobros en efectivo menos gastos de ruta");
 
         HBox.setHgrow(card1, Priority.ALWAYS);
         HBox.setHgrow(card2, Priority.ALWAYS);
@@ -613,6 +617,8 @@ public class SettlementManagementView extends VBox {
         currentSummary = settlementUseCase.getOrCreateDaySummary(collectorId, date);
 
         lblCollected.setText(CURRENCY.format(currentSummary.totalCollected()));
+        lblPaymentBreakdown.setText("Efectivo: " + CURRENCY.format(currentSummary.collectedInCash())
+                + " · Digital: " + CURRENCY.format(currentSummary.collectedDigitally()));
         lblRouteExpenses.setText(CURRENCY.format(currentSummary.routeExpenses()));
         lblNetExpected.setText(CURRENCY.format(currentSummary.netExpectedCash()));
 
@@ -753,6 +759,11 @@ public class SettlementManagementView extends VBox {
 
             lblFeedback.setText("Liquidación diaria cerrada con éxito. El arqueo ha quedado registrado.");
             lblFeedback.setStyle("-fx-text-fill: #10b981; -fx-background-color: rgba(16, 185, 129, 0.15); -fx-padding: 8 12; -fx-background-radius: 6;");
+            String backupWarning = settlementUseCase.getBackupWarning();
+            if (backupWarning != null) {
+                lblFeedback.setText("Liquidación confirmada. Atención: " + backupWarning);
+                lblFeedback.setStyle("-fx-text-fill: #92400e; -fx-background-color: #fef3c7; -fx-padding: 8 12;");
+            }
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);
         } catch (Exception ex) {

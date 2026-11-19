@@ -4,101 +4,101 @@ import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.security.UserSessionContext;
 import org.springframework.stereotype.Service;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.*;
+import javax.sql.DataSource;
+import java.nio.file.*;
+import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Stream;
 
-/**
- * Servicio de Copias de Seguridad Automáticas y Manuales de la base de datos SQLite (cartera.db).
- */
+/** Consistent, verified SQLite snapshots; automatic copies run only after commit. */
 @Service
 public class DatabaseBackupService {
-
-    private static final DateTimeFormatter FILE_TS = DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss");
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(DatabaseBackupService.class);
     private final AuditLogRepository auditLogRepository;
+    private final DataSource dataSource;
+    private final TransactionTemplate auditTransaction;
+    private volatile String lastFailure;
 
-    public DatabaseBackupService(AuditLogRepository auditLogRepository) {
+    public DatabaseBackupService(AuditLogRepository auditLogRepository, DataSource dataSource, PlatformTransactionManager manager) {
         this.auditLogRepository = auditLogRepository;
+        this.dataSource = dataSource;
+        this.auditTransaction = new TransactionTemplate(manager);
+        this.auditTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
-
     public Path getDatabasePath() {
-        return Paths.get(System.getProperty("user.home"), ".sistema-cartera", "cartera.db");
+        try (var connection = dataSource.getConnection()) {
+            String url = connection.getMetaData().getURL();
+            if (!url.startsWith("jdbc:sqlite:") || url.contains(":memory:") || url.contains("mode=memory"))
+                throw new IllegalStateException("El respaldo requiere una base SQLite persistida en disco.");
+            return Paths.get(url.substring("jdbc:sqlite:".length())).toAbsolutePath().normalize();
+        } catch (SQLException ex) { throw new IllegalStateException("No se pudo identificar la base activa.", ex); }
     }
+    public Path getBackupsDirectory() { return getDatabasePath().getParent().resolve("backups"); }
+    public String getLastFailure() { return lastFailure; }
 
-    public Path getBackupsDirectory() {
-        return Paths.get(System.getProperty("user.home"), ".sistema-cartera", "backups");
+    public void createAfterCommit(String reason) {
+        String actor = UserSessionContext.getSession().map(s -> s.userId()).orElse(null);
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) { snapshot(reason, actor); return; }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                try { snapshot(reason, actor); }
+                catch (RuntimeException ex) {
+                    lastFailure = ex.getMessage();
+                    LOG.error("El cierre quedó confirmado, pero falló su respaldo: {}", lastFailure, ex);
+                }
+            }
+        });
     }
-
-    /**
-     * Crea una copia de seguridad con marca de tiempo en ~/.sistema-cartera/backups/.
-     */
     public Path createBackup(String reason) {
+        if (TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Solicite el respaldo después de confirmar la transacción.");
+        return snapshot(reason, UserSessionContext.getSession().map(s -> s.userId()).orElse(null));
+    }
+    private Path snapshot(String reason, String actor) {
+        Path partial = null;
         try {
-            Path backupsDir = getBackupsDirectory();
-            Files.createDirectories(backupsDir);
-
-            String timestamp = LocalDateTime.now().format(FILE_TS);
-            Path targetPath = backupsDir.resolve("cartera_" + timestamp + ".db");
-
-            Path sourceDb = getDatabasePath();
-            if (Files.exists(sourceDb)) {
-                Files.copy(sourceDb, targetPath, StandardCopyOption.REPLACE_EXISTING);
-            } else {
-                // En caso de correr en entorno de prueba en memoria/temporal donde cartera.db aún no existe en user.home
-                Files.writeString(targetPath, "SQLite backup snapshot placeholder (" + timestamp + ")");
+            Path source = getDatabasePath();
+            if (!Files.isRegularFile(source)) throw new IllegalStateException("No existe la base de datos activa.");
+            Path dir = getBackupsDirectory(); Files.createDirectories(dir);
+            String name = "cartera_" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss_SSS")) + "_" + UUID.randomUUID();
+            partial = dir.resolve(name + ".partial");
+            Path target = dir.resolve(name + ".db");
+            // SQLite copies the committed database, including WAL contents, into a standalone file.
+            try (var connection = DriverManager.getConnection("jdbc:sqlite:" + source);
+                 var statement = connection.createStatement()) {
+                statement.execute("PRAGMA busy_timeout = 5000");
+                statement.execute("VACUUM INTO '" + partial.toString().replace("'", "''") + "'");
             }
-
-            if (auditLogRepository != null) {
-                try {
-                    String author = UserSessionContext.getSession()
-                            .map(com.cartera.infrastructure.security.UserSession::userId)
-                            .orElse(null);
-                    auditLogRepository.save(new AuditLogEntity(
-                            UUID.randomUUID().toString(),
-                            author,
-                            "DATABASE_BACKUP",
-                            targetPath.getFileName().toString(),
-                            "CREAR_BACKUP",
-                            null,
-                            "Archivo: " + targetPath.getFileName(),
-                            reason != null ? reason : "Copia de seguridad automática",
-                            LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-                    ));
-                } catch (Exception ignored) {}
+            try (var connection = DriverManager.getConnection("jdbc:sqlite:" + partial);
+                 var statement = connection.createStatement(); var rows = statement.executeQuery("PRAGMA integrity_check")) {
+                if (!rows.next() || !"ok".equalsIgnoreCase(rows.getString(1)))
+                    throw new IllegalStateException("El respaldo no superó la verificación de integridad.");
             }
-
-            return targetPath;
-        } catch (IOException ex) {
-            throw new IllegalStateException("No se pudo crear la copia de seguridad: " + ex.getMessage(), ex);
+            Files.move(partial, target);
+            auditTransaction.executeWithoutResult(status -> auditLogRepository.save(new AuditLogEntity(
+                UUID.randomUUID().toString(), actor, "DATABASE_BACKUP", target.getFileName().toString(),
+                "CREAR_BACKUP", null, "Archivo verificado: " + target.getFileName(),
+                reason == null ? "Copia de seguridad" : reason, LocalDateTime.now().toString())));
+            lastFailure = null;
+            return target;
+        } catch (Exception ex) {
+            if (partial != null) try { Files.deleteIfExists(partial); } catch (Exception cleanup) { ex.addSuppressed(cleanup); }
+            lastFailure = "No se pudo crear la copia de seguridad: " + ex.getMessage();
+            throw new IllegalStateException(lastFailure, ex);
         }
     }
-
     public List<Path> listBackups() {
         Path dir = getBackupsDirectory();
-        if (!Files.exists(dir)) {
-            return Collections.emptyList();
-        }
+        if (!Files.exists(dir)) return List.of();
         try (Stream<Path> stream = Files.list(dir)) {
-            return stream
-                    .filter(p -> p.getFileName().toString().endsWith(".db"))
-                    .sorted(Comparator.comparing((Path p) -> p.getFileName().toString()).reversed())
-                    .toList();
-        } catch (IOException e) {
-            return Collections.emptyList();
-        }
+            return stream.filter(p -> p.getFileName().toString().endsWith(".db"))
+                .sorted(Comparator.comparing((Path p) -> p.getFileName().toString()).reversed()).toList();
+        } catch (java.io.IOException ex) { throw new IllegalStateException("No se pudieron consultar los respaldos.", ex); }
     }
-
-    public int getBackupCount() {
-        return listBackups().size();
-    }
+    public int getBackupCount() { return listBackups().size(); }
 }

@@ -1,0 +1,12 @@
+{
+  "Instalador-SistemaCartera-v1.1.0.exe": {
+    "bytes": 82432181,
+    "sha256": "198a8d6697b4a6a3973793e329f3ff0f343a322593787e330e0270e92222b7c3",
+    "path": "C:\\Users\\ASUS\\prestamos-app-1\\desktop\\build\\release-parity-20261118-verified\\Instalador-SistemaCartera-v1.1.0.exe"
+  },
+  "SistemaCartera-v1.1.0-Windows-x64.zip": {
+    "bytes": 91739265,
+    "sha256": "e0673f74083737327c9bd06674ff1981a77c307e138b2eb58772a1bc4dd91f0a",
+    "path": "C:\\Users\\ASUS\\prestamos-app-1\\desktop\\build\\release-parity-20261118-verified\\SistemaCartera-v1.1.0-Windows-x64.zip"
+  }
+}

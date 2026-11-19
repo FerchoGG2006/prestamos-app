@@ -1,0 +1,21 @@
+{
+  "mode": "real-mobile-engine-in-memory",
+  "physicalPhoneTransactions": false,
+  "route": "qa-engine-62e36263-c1f3-4ec3-a77d-0bca03ec4ec3",
+  "oldLoan": "73be8dd6-860e-43f9-ac37-6859797887a0",
+  "newLoan": "loan-1795025473671",
+  "openingDebt": 620000,
+  "cashPayment": 20000,
+  "newPrincipal": 700000,
+  "rate": 0.4,
+  "paperwork": 35000,
+  "netDisbursed": 65000,
+  "digitalPayment": 10000,
+  "finalDebt": 970000,
+  "finalCash": 420000,
+  "finalAdmin": 1400000,
+  "paymentCount": 2,
+  "renewalCount": 1,
+  "storage": "memory-only",
+  "freshClientReconstruction": true
+}

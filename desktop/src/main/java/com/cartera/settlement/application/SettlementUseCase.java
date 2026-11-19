@@ -1,5 +1,9 @@
 package com.cartera.settlement.application;
 
+import com.cartera.payments.domain.PaymentMethods;
+
+import com.cartera.infrastructure.security.FinancialAccess;
+
 import com.cartera.infrastructure.backup.DatabaseBackupService;
 import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
@@ -53,17 +57,8 @@ public class SettlementUseCase {
     private final CashMovementRepository cashMovementRepository;
     private final AppUserRepository userRepository;
     private final DatabaseBackupService databaseBackupService;
-
-    public SettlementUseCase(
-            CollectionSessionRepository sessionRepository,
-            DailySettlementRepository settlementRepository,
-            PaymentRepository paymentRepository,
-            AuditLogRepository auditLogRepository,
-            CashMovementRepository cashMovementRepository,
-            AppUserRepository userRepository
-    ) {
-        this(sessionRepository, settlementRepository, paymentRepository, auditLogRepository, cashMovementRepository, userRepository, null);
-    }
+    private final com.cartera.infrastructure.persistence.repository.RouteRepository routeRepository;
+    private final FinancialAccess access;
 
     @Autowired
     public SettlementUseCase(
@@ -73,8 +68,12 @@ public class SettlementUseCase {
             AuditLogRepository auditLogRepository,
             CashMovementRepository cashMovementRepository,
             AppUserRepository userRepository,
-            DatabaseBackupService databaseBackupService
+            DatabaseBackupService databaseBackupService,
+            com.cartera.infrastructure.persistence.repository.RouteRepository routeRepository,
+            FinancialAccess access
     ) {
+        this.access = access;
+        this.routeRepository = routeRepository;
         this.sessionRepository = sessionRepository;
         this.settlementRepository = settlementRepository;
         this.paymentRepository = paymentRepository;
@@ -83,6 +82,29 @@ public class SettlementUseCase {
         this.userRepository = userRepository;
         this.databaseBackupService = databaseBackupService;
     }
+
+    private BigDecimal cashCollected(List<PaymentEntity> payments) {
+        return payments.stream().filter(p -> PaymentMethods.isCash(p.getMethod()))
+                .map(PaymentEntity::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private String resolveRoute(String collector) {
+        var routes = routeRepository.findAll().stream()
+                .filter(r -> collector.equals(r.getCollectorId()) && Integer.valueOf(1).equals(r.getActive()))
+                .sorted(java.util.Comparator.comparing(r -> r.getId())).toList();
+        String selected = com.cartera.infrastructure.security.UserSessionContext.getSelectedRouteId();
+        if (routes.stream().anyMatch(r -> r.getId().equals(selected))) return selected;
+        if (!routes.isEmpty()) return routes.getFirst().getId();
+        // Managers may collect directly; resolve from their recorded loan payments.
+        var payment = paymentRepository.findAll().stream().filter(p -> collector.equals(p.getCollectorId())).findFirst();
+        if (payment.isPresent()) {
+            var movement = cashMovementRepository.findAll().stream().filter(m -> payment.get().getId().equals(m.getReferenceId())).findFirst();
+            if (movement.isPresent()) return movement.get().getRouteId();
+        }
+        return routeRepository.findById("route-norte").orElseThrow(() -> new IllegalStateException("No hay ruta asignada al cobrador.")).getId();
+    }
+
+    public String getBackupWarning() { return databaseBackupService == null ? "Servicio de respaldo no disponible" : databaseBackupService.getLastFailure(); }
 
     public static boolean isRouteExpenseCategory(String category) {
         if (category == null) return false;
@@ -122,7 +144,9 @@ public class SettlementUseCase {
             BigDecimal expectedQuota,
             boolean isClosed,
             DailySettlementEntity settlement,
-            List<CashMovementEntity> routeExpensesList
+            List<CashMovementEntity> routeExpensesList,
+            BigDecimal collectedInCash,
+            BigDecimal collectedDigitally
     ) {
         public BigDecimal expectedAmount() {
             return netExpectedCash;
@@ -160,7 +184,7 @@ public class SettlementUseCase {
                 .map(CashMovementEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal netExpectedCash = totalCollected.subtract(routeExpenses);
+        BigDecimal netExpectedCash = cashCollected(payments).subtract(routeExpenses);
         if (netExpectedCash.compareTo(BigDecimal.ZERO) < 0) {
             netExpectedCash = BigDecimal.ZERO;
         }
@@ -173,7 +197,7 @@ public class SettlementUseCase {
                     String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
                     CollectionSessionEntity newSession = new CollectionSessionEntity(
                             UUID.randomUUID().toString(),
-                            "route-norte",
+                            resolveRoute(collector),
                             collector,
                             dateStr,
                             now,
@@ -202,7 +226,9 @@ public class SettlementUseCase {
                 session.getExpectedCollection() != null ? session.getExpectedCollection() : totalCollected,
                 closed,
                 optSettlement.orElse(null),
-                routeExpensesList
+                routeExpensesList,
+                cashCollected(payments),
+                totalCollected.subtract(cashCollected(payments))
         );
     }
 
@@ -219,6 +245,9 @@ public class SettlementUseCase {
             String description,
             String authorUserId
     ) {
+        var actor = access.collector(collectorId);
+        access.requireOpen(routeId, collectorId, LocalDate.now());
+        if (!isRouteExpenseCategory(category)) throw new IllegalArgumentException("Categoría de gasto operativo inválida.");
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El monto del gasto operativo debe ser mayor a cero.");
         }
@@ -251,7 +280,7 @@ public class SettlementUseCase {
 
         auditLogRepository.save(new AuditLogEntity(
                 UUID.randomUUID().toString(),
-                authorUserId != null ? authorUserId : collectorId,
+                actor.userId(),
                 "CASH_MOVEMENT",
                 saved.getId(),
                 "REGISTRO_GASTO_RUTA",
@@ -278,6 +307,9 @@ public class SettlementUseCase {
             String justification,
             String authorUserId
     ) {
+        var actor = access.manager();
+        if (actualDelivered == null || actualDelivered.signum() < 0 || (payrollDeductionAmount != null && payrollDeductionAmount.signum() < 0))
+            throw new IllegalArgumentException("Los valores de liquidación no pueden ser negativos.");
         CollectionSessionEntity session = sessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("No se encontró la sesión de cobranza con ID: " + sessionId));
 
@@ -313,7 +345,7 @@ public class SettlementUseCase {
                 .map(PaymentEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal netExpectedCash = totalCollected.subtract(totalExpenses);
+        BigDecimal netExpectedCash = cashCollected(payments).subtract(totalExpenses);
         if (netExpectedCash.compareTo(BigDecimal.ZERO) < 0) {
             netExpectedCash = BigDecimal.ZERO;
         }
@@ -359,7 +391,7 @@ public class SettlementUseCase {
 
             auditLogRepository.save(new AuditLogEntity(
                     UUID.randomUUID().toString(),
-                    authorUserId != null ? authorUserId : "admin",
+                    actor.userId(),
                     "PAYROLL_DEDUCTION",
                     payrollMovement.getId(),
                     "IMPUTACION_DESCUENTO_NOMINA",
@@ -389,7 +421,7 @@ public class SettlementUseCase {
         sessionRepository.save(session);
 
         // Auditoría
-        String user = authorUserId != null ? authorUserId : "admin";
+        String user = actor.userId();
         auditLogRepository.save(new AuditLogEntity(
                 UUID.randomUUID().toString(),
                 user,
@@ -404,13 +436,8 @@ public class SettlementUseCase {
                 nowTime
         ));
 
-        // Backup automático silencioso tras cierre de liquidación diaria
         if (databaseBackupService != null) {
-            try {
-                databaseBackupService.createBackup("Backup automático por cierre de liquidación de ruta (" + sessionDate + ")");
-            } catch (Exception ignored) {
-                // No abortar la transacción si el backup en disco falla
-            }
+            databaseBackupService.createAfterCommit("Backup automático por cierre de liquidación (" + sessionDate + ")");
         }
 
         return settlement;

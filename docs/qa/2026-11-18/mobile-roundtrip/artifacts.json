@@ -1,0 +1,12 @@
+{
+  "Instalador-SistemaCartera-v1.1.1.exe": {
+    "path": "C:\\Users\\ASUS\\prestamos-app-1\\desktop\\build\\release-roundtrip-111\\Instalador-SistemaCartera-v1.1.1.exe",
+    "bytes": 82434902,
+    "sha256": "464c6ee7f52a5817b18c5ddfcb8b02f1494df5ecdad7224a200d6a73794722d7"
+  },
+  "SistemaCartera-v1.1.1-Windows-x64.zip": {
+    "path": "C:\\Users\\ASUS\\prestamos-app-1\\desktop\\build\\release-roundtrip-111\\SistemaCartera-v1.1.1-Windows-x64.zip",
+    "bytes": 91741448,
+    "sha256": "ee3bc423c899ccb08d2eafd828376f82949b9dfcbe117e0ea0740f0179153d66"
+  }
+}

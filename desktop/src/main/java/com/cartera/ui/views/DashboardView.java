@@ -70,6 +70,7 @@ public class DashboardView extends VBox {
     private final ProgressBar progressBar = new ProgressBar(0.0);
 
     // Pilares Financieros
+    private final Label lblDigital = new Label("$ 0");
     private final Label lblCash = new Label("$ 0");
     private final Label lblActiveDebt = new Label("$ 0");
     private final Label lblAdministrative = new Label("$ 0");
@@ -135,7 +136,7 @@ public class DashboardView extends VBox {
         VBox heroLeft = new VBox(6);
         HBox.setHgrow(heroLeft, Priority.ALWAYS);
 
-        Label heroTitle = new Label("RECAUDO COBRADO HOY (CONSOLIDADO)");
+        Label heroTitle = new Label("COBRADO HOY (CONSOLIDADO)");
         heroTitle.getStyleClass().add("hero-title");
 
         lblCollectedHero.getStyleClass().add("hero-value");
@@ -165,10 +166,13 @@ public class DashboardView extends VBox {
 
         heroCard.getChildren().addAll(heroLeft, heroRight);
 
-        // 3. Pilares Financieros de la Cartera (4 Bento Cards)
-        HBox pillars = new HBox(14);
+        // Financial balances wrap naturally at narrower desktop window sizes.
+        TilePane pillars = new TilePane(14, 14);
+        pillars.setPrefColumns(3);
+        pillars.setPrefTileWidth(230);
         pillars.getChildren().addAll(
-                createMetricCard("BASE EN CAJA", lblCash, "metric-value-green", "Disponible para prestar"),
+                createMetricCard("BASE EN CAJA", lblCash, "metric-value-green", "Efectivo físico"),
+                createMetricCard("FONDOS DIGITALES", lblDigital, "metric-value-green", "Nequi y transferencias"),
                 createMetricCard("CARTERA EN CALLE", lblActiveDebt, "metric-value", "Saldo capital en deuda"),
                 createMetricCard("PATRIMONIO DE RUTA", lblAdministrative, "metric-value", "Capital total administrado"),
                 createMetricCard("CARTERA EN MORA", lblOverdue, "metric-value-red", "Cuotas vencidas hoy")
@@ -211,7 +215,7 @@ public class DashboardView extends VBox {
         VBox titleBox = new VBox(2);
         Label title = new Label("Supervisión Comparativa Multi-Ruta");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
-        Label subtitle = new Label("Monitoreo en tiempo real del avance y recaudo por cada ruta de cobranza");
+        Label subtitle = new Label("Monitoreo en tiempo real del avance y cobros por cada ruta de cobranza");
         subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
         titleBox.getChildren().addAll(title, subtitle);
 
@@ -431,6 +435,7 @@ public class DashboardView extends VBox {
         lblAdministrative.setText(CURRENCY.format(m.totalAdministrativeCapital()));
         lblActiveDebt.setText(CURRENCY.format(m.totalActiveDebt()));
         lblCash.setText(CURRENCY.format(m.cashBalance()));
+        lblDigital.setText(CURRENCY.format(m.digitalBalance()));
         lblOverdue.setText(CURRENCY.format(m.overdueAmount()));
 
         // 2b. Alertas Operativas Accionables

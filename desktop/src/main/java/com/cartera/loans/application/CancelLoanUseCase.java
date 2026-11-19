@@ -1,5 +1,7 @@
 package com.cartera.loans.application;
 
+import com.cartera.infrastructure.security.FinancialAccess;
+
 import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
@@ -29,6 +31,7 @@ import java.util.UUID;
 @Service
 public class CancelLoanUseCase {
 
+    private final FinancialAccess access;
     private final LoanRepository loanRepository;
     private final InstallmentRepository installmentRepository;
     private final PaymentRepository paymentRepository;
@@ -40,8 +43,9 @@ public class CancelLoanUseCase {
             InstallmentRepository installmentRepository,
             PaymentRepository paymentRepository,
             CashMovementRepository cashMovementRepository,
-            AuditLogRepository auditLogRepository
+            AuditLogRepository auditLogRepository, FinancialAccess access
     ) {
+        this.access = access;
         this.loanRepository = loanRepository;
         this.installmentRepository = installmentRepository;
         this.paymentRepository = paymentRepository;
@@ -51,6 +55,7 @@ public class CancelLoanUseCase {
 
     @Transactional
     public LoanEntity execute(String loanId, String reason) {
+        access.manager();
         // 1. Validación estricta de rol (Solo ADMIN y SUPERVISOR)
         Optional<UserSession> sessionOpt = UserSessionContext.getSession();
         if (sessionOpt.isEmpty() || sessionOpt.get().isCollector() || !sessionOpt.get().canReverseOrCancel()) {
@@ -72,6 +77,9 @@ public class CancelLoanUseCase {
             throw new IllegalStateException("Este crédito ya se encuentra anulado.");
         }
 
+        if ("RENOVADO".equalsIgnoreCase(loan.getStatus()) || loan.getPreviousLoanId() != null)
+            throw new IllegalStateException("Una renovación requiere una corrección auditable de ambos contratos.");
+        access.requireOpen(loan.getRouteId(), loan.getCollectorId(), java.time.LocalDate.now());
         List<PaymentEntity> activePayments = paymentRepository.findByLoanId(loanId).stream()
                 .filter(p -> "APLICADO".equalsIgnoreCase(p.getStatus()) || "REGISTRADO".equalsIgnoreCase(p.getStatus()))
                 .toList();
@@ -79,6 +87,8 @@ public class CancelLoanUseCase {
             throw new IllegalStateException("El crédito tiene " + activePayments.size() + " pago(s) activo(s). Anule primero los pagos antes de anular el contrato.");
         }
 
+        if (loan.getCreatedAt() != null && loan.getCreatedAt().length() >= 10)
+            access.requireOpen(loan.getRouteId(), loan.getCollectorId(), java.time.LocalDate.parse(loan.getCreatedAt().substring(0, 10)));
         String prevStatus = loan.getStatus();
         loan.setStatus("ANULADO");
         loanRepository.save(loan);
@@ -93,9 +103,9 @@ public class CancelLoanUseCase {
         // Determinar el monto neto desembolsado originalmente para revertirlo a la caja
         BigDecimal disbursedToRestore = cashMovementRepository.findAll().stream()
                 .filter(m -> loanId.equals(m.getReferenceId()) && ("EGRESO".equalsIgnoreCase(m.getMovementType()) || "SALIDA".equalsIgnoreCase(m.getMovementType())))
+                .filter(m -> ("DESEMBOLSO".equals(m.getCategory()) || "DESEMBOLSO_CREDITO".equals(m.getCategory())) || "LOAN_DISBURSEMENT".equals(m.getCategory()))
                 .map(CashMovementEntity::getAmount)
-                .findFirst()
-                .orElse(loan.getPrincipal());
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         String nowStr = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
@@ -111,7 +121,7 @@ public class CancelLoanUseCase {
                 "Reintegro a caja por anulación de crédito #" + loan.getId().substring(0, Math.min(8, loan.getId().length())) + " — Motivo: " + reason.trim(),
                 nowStr
         );
-        cashMovementRepository.save(compensatingInflow);
+        if (disbursedToRestore.signum() > 0) cashMovementRepository.save(compensatingInflow);
 
         auditLogRepository.save(new AuditLogEntity(
                 UUID.randomUUID().toString(),

@@ -1,0 +1,2 @@
+# Validation
+Use only new fictitious office directories. Run .\gradlew.bat :desktop:test :desktop:officeJourneyQa --offline. Launch officeQa for native operations. Build Windows into a new output path; launch SistemaCartera.exe --office-dir=<fresh-folder>. Verify /api/sync/status from PC, optionally phone browser without touching phone's stored app. Never pull or restore into user's actual mobile/office. Recovery tests restore generated test package into another new folder and compare persisted data, closed settlement and attachment hash.

@@ -13,6 +13,11 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
 class RecordPaymentUseCaseTest {
+    @org.junit.jupiter.api.BeforeEach void authenticate() {
+        com.cartera.infrastructure.security.UserSessionContext.setSession(new com.cartera.infrastructure.security.UserSession("usr-admin-1", "admin", "Admin", "ADMIN"));
+    }
+    @org.junit.jupiter.api.AfterEach void clear() { com.cartera.infrastructure.security.UserSessionContext.clear(); }
+
     @Autowired
     private RecordPaymentUseCase recordPaymentUseCase;
 

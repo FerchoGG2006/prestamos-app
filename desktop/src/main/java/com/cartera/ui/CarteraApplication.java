@@ -92,6 +92,12 @@ public final class CarteraApplication extends Application {
     @Override
     public void init() throws Exception {
         CarteraMain.configureRegionalDefaults();
+        String office=getParameters().getNamed().get("office-dir");
+        if(office!=null&&!office.isBlank()){
+            var folder=java.nio.file.Path.of(office).toAbsolutePath().normalize();java.nio.file.Files.createDirectories(folder);
+            System.setProperty("spring.datasource.url","jdbc:sqlite:"+folder.resolve("cartera.db"));
+            System.setProperty("cartera.demo-data.enabled","false");
+        }
         java.nio.file.Files.createDirectories(
                 java.nio.file.Paths.get(System.getProperty("user.home"), ".sistema-cartera")
         );
@@ -209,6 +215,9 @@ public final class CarteraApplication extends Application {
                 stage
         );
 
+        customersView.setLifecycleService(context.getBean(com.cartera.customers.application.CustomerLifecycleService.class));
+
+        customersView.setOperationalServices(context.getBean(com.cartera.customers.application.FollowUpService.class),context.getBean(com.cartera.customers.application.AttachmentService.class));
         var creditHistoryService = context.getBean(com.cartera.history.application.CreditHistoryService.class);
         creditHistoryView = new CreditHistoryView(creditHistoryService, stage);
         customersView.setOnOpenCreditHistory(doc -> {
@@ -224,6 +233,7 @@ public final class CarteraApplication extends Application {
 
         reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository, excelReportExporter, stage);
         configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, routeRepository, databaseBackupService, stage);
+        configurationView.setRecoveryService(context.getBean(com.cartera.infrastructure.backup.OfficeRecoveryService.class));
         configurationView.setOnRoutesChanged(this::reloadGlobalRoutes);
 
         mainContainer = new BorderPane();

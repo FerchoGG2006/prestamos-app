@@ -19,7 +19,6 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.util.List;
@@ -55,8 +54,15 @@ public class RenewLoanDialog extends Stage {
     private final Label lblPaperworkFee = new Label("$ 0");
     private final Label lblNetCash = new Label("$ 0");
     private final Label lblNewTotal = new Label("$ 0");
+    private final Label lblInterest = new Label("$ 0");
+    private final Label lblSummaryRoute = new Label();
+    private final Label lblCashBefore = new Label(), lblCashAfter = new Label();
+    private final Label lblDebtBefore = new Label(), lblDebtAfter = new Label();
+    private final Label lblAdminBefore = new Label(), lblAdminAfter = new Label();
+    private final Label lblCashWarning = new Label();
+    private RenewLoanUseCase.RenewalPreview reviewedPreview;
     private final Label lblFeedback = new Label();
-    private final Button btnConfirm = new Button("Aprobar Renovación");
+    private final Button btnConfirm = new Button("Revisar y confirmar renovación");
 
     public RenewLoanDialog(LoanEntity currentLoan,
                            String customerName,
@@ -131,7 +137,7 @@ public class RenewLoanDialog extends Stage {
         VBox root = new VBox(18);
         root.setPadding(new Insets(24));
         root.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12;");
-        root.setPrefWidth(540);
+        root.setPrefWidth(740);
 
         // Header
         HBox header = new HBox(12);
@@ -174,8 +180,11 @@ public class RenewLoanDialog extends Stage {
         grid.setVgap(10);
 
         txtNewPrincipal.getStyleClass().add("search-field");
+        txtNewPrincipal.setId("renewal-principal");
         txtInterestPercent.getStyleClass().add("search-field");
+        txtInterestPercent.setId("renewal-total-rate");
         txtInstallmentCount.getStyleClass().add("search-field");
+        txtInstallmentCount.setId("renewal-installments");
         cmbFrequency.getItems().addAll("DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
         cmbFrequency.setValue(currentLoan.getFrequency());
         cmbFrequency.getStyleClass().add("search-field");
@@ -184,9 +193,11 @@ public class RenewLoanDialog extends Stage {
         txtNewPrincipal.textProperty().addListener((obs, old, val) -> recalculateNet());
         txtInterestPercent.textProperty().addListener((obs, old, val) -> recalculateNet());
         txtInstallmentCount.textProperty().addListener((obs, old, val) -> recalculateNet());
+        cmbFrequency.valueProperty().addListener((obs, old, val) -> recalculateNet());
+        dpStartDate.valueProperty().addListener((obs, old, val) -> recalculateNet());
 
         setupField(grid, "Nuevo Capital Solicitado ($) *", txtNewPrincipal, 0, 0);
-        setupField(grid, "Interés (%) *", txtInterestPercent, 1, 0);
+        setupField(grid, "Interés TOTAL del plazo (%) *", txtInterestPercent, 1, 0);
         setupField(grid, "Modalidad *", cmbFrequency, 0, 1);
         setupField(grid, "Cuotas *", txtInstallmentCount, 1, 1);
         setupField(grid, "Fecha Inicio *", dpStartDate, 0, 2);
@@ -194,6 +205,29 @@ public class RenewLoanDialog extends Stage {
         VBox boxTotal = new VBox(4, new Label("Nuevo Total Pactado") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblNewTotal);
         lblNewTotal.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 15px; -fx-font-weight: bold;");
         grid.add(boxTotal, 1, 2);
+
+        Label rateHelp = new Label("Ejemplo: 20% mensual durante 2 meses = 40% total. El interés se calcula sobre el capital nuevo completo.");
+        rateHelp.setWrapText(true);
+        Label interestTitle = new Label("Interés nuevo: ");
+        HBox interestRow = new HBox(8, interestTitle, lblInterest);
+        lblSummaryRoute.setWrapText(true);
+        GridPane projection = new GridPane();
+        projection.setHgap(24);
+        projection.setVgap(10);
+        projection.addRow(0, new Label("Indicador de la ruta"), new Label("Antes"), new Label("Después"));
+        projection.addRow(1, new Label("Base operativa"), lblCashBefore, lblCashAfter);
+        projection.addRow(2, new Label("Cartera en calle"), lblDebtBefore, lblDebtAfter);
+        projection.addRow(3, new Label("Administrativo"), lblAdminBefore, lblAdminAfter);
+        Label paperworkHelp = new Label("La Base descuenta el neto entregado más la papelería. El saldo anterior se compensa: no se registra como cobro.");
+        paperworkHelp.setWrapText(true);
+        Label ledgerHelp = new Label("Base según movimientos registrados. El libro actual agrupa efectivo y fondos digitales; no equivale a un arqueo físico.");
+        ledgerHelp.setWrapText(true);
+        lblCashWarning.setWrapText(true);
+        lblCashWarning.setStyle("-fx-text-fill: #b45309;");
+        VBox summary = new VBox(10, new Label("Resumen antes de confirmar"), lblSummaryRoute,
+                interestRow, projection, paperworkHelp, ledgerHelp, lblCashWarning);
+        summary.setPadding(new Insets(16));
+        summary.getStyleClass().add("table-card");
 
         // Feedback
         lblFeedback.setWrapText(true);
@@ -213,9 +247,12 @@ public class RenewLoanDialog extends Stage {
 
         actions.getChildren().addAll(btnCancel, btnConfirm);
 
-        root.getChildren().addAll(header, balanceCard, grid, lblFeedback, actions);
+        root.getChildren().addAll(header, balanceCard, grid, rateHelp, summary, lblFeedback, actions);
 
-        var scene = new Scene(root);
+        var scroll = new ScrollPane(root);
+        scroll.setFitToWidth(true);
+        double height = Math.min(780, javafx.stage.Screen.getPrimary().getVisualBounds().getHeight() - 100);
+        var scene = new Scene(scroll, 770, height);
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
         setScene(scene);
     }
@@ -229,68 +266,93 @@ public class RenewLoanDialog extends Stage {
     }
 
     private void recalculateNet() {
+        reviewedPreview = null;
+        btnConfirm.setDisable(true);
         try {
-            BigDecimal principal = parseAmount(txtNewPrincipal.getText());
-            BigDecimal ratePct = parseAmount(txtInterestPercent.getText());
-            BigDecimal rate = ratePct.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-            BigDecimal totalAgreed = principal.add(principal.multiply(rate));
-
-            BigDecimal paperworkFee = computeConfiguredPaperwork(principal);
+            var preview = renewLoanUseCase.preview(buildCommand());
+            var quote = preview.quote();
+            currentBalance = quote.priorBalanceDeducted().amount();
+            lblCurrentBalance.setText("- " + CURRENCY.format(currentBalance));
+            BigDecimal paperworkFee = quote.paperworkDeducted().amount();
             lblPaperworkFee.setText(paperworkFee.compareTo(BigDecimal.ZERO) > 0 ? "- " + CURRENCY.format(paperworkFee) : "$ 0");
-
-            BigDecimal netCash = principal.subtract(currentBalance).subtract(paperworkFee);
+            BigDecimal netCash = quote.actualCashDisbursed().amount();
             lblNetCash.setText(CURRENCY.format(netCash));
-            lblNewTotal.setText(CURRENCY.format(totalAgreed));
-
-            if (netCash.compareTo(BigDecimal.ZERO) < 0) {
-                lblNetCash.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 18px; -fx-font-weight: bold;");
-                btnConfirm.setDisable(true);
-            } else {
-                lblNetCash.setStyle("-fx-text-fill: #059669; -fx-font-size: 18px; -fx-font-weight: bold;");
-                btnConfirm.setDisable(false);
+            lblNewTotal.setText(CURRENCY.format(quote.totalAgreed().amount()));
+            lblInterest.setText(CURRENCY.format(quote.interest().amount()));
+            lblSummaryRoute.setText("Alcance: ruta " + preview.routeId() + " (incluye sus otros créditos)");
+            lblCashBefore.setText(CURRENCY.format(quote.cashBefore().amount()));
+            lblCashAfter.setText(CURRENCY.format(quote.cashAfter().amount()));
+            lblDebtBefore.setText(CURRENCY.format(quote.debtBefore().amount()));
+            lblDebtAfter.setText(CURRENCY.format(quote.debtAfter().amount()));
+            lblAdminBefore.setText(CURRENCY.format(quote.administrativeBefore().amount()));
+            lblAdminAfter.setText(CURRENCY.format(quote.administrativeAfter().amount()));
+            lblCashWarning.setText(quote.cashAfter().isNegative()
+                    ? "Atención: la Base proyectada es negativa. Revise los fondos antes de entregar dinero." : "");
+            lblFeedback.setVisible(false);
+            lblFeedback.setManaged(false);
+            reviewedPreview = preview;
+            btnConfirm.setDisable(false);
+        } catch (Exception ex) {
+            lblNetCash.setText("—");
+            lblPaperworkFee.setText("—");
+            lblCashWarning.setText("");
+            lblNewTotal.setText("—");
+            lblInterest.setText("—");
+            for (Label label : List.of(lblCashBefore, lblCashAfter, lblDebtBefore, lblDebtAfter, lblAdminBefore, lblAdminAfter)) {
+                label.setText("—");
             }
-        } catch (Exception ignored) {
-            btnConfirm.setDisable(true);
+            showFeedback(ex.getMessage() == null ? "Revise los datos ingresados." : ex.getMessage());
         }
     }
 
+    private RenewLoanCommand buildCommand() {
+        BigDecimal principal = parseAmount(txtNewPrincipal.getText());
+        BigDecimal ratePct = new BigDecimal(txtInterestPercent.getText().trim().replace(',', '.'));
+        BigDecimal rate = ratePct.movePointLeft(2);
+        BigDecimal total = new Money(principal).add(new Money(principal).multiply(rate)).amount();
+        return new RenewLoanCommand(currentLoan.getId(), principal, rate, total,
+                Integer.parseInt(txtInstallmentCount.getText().trim()), cmbFrequency.getValue(), dpStartDate.getValue(),
+                computeConfiguredPaperwork(principal), UserSessionContext.requireSession().userId());
+    }
+
+    private void showFeedback(String message) {
+        lblFeedback.setText(message);
+        lblFeedback.setStyle("-fx-text-fill: #b91c1c; -fx-background-color: #fef2f2; -fx-padding: 6 10;");
+        lblFeedback.setVisible(true);
+        lblFeedback.setManaged(true);
+    }
+
     private void doRenew() {
+        if (reviewedPreview == null) return;
+        var expected = reviewedPreview;
+        RenewLoanUseCase.RenewalResult result;
         try {
-            BigDecimal principal = parseAmount(txtNewPrincipal.getText());
-            BigDecimal ratePct = parseAmount(txtInterestPercent.getText());
-            int count = Integer.parseInt(txtInstallmentCount.getText().trim());
-            BigDecimal rate = ratePct.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-            BigDecimal totalAgreed = principal.add(principal.multiply(rate));
-            LocalDate start = dpStartDate.getValue() != null ? dpStartDate.getValue() : LocalDate.now();
-            BigDecimal paperworkFee = computeConfiguredPaperwork(principal);
-
-            String author = UserSessionContext.getSession()
-                    .map(com.cartera.infrastructure.security.UserSession::userId)
-                    .orElse("admin");
-
-            var cmd = new RenewLoanCommand(
-                    currentLoan.getId(),
-                    principal,
-                    rate,
-                    totalAgreed,
-                    count,
-                    cmbFrequency.getValue(),
-                    start,
-                    paperworkFee,
-                    author
-            );
-
-            var res = renewLoanUseCase.execute(cmd);
-            if (onSuccess != null) {
-                onSuccess.accept(res);
-            }
-            close();
+            var cmd = buildCommand().withPreview(expected);
+            var q = expected.quote();
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.initOwner(this);
+            confirm.setTitle("Confirmar renovación");
+            confirm.setHeaderText("Revisar renovación de " + customerName);
+            confirm.setContentText("Ruta: " + expected.routeId()
+                    + "\nCapital nuevo: " + CURRENCY.format(q.newPrincipal().amount())
+                    + "\nSaldo anterior compensado: " + CURRENCY.format(q.priorBalanceDeducted().amount())
+                    + "\nPapelería: " + CURRENCY.format(q.paperworkDeducted().amount())
+                    + "\nInterés nuevo: " + CURRENCY.format(q.interest().amount())
+                    + "\nNeto a entregar: " + CURRENCY.format(q.actualCashDisbursed().amount())
+                    + "\nNueva deuda: " + CURRENCY.format(q.totalAgreed().amount())
+                    + "\nBase después: " + CURRENCY.format(q.cashAfter().amount())
+                    + "\nCartera después: " + CURRENCY.format(q.debtAfter().amount())
+                    + "\nAdministrativo después: " + CURRENCY.format(q.administrativeAfter().amount()));
+            if (confirm.showAndWait().filter(ButtonType.OK::equals).isEmpty()) return;
+            btnConfirm.setDisable(true);
+            result = renewLoanUseCase.execute(cmd);
         } catch (Exception ex) {
-            lblFeedback.setText("Error: " + ex.getMessage());
-            lblFeedback.setStyle("-fx-text-fill: #b91c1c; -fx-background-color: #fef2f2; -fx-padding: 6 10; -fx-background-radius: 6; -fx-border-color: #fecaca; -fx-border-radius: 6;");
-            lblFeedback.setVisible(true);
-            lblFeedback.setManaged(true);
+            recalculateNet();
+            showFeedback("No se registró la renovación: " + ex.getMessage());
+            return;
         }
+        close();
+        if (onSuccess != null) onSuccess.accept(result);
     }
 
     private static BigDecimal parseAmount(String text) {

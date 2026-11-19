@@ -2,7 +2,13 @@
 ; Produce un instalador profesional autoejecutable .exe para oficinas
 
 #define MyAppName "Sistema de Cartera y Cobros"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.1"
+#ifndef SourceDir
+#define SourceDir "..\..\..\dist\releases\1.1.1\SistemaCartera"
+#endif
+#ifndef ReleaseDir
+#define ReleaseDir "..\..\..\dist\releases\1.1.1"
+#endif
 #define MyAppPublisher "Cartera Software"
 #define MyAppExeName "SistemaCartera.exe"
 #define MyAppAssocName "Sistema Cartera"
@@ -15,8 +21,8 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\SistemaCartera
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-OutputDir=..\..\..\dist
-OutputBaseFilename=Instalador-SistemaCartera-v1.0.0
+OutputDir={#ReleaseDir}
+OutputBaseFilename=Instalador-SistemaCartera-v1.1.1
 SetupIconFile=..\..\src\main\resources\ui\app.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -25,7 +31,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequiredOverridesAllowed=commandline dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=1.0.0.0
+VersionInfoVersion=1.1.1.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} - Instalador Oficial
 VersionInfoProductName={#MyAppName}
@@ -37,7 +43,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "..\..\..\dist\SistemaCartera\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"

@@ -6,4 +6,5 @@ import java.util.Optional;
 
 public interface CollectionSessionRepository extends JpaRepository<CollectionSessionEntity, String> {
     Optional<CollectionSessionEntity> findByRouteIdAndSessionDate(String routeId, String sessionDate);
+    java.util.List<CollectionSessionEntity> findAllByRouteIdAndSessionDate(String routeId, String sessionDate);
 }

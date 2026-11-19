@@ -1,0 +1,176 @@
+[ {
+  "id" : "QA-01",
+  "scenario" : "Login rechaza contraseña inválida",
+  "evidence" : "Acceso rechazado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-02",
+  "scenario" : "Login administrador y rol",
+  "evidence" : "ADMIN",
+  "status" : "PASS"
+}, {
+  "id" : "QA-03",
+  "scenario" : "Cliente obligatorio y documento duplicado",
+  "evidence" : "Cliente creado; duplicado y nombre vacío rechazados",
+  "status" : "PASS"
+}, {
+  "id" : "QA-04",
+  "scenario" : "Nuevo crédito, cuotas y desembolso",
+  "evidence" : "24 cuotas, deuda 360000 y entrega neta 285000",
+  "status" : "PASS"
+}, {
+  "id" : "QA-05",
+  "scenario" : "Cronograma mensual conserva total y fecha",
+  "evidence" : "[InstallmentPlanItem[installmentNumber=1, dueDate=2026-12-18, amount=490000.00], InstallmentPlanItem[installmentNumber=2, dueDate=2027-01-18, amount=490000.00]]",
+  "status" : "PASS"
+}, {
+  "id" : "QA-06",
+  "scenario" : "Abono parcial y asignación independiente",
+  "evidence" : "Saldo 355000 y asignaciones 5000",
+  "status" : "PASS"
+}, {
+  "id" : "QA-07",
+  "scenario" : "Reintento de cobro no duplica",
+  "evidence" : "Mismo Payment y saldo",
+  "status" : "PASS"
+}, {
+  "id" : "QA-08",
+  "scenario" : "Cobros cero, negativos y por encima de deuda rechazados",
+  "evidence" : "Sin alteración de saldo",
+  "status" : "PASS"
+}, {
+  "id" : "QA-09",
+  "scenario" : "Pago adelantado distribuye varias cuotas",
+  "evidence" : "Dos cuotas adelantadas, saldo 330000",
+  "status" : "PASS"
+}, {
+  "id" : "QA-10",
+  "scenario" : "Pago total finaliza crédito",
+  "evidence" : "Deuda cero y FINALIZADO",
+  "status" : "PASS"
+}, {
+  "id" : "QA-11",
+  "scenario" : "Nequi no debe aumentar efectivo físico",
+  "evidence" : "Efectivo sin variación",
+  "status" : "PASS"
+}, {
+  "id" : "QA-12",
+  "scenario" : "Usuario sin sesión no debe registrar cobros",
+  "evidence" : "Rechazado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-13",
+  "scenario" : "Reversión restaura saldo y exige motivo",
+  "evidence" : "Saldo restaurado; pago ANULADO",
+  "status" : "PASS"
+}, {
+  "id" : "QA-14",
+  "scenario" : "Reversión debe conservar asignaciones originales",
+  "evidence" : "Historial preservado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-15",
+  "scenario" : "Caja exige sesión y rechaza retiro superior a saldo",
+  "evidence" : "Aporte idempotente y controles correctos",
+  "status" : "PASS"
+}, {
+  "id" : "QA-16",
+  "scenario" : "Renovación conserva identidad e interés administrativo",
+  "evidence" : "Neto 305000; Administrativo +280000; compensación no es recaudo",
+  "status" : "PASS"
+}, {
+  "id" : "QA-17",
+  "scenario" : "Historial crediticio por documento",
+  "evidence" : "Historial encontrado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-18",
+  "scenario" : "Cobro de cuota con la identidad textual usada por móvil",
+  "evidence" : "Cobro aceptado para identidad textual móvil",
+  "status" : "PASS"
+}, {
+  "id" : "QA-19",
+  "scenario" : "Paquete móvil exportado es JSON y aísla ruta",
+  "evidence" : "Exportación JSON válida, ruta y clientes aislados: 937 caracteres",
+  "status" : "PASS"
+}, {
+  "id" : "QA-20",
+  "scenario" : "Paquete móvil malformado rechazado",
+  "evidence" : "Rechazado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-21",
+  "scenario" : "Libro Excel contiene hojas válidas",
+  "evidence" : "C:\\Users\\ASUS\\prestamos-app-1\\desktop\\build\\qa\\service-journey-6012545828323302831\\qa-ledger.xlsx",
+  "status" : "PASS"
+}, {
+  "id" : "QA-22",
+  "scenario" : "Cancelación de crédito normal compensa su desembolso",
+  "evidence" : "Desembolso reintegrado y crédito anulado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-23",
+  "scenario" : "Cancelar migración no inventa entrada de caja",
+  "evidence" : "Sin dinero físico inventado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-24",
+  "scenario" : "Nueva deuda debe coincidir con la tasa indicada",
+  "evidence" : "Capital 300000 al 20% no acepta deuda 400000",
+  "status" : "PASS"
+}, {
+  "id" : "QA-25",
+  "scenario" : "Importación real de renovación descuenta neto más papelería",
+  "evidence" : "Base descuenta 340000",
+  "status" : "PASS"
+}, {
+  "id" : "QA-26",
+  "scenario" : "Segunda ruta crea jornada en su ruta correcta",
+  "evidence" : "Ruta correcta",
+  "status" : "PASS"
+}, {
+  "id" : "QA-27",
+  "scenario" : "Gasto operativo queda registrado y auditado",
+  "evidence" : "Gasto 10000 registrado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-28",
+  "scenario" : "Arqueo excluye cobros Nequi del efectivo esperado",
+  "evidence" : "Solo efectivo",
+  "status" : "PASS"
+}, {
+  "id" : "QA-29",
+  "scenario" : "Descuadre sin justificación rechazado",
+  "evidence" : "Rechazado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-30",
+  "scenario" : "Liquidar y bloquear cierre repetido",
+  "evidence" : "Cierre guardado y repetición rechazada",
+  "status" : "PASS"
+}, {
+  "id" : "QA-31",
+  "scenario" : "Gasto posterior al cierre rechazado",
+  "evidence" : "Rechazado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-32",
+  "scenario" : "Respaldo automático contiene el cierre recién realizado",
+  "evidence" : "Cierre recuperable",
+  "status" : "PASS"
+}, {
+  "id" : "QA-33",
+  "scenario" : "Cobro posterior al cierre no altera la jornada cerrada",
+  "evidence" : "Rechazado",
+  "status" : "PASS"
+}, {
+  "id" : "QA-34",
+  "scenario" : "Respaldo manual SQLite íntegro",
+  "evidence" : "C:\\Users\\ASUS\\prestamos-app-1\\desktop\\build\\qa\\service-journey-6012545828323302831\\.sistema-cartera\\backups\\cartera_2026-11-18_114359_288_1e4fbfc6-9b1f-4b0d-b77d-241e609f36b1.db",
+  "status" : "PASS"
+}, {
+  "id" : "QA-35",
+  "scenario" : "Persistencia reabrible con los clientes y movimientos guardados",
+  "evidence" : "Datos persistidos y auditados",
+  "status" : "PASS"
+} ]

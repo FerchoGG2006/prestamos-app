@@ -1,5 +1,9 @@
 package com.cartera.payments.application;
 
+import com.cartera.payments.domain.PaymentMethods;
+
+import com.cartera.infrastructure.security.FinancialAccess;
+
 import com.cartera.domain.money.Money;
 import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
@@ -37,6 +41,7 @@ public class RecordPaymentUseCase {
     private final CashMovementRepository cashMovementRepository;
     private final AppUserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
+    private final FinancialAccess access;
     private final PaymentApplicationService applicationService = new PaymentApplicationService();
 
     public RecordPaymentUseCase(PaymentRepository paymentRepository,
@@ -45,7 +50,8 @@ public class RecordPaymentUseCase {
                                 LoanRepository loanRepository,
                                 CashMovementRepository cashMovementRepository,
                                 AppUserRepository userRepository,
-                                AuditLogRepository auditLogRepository) {
+                                AuditLogRepository auditLogRepository, FinancialAccess access) {
+        this.access = access;
         this.paymentRepository = paymentRepository;
         this.allocationRepository = allocationRepository;
         this.installmentRepository = installmentRepository;
@@ -85,12 +91,16 @@ public class RecordPaymentUseCase {
 
     @Transactional
     public PaymentExecutionResult execute(RecordPaymentCommand command) {
+        var actor = access.actor();
+        String method = PaymentMethods.normalize(command.method());
         Objects.requireNonNull(command.loanId(), "loanId is required");
         Objects.requireNonNull(command.amount(), "amount is required");
         if (command.amount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("El monto a pagar debe ser positivo.");
         }
 
+        if (new Money(command.amount()).amount().compareTo(command.amount()) != 0)
+            throw new IllegalArgumentException("Ingrese el cobro en pesos enteros; no se redondeará el monto.");
         String idempotencyKey = command.idempotencyKey() != null && !command.idempotencyKey().isBlank()
                 ? command.idempotencyKey()
                 : UUID.randomUUID().toString();
@@ -99,6 +109,12 @@ public class RecordPaymentUseCase {
         if (existing.isPresent()) {
             // Idempotent replay: report the real persisted outcome, never a fabricated one.
             var p = existing.get();
+            access.collector(p.getCollectorId());
+            if (!Objects.equals(p.getLoanId(), command.loanId()) || p.getAmount().compareTo(command.amount()) != 0
+                    || !method.equals(PaymentMethods.normalize(p.getMethod()))
+                    || (command.collectorId() != null && !Objects.equals(command.collectorId(), p.getCollectorId()))
+                    || (command.paymentDate() != null && !p.getCreatedAt().startsWith(command.paymentDate().toString())))
+                throw new IllegalArgumentException("La clave de idempotencia pertenece a otro pago.");
             var current = installmentRepository.findByLoanIdOrderByInstallmentNumberAsc(p.getLoanId());
             BigDecimal balance = current.stream()
                     .map(InstallmentEntity::getPendingAmount)
@@ -118,6 +134,13 @@ public class RecordPaymentUseCase {
         if (collectorId == null || collectorId.isBlank()) {
             throw new IllegalArgumentException("Debe indicarse el cobrador que registra el pago.");
         }
+        access.collector(collectorId);
+        access.collector(loan.getCollectorId());
+        LocalDate paymentDate = command.paymentDate() == null ? LocalDate.now() : command.paymentDate();
+        access.requireOpen(loan.getRouteId(), collectorId, paymentDate);
+        access.requireOpen(loan.getRouteId(), loan.getCollectorId(), paymentDate);
+        access.requireOpen(loan.getRouteId(), collectorId, LocalDate.now());
+        access.requireOpen(loan.getRouteId(), loan.getCollectorId(), LocalDate.now());
         var collector = userRepository.findById(collectorId)
                 .orElseThrow(() -> new IllegalArgumentException("Cobrador no registrado: " + collectorId));
         if (collector.getActive() == null || collector.getActive() != 1) {
@@ -133,7 +156,7 @@ public class RecordPaymentUseCase {
         List<Installment> domainInstallments = new ArrayList<>();
         for (var entity : installmentEntities) {
             domainInstallments.add(new Installment(
-                    UUID.fromString(entity.getId()),
+                    entity.getId(),
                     entity.getInstallmentNumber(),
                     LocalDate.parse(entity.getDueDate()),
                     new Money(entity.getAmount()),
@@ -156,7 +179,7 @@ public class RecordPaymentUseCase {
                 collectorId,
                 null,
                 command.amount(),
-                command.method() != null ? command.method() : "EFECTIVO",
+                method,
                 "APLICADO",
                 nowStr,
                 null
@@ -220,7 +243,7 @@ public class RecordPaymentUseCase {
         // Auditoría: misma transacción que el pago; si falla el registro, el pago se revierte.
         auditLogRepository.save(new AuditLogEntity(
                 UUID.randomUUID().toString(),
-                collectorId,
+                actor.userId(),
                 "PAYMENT",
                 paymentId,
                 "REGISTRAR_COBRO",

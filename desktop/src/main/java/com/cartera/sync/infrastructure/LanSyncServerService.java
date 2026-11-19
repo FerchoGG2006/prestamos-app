@@ -39,12 +39,20 @@ public class LanSyncServerService {
     private final MobileSyncProcessorService syncProcessorService;
     private final ObjectMapper mapper = new ObjectMapper();
     private final java.util.concurrent.ConcurrentHashMap<String, Long> lastRequestByIp = new java.util.concurrent.ConcurrentHashMap<>();
+    private final com.cartera.infrastructure.security.FinancialAccess access;
+    private final com.cartera.infrastructure.persistence.repository.RouteRepository routes;
+    @org.springframework.beans.factory.annotation.Value("${cartera.sync.port:8765}") private int configuredPort=DEFAULT_PORT;
+    private record Pairing(String route,String collector,String actor,java.time.Instant expires){}
+    private final java.util.Map<String,Pairing> pairings=new java.util.concurrent.ConcurrentHashMap<>();
+    private final ThreadLocal<Pairing> requestPairing=new ThreadLocal<>();
+    private volatile boolean running;
     private HttpServer server;
     private int activePort = DEFAULT_PORT;
     private volatile Runnable onSyncReceivedCallback;
     private volatile String requiredSyncPin = null;
 
-    public LanSyncServerService(MobileSyncProcessorService syncProcessorService) {
+    public LanSyncServerService(MobileSyncProcessorService syncProcessorService,com.cartera.infrastructure.security.FinancialAccess access,com.cartera.infrastructure.persistence.repository.RouteRepository routes) {
+        this.access=access;this.routes=routes;
         this.syncProcessorService = syncProcessorService;
     }
 
@@ -60,14 +68,15 @@ public class LanSyncServerService {
     public void startServer() {
         try {
             try {
-                server = HttpServer.create(new InetSocketAddress("0.0.0.0", DEFAULT_PORT), 0);
-                activePort = DEFAULT_PORT;
+                server = HttpServer.create(new InetSocketAddress("0.0.0.0", configuredPort), 0);
+                activePort = server.getAddress().getPort();
             } catch (IOException bindEx) {
                 // Si el puerto 8765 está ocupado (ej. otra instancia o test concurrente), usar un puerto libre
                 server = HttpServer.create(new InetSocketAddress("0.0.0.0", 0), 0);
                 activePort = server.getAddress().getPort();
             }
 
+            server.createContext("/enlace/",this::handlePairing);
             server.createContext("/api/sync/status", this::handleStatus);
             server.createContext("/api/sync/package", this::handlePackage);
             server.createContext("/api/sync/pull", this::handlePackage);
@@ -80,6 +89,7 @@ public class LanSyncServerService {
                 return t;
             }));
             server.start();
+            running=true;
         } catch (Exception ignored) {
             // No bloquear el arranque de la aplicación si el entorno restringe sockets
         }
@@ -95,7 +105,7 @@ public class LanSyncServerService {
     }
 
     public boolean isRunning() {
-        return server != null;
+        return running;
     }
 
     public int getPort() {
@@ -129,6 +139,71 @@ public class LanSyncServerService {
         return "http://" + getLocalIpAddress() + ":" + activePort;
     }
 
+    public java.util.List<com.cartera.infrastructure.persistence.entity.RouteEntity> pairingRoutes() {
+        access.manager();
+        return routes.findAll().stream()
+                .filter(r -> Integer.valueOf(1).equals(r.getActive()))
+                .toList();
+    }
+
+    public String createPairingLink(String route) {
+        var actor = access.manager();
+        var assigned = routes.findById(route)
+                .filter(r -> Integer.valueOf(1).equals(r.getActive()))
+                .orElseThrow(() -> new IllegalArgumentException("Ruta no disponible."));
+        pairings.entrySet().removeIf(
+                e -> e.getValue().route().equals(route) || e.getValue().expires().isBefore(java.time.Instant.now())
+        );
+        String token = java.util.UUID.randomUUID().toString() + java.util.UUID.randomUUID().toString();
+        pairings.put(
+                token,
+                new Pairing(route, assigned.getCollectorId(), actor.userId(), java.time.Instant.now().plusSeconds(1800))
+        );
+        return getServerEndpointDisplay() + "/enlace/" + token;
+    }
+
+    public void revokePairings() {
+        access.manager();
+        pairings.clear();
+    }
+
+    private void handlePairing(HttpExchange exchange) throws IOException {
+        String[] parts = exchange.getRequestURI().getPath().split("/");
+        if (parts.length < 4) {
+            sendErrorResponse(exchange, 404, "Enlace no válido.");
+            return;
+        }
+        var pairing = pairings.get(parts[2]);
+        try {
+            var actor = access.manager();
+            if (pairing == null
+                    || pairing.expires().isBefore(java.time.Instant.now())
+                    || !actor.userId().equals(pairing.actor())) {
+                sendErrorResponse(exchange, 401, "Enlace vencido o revocado.");
+                return;
+            }
+            String endpoint = exchange.getRequestURI().getPath().substring(("/enlace/" + parts[2]).length());
+            if (endpoint.equals("/api/sync/status")) {
+                handleStatus(exchange);
+                return;
+            }
+            if (!java.util.Set.of("/api/sync/pull", "/api/sync/push", "/api/sync/package").contains(endpoint)) {
+                sendErrorResponse(exchange, 404, "Operación no disponible.");
+                return;
+            }
+            requestPairing.set(pairing);
+            handlePackage(exchange);
+        } catch (Exception ex) {
+            sendErrorResponse(
+                    exchange,
+                    403,
+                    "La oficina debe habilitar la sincronización con sesión administrativa activa."
+            );
+        } finally {
+            requestPairing.remove();
+        }
+    }
+
     private void addCorsHeaders(HttpExchange exchange) {
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
         exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -149,7 +224,7 @@ public class LanSyncServerService {
     private boolean isAuthorizedSyncRequest(HttpExchange exchange) {
         String expectedPin = this.requiredSyncPin;
         if (expectedPin == null || expectedPin.isBlank()) {
-            return true;
+            return false;
         }
         String headerPin = exchange.getRequestHeaders().getFirst("X-Office-Sync-Pin");
         String queryPin = extractQueryParam(exchange.getRequestURI(), "pin");
@@ -189,13 +264,15 @@ public class LanSyncServerService {
                 sendErrorResponse(exchange, 429, "Demasiadas solicitudes seguidas desde este dispositivo. Intente en unos segundos.");
                 return;
             }
-            if (!isAuthorizedSyncRequest(exchange)) {
+            if (requestPairing.get()==null && !isAuthorizedSyncRequest(exchange)) {
                 sendErrorResponse(exchange, 401, "PIN de sincronización de oficina inválido o no autorizado.");
                 return;
             }
 
+            access.manager();
             if ("GET".equalsIgnoreCase(method)) {
-                String routeId = extractQueryParam(exchange.getRequestURI(), "routeId");
+                String routeId = requestPairing.get()!=null?requestPairing.get().route():extractQueryParam(exchange.getRequestURI(), "routeId");
+                if(routeId==null || routeId.isBlank() || "ALL".equalsIgnoreCase(routeId)){sendErrorResponse(exchange,400,"Seleccione una ruta concreta.");return;}
                 String jsonPackage = syncProcessorService.exportRoutePackage(routeId, LocalDate.now());
                 sendJsonResponse(exchange, 200, jsonPackage);
             } else if ("POST".equalsIgnoreCase(method)) {
@@ -208,6 +285,10 @@ public class LanSyncServerService {
                 if (body.isBlank()) {
                     sendErrorResponse(exchange, 400, "El cuerpo del paquete de sincronización está vacío.");
                     return;
+                }
+                if(requestPairing.get()!=null){
+                    var scope=requestPairing.get();var payload=mapper.readTree(body);
+                    if(!scope.route().equals(payload.path("routeId").asText()) || !scope.collector().equals(payload.path("collectorId").asText())){sendErrorResponse(exchange,403,"Paquete fuera de la ruta enlazada.");return;}
                 }
                 SyncImportResult res = syncProcessorService.importPackage(body);
 

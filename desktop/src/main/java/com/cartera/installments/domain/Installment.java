@@ -4,8 +4,11 @@ import com.cartera.domain.money.Money;
 import java.time.LocalDate;
 import java.util.UUID;
 
-public record Installment(UUID id, int number, LocalDate dueDate, Money value, Money paid,
+public record Installment(String id, int number, LocalDate dueDate, Money value, Money paid,
                           InstallmentStatus status) {
+    public Installment(UUID id, int number, LocalDate dueDate, Money value, Money paid, InstallmentStatus status) {
+        this(id.toString(), number, dueDate, value, paid, status);
+    }
     public Money pending() { return value.subtract(paid); }
     public Installment apply(Money amount, LocalDate paymentDate) {
         if (!amount.isPositive() || amount.compareTo(pending()) > 0) throw new IllegalArgumentException("Invalid allocation");

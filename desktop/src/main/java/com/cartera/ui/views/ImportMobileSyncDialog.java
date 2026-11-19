@@ -46,29 +46,6 @@ public class ImportMobileSyncDialog extends Stage {
     public ImportMobileSyncDialog(Stage ownerStage,
                                   RecordPaymentUseCase paymentUseCase,
                                   CashMovementRepository cashMovementRepository,
-                                  Runnable onFinished) {
-        this(ownerStage, paymentUseCase, cashMovementRepository, null, null, null, null, null, null, null, null, null, onFinished);
-    }
-
-    public ImportMobileSyncDialog(Stage ownerStage,
-                                  RecordPaymentUseCase paymentUseCase,
-                                  CashMovementRepository cashMovementRepository,
-                                  CustomerRepository customerRepository,
-                                  LoanRepository loanRepository,
-                                  InstallmentRepository installmentRepository,
-                                  CreateLoanUseCase createLoanUseCase,
-                                  RenewalRepository renewalRepository,
-                                  PaymentPromiseRepository paymentPromiseRepository,
-                                  AuditLogRepository auditLogRepository,
-                                  Runnable onFinished) {
-        this(ownerStage, paymentUseCase, cashMovementRepository, customerRepository, loanRepository,
-                installmentRepository, createLoanUseCase, renewalRepository, paymentPromiseRepository,
-                auditLogRepository, null, null, onFinished);
-    }
-
-    public ImportMobileSyncDialog(Stage ownerStage,
-                                  RecordPaymentUseCase paymentUseCase,
-                                  CashMovementRepository cashMovementRepository,
                                   CustomerRepository customerRepository,
                                   LoanRepository loanRepository,
                                   InstallmentRepository installmentRepository,
@@ -79,21 +56,7 @@ public class ImportMobileSyncDialog extends Stage {
                                   MobileSyncProcessorService syncProcessorService,
                                   LanSyncServerService lanSyncServerService,
                                   Runnable onFinished) {
-        this.syncProcessorService = syncProcessorService != null
-                ? syncProcessorService
-                : new MobileSyncProcessorService(
-                        paymentUseCase,
-                        cashMovementRepository,
-                        customerRepository,
-                        loanRepository,
-                        installmentRepository,
-                        createLoanUseCase,
-                        renewalRepository,
-                        paymentPromiseRepository,
-                        auditLogRepository,
-                        null,
-                        null
-                );
+        this.syncProcessorService = java.util.Objects.requireNonNull(syncProcessorService, "Se requiere el servicio transaccional de sincronización.");
         this.lanSyncServerService = lanSyncServerService;
         this.onFinished = onFinished;
 
@@ -181,7 +144,7 @@ public class ImportMobileSyncDialog extends Stage {
 
         String ip = lanSyncServerService != null ? lanSyncServerService.getLocalIpAddress() : detectFallbackIp();
         int port = lanSyncServerService != null ? lanSyncServerService.getPort() : LanSyncServerService.DEFAULT_PORT;
-        String connectionCode = ip + ":" + port;
+        String[] connectionCode = {"http://"+ip+":"+port};
 
         HBox topRow = new HBox(10);
         topRow.setAlignment(Pos.CENTER_LEFT);
@@ -189,7 +152,7 @@ public class ImportMobileSyncDialog extends Stage {
         Label badge = new Label("CONEXIÓN DIRECTA WI-FI");
         badge.setStyle("-fx-background-color: #1d4ed8; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-background-radius: 10;");
 
-        Label urlLabel = new Label("Código de Enlace: " + connectionCode);
+        Label urlLabel = new Label("Servidor: " + connectionCode[0]);
         urlLabel.setStyle("-fx-text-fill: #1e3a8a; -fx-font-size: 13px; -fx-font-weight: bold;");
 
         Region spacer = new Region();
@@ -199,16 +162,23 @@ public class ImportMobileSyncDialog extends Stage {
         btnCopyUrl.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #1d4ed8; -fx-border-color: #93c5fd; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-cursor: hand;");
         btnCopyUrl.setOnAction(e -> {
             ClipboardContent content = new ClipboardContent();
-            content.putString(connectionCode);
+            content.putString(connectionCode[0]);
             Clipboard.getSystemClipboard().setContent(content);
-            lblStatus.setText("Código de enlace copiado: " + connectionCode);
+            lblStatus.setText("Dirección copiada: " + connectionCode[0]);
             lblStatus.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold;");
         });
 
-        topRow.getChildren().addAll(badge, urlLabel, spacer, btnCopyUrl);
+        Button btnPair=new Button("Habilitar ruta (30 min)");btnPair.setOnAction(e->{try{
+            if(lanSyncServerService==null)throw new IllegalStateException("Servidor no disponible.");
+            var choices=lanSyncServerService.pairingRoutes();if(choices.isEmpty())throw new IllegalStateException("No hay rutas activas.");
+            java.util.Map<String,String> ids=new java.util.LinkedHashMap<>();for(var route:choices)ids.put(route.getName()+" ["+route.getId()+"]",route.getId());
+            ChoiceDialog<String> choose=new ChoiceDialog<>(ids.keySet().iterator().next(),ids.keySet());choose.initOwner(this);choose.setHeaderText("Seleccione la ruta autorizada para este enlace temporal");
+            choose.showAndWait().ifPresent(value->{connectionCode[0]=lanSyncServerService.createPairingLink(ids.get(value));urlLabel.setText("Ruta habilitada (30 min)");lblStatus.setText("Enlace habilitado. Copie la dirección solo al dispositivo de esa ruta.");});
+        }catch(Exception ex){lblStatus.setText(ex.getMessage());}});
+        topRow.getChildren().addAll(badge, urlLabel, spacer, btnPair, btnCopyUrl);
 
         Label instructions = new Label(
-                "En el celular del cobrador, conéctalo a la misma red Wi-Fi y usa este código en la opción 'Sincronizar' para transferir la ruta automáticamente."
+                "Pruebe primero la conectividad. Habilitar una ruta genera un enlace temporal para copiar al servidor de oficina del dispositivo. No descargue datos de prueba en una app con clientes reales."
         );
         instructions.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px;");
         instructions.setWrapText(true);

@@ -1,5 +1,7 @@
 package com.cartera.loans.application;
 
+import com.cartera.infrastructure.security.FinancialAccess;
+
 import com.cartera.domain.money.Money;
 import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.entity.CashMovementEntity;
@@ -35,22 +37,13 @@ import java.util.UUID;
 @Service
 public class CreateLoanUseCase {
 
+    private final FinancialAccess access;
     private final LoanRepository loanRepository;
     private final InstallmentRepository installmentRepository;
     private final CustomerRepository customerRepository;
     private final CashMovementRepository cashMovementRepository;
     private final AuditLogRepository auditLogRepository;
     private final SystemSettingRepository settingRepository;
-
-    public CreateLoanUseCase(
-            LoanRepository loanRepository,
-            InstallmentRepository installmentRepository,
-            CustomerRepository customerRepository,
-            CashMovementRepository cashMovementRepository,
-            AuditLogRepository auditLogRepository
-    ) {
-        this(loanRepository, installmentRepository, customerRepository, cashMovementRepository, auditLogRepository, null);
-    }
 
     @Autowired
     public CreateLoanUseCase(
@@ -59,8 +52,9 @@ public class CreateLoanUseCase {
             CustomerRepository customerRepository,
             CashMovementRepository cashMovementRepository,
             AuditLogRepository auditLogRepository,
-            SystemSettingRepository settingRepository
+            SystemSettingRepository settingRepository, FinancialAccess access
     ) {
+        this.access = access;
         this.loanRepository = loanRepository;
         this.installmentRepository = installmentRepository;
         this.customerRepository = customerRepository;
@@ -215,6 +209,9 @@ public class CreateLoanUseCase {
     @Transactional
     public LoanEntity execute(CreateLoanCommand cmd) {
         Objects.requireNonNull(cmd, "El comando no puede ser nulo");
+        var actor = access.collector(cmd.collectorId());
+        if (!actor.userId().equals(cmd.authorUserId())) throw new SecurityException("El autor debe ser el usuario autenticado.");
+        access.requireOpen(cmd.routeId(), cmd.collectorId(), LocalDate.now());
 
         if (cmd.customerId() == null || cmd.customerId().isBlank()) {
             throw new IllegalArgumentException("Debe seleccionar un cliente.");
@@ -254,6 +251,10 @@ public class CreateLoanUseCase {
         BigDecimal rate = cmd.interestRate() != null ? cmd.interestRate() :
                 interestAmount.divide(cmd.principal(), 4, RoundingMode.HALF_UP);
 
+        if (rate.signum() < 0 || (cmd.interestRate() != null &&
+                new Money(cmd.principal().multiply(BigDecimal.ONE.add(rate))).amount().compareTo(cmd.totalAgreed()) != 0)) {
+            throw new IllegalArgumentException("El total pactado debe coincidir con capital más el interés total del plazo.");
+        }
         List<InstallmentPlanItem> plan = simulatePlan(cmd.totalAgreed(), cmd.installmentCount(), cmd.frequency(), cmd.startDate());
         LocalDate endDate = plan.get(plan.size() - 1).dueDate();
 

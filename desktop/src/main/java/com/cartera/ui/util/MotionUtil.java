@@ -38,8 +38,8 @@ public final class MotionUtil {
     /** Curva estándar para transiciones simétricas. */
     public static final Interpolator EASE_IN_OUT = Interpolator.SPLINE(0.4, 0.0, 0.2, 1.0);
 
-    /** Curva con ligero rebote (follow-through) para confirmaciones táctiles. */
-    public static final Interpolator OVERSHOOT = Interpolator.SPLINE(0.34, 1.56, 0.64, 1.0);
+    /** Curva de retorno táctil; JavaFX exige los cuatro controles dentro de [0,1]. */
+    public static final Interpolator OVERSHOOT = Interpolator.SPLINE(0.34, 1.0, 0.64, 1.0);
 
     private static final String ACTIVE_TRANSITION_KEY = "cartera.motion.activeTransition";
     private static final String TACTILE_INSTALLED_KEY = "cartera.motion.tactileInstalled";

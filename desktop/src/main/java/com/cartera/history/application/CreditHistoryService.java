@@ -189,6 +189,7 @@ public class CreditHistoryService {
             Map<String, LocalDate> paidDateByInstallment = new HashMap<>();
             if (paymentRepository != null && paymentAllocationRepository != null) {
                 Map<String, LocalDate> paymentDates = paymentRepository.findByLoanId(loan.getId()).stream()
+                        .filter(p -> "APLICADO".equalsIgnoreCase(p.getStatus()) || "REGISTRADO".equalsIgnoreCase(p.getStatus()))
                         .filter(p -> p.getCreatedAt() != null && p.getCreatedAt().length() >= 10)
                         .collect(Collectors.toMap(
                                 PaymentEntity::getId,
