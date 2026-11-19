@@ -387,8 +387,190 @@ async function testFbvProductionReconciliationScenario() {
   assertEqual(reopened.totalAdministrativeCapital, 5881000, 'Admin tras reabrir invertido');
 }
 
+async function testCapitalInjectionWithBaseWordSurvivesReloadAndAutoRecovers() {
+  const today = '2026-11-19';
+  const routeId = 'route-1';
+  const collectorId = 'usr-col-1';
+
+  const route: Route = {
+    id: routeId,
+    name: 'Ruta 1',
+    code: 'R-01',
+    collectorId,
+    isActive: true,
+    initialCashBase: 0,
+    targetAdministrative: 0,
+    expectedCustomersCount: 1,
+    createdAt: '2026-11-12',
+  };
+
+  const customer: Customer = {
+    id: 'cust-reload-1',
+    fullName: 'Cliente Recarga',
+    documentNumber: '777888999',
+    phone: '3001110000',
+    address: 'Calle 5',
+    neighborhood: 'Centro',
+    city: 'Barranquilla',
+    references: [],
+    occupation: 'Comerciante',
+    status: 'ACTIVE',
+    routeId,
+    assignedCollectorId: collectorId,
+    createdAt: '2026-11-12',
+    updatedAt: today,
+  };
+
+  const loan: Loan = {
+    id: 'loan-reload-1',
+    loanNumber: '#00150',
+    customerId: customer.id,
+    routeId,
+    collectorId,
+    principal: 5000000,
+    interestRate: 0.1782,
+    interestType: 'FLAT_INITIAL_CAPITAL',
+    interestAmount: 891000,
+    totalAgreed: 5891000,
+    installmentCount: 1,
+    installmentAmount: 5891000,
+    frequency: 'MONTHLY',
+    startDate: '2026-11-12',
+    endDate: '2026-12-12',
+    status: 'ACTIVE',
+    notes: 'Migrado de cartulina física a digital',
+    createdAt: '2026-11-12',
+    updatedAt: today,
+  };
+
+  const installment: Installment = {
+    id: 'inst-reload-1',
+    loanId: loan.id,
+    installmentNumber: 1,
+    dueDate: '2026-11-18',
+    expectedAmount: 5891000,
+    paidAmount: 0,
+    pendingAmount: 5891000,
+    status: 'VENCIDA',
+  };
+
+  // Caso 1: CAPITAL_INJECTION cuya descripción contiene la palabra "Base" NO debe purgarse al recargar,
+  // mientras que una "Base sugerida" legacy v1 (ADJUSTMENT) SÍ debe purgarse.
+  await localStore.restoreFullBackupJSON(
+    JSON.stringify({
+      routes: [route],
+      customers: [customer],
+      loans: [loan],
+      installments: [installment],
+      payments: [],
+      renewals: [],
+      settlements: [],
+      promises: [],
+      cashMovements: [
+        {
+          id: 'csm-inj-base-test',
+          routeId,
+          collectorId: 'usr-adm-1',
+          type: 'INCOME',
+          category: 'CAPITAL_INJECTION',
+          amount: 210000,
+          description: 'Conciliación de Base inicial en caja de ruta',
+          createdAt: '2026-11-12T00:00:00',
+        },
+        {
+          id: 'csm-legacy-v1-base-sugerida',
+          routeId,
+          collectorId: 'usr-adm-1',
+          type: 'INCOME',
+          category: 'ADJUSTMENT',
+          amount: 200000,
+          description: 'Base sugerida inicial v1',
+          createdAt: '2026-11-01T00:00:00',
+        },
+      ],
+      nonPaymentVisits: [],
+      auditLogs: [],
+      officeConfig: { ...DEFAULT_OFFICE_CONFIG, paperworkFeeEnabled: false },
+    })
+  );
+
+  // Simular recarga completa en frío (Forzar Actualización)
+  (localStore as any).isInitialized = false;
+  await localStore.initialize();
+
+  const afterColdReload = localStore.getDailyRouteMetrics(today, routeId);
+  assertEqual(afterColdReload.activeCapitalInStreet, 5891000, 'Cartera intacta tras recarga en frío');
+  assertEqual(afterColdReload.cashAvailableInHand, 210000, 'CAPITAL_INJECTION con palabra Base sobrevive a recarga en frío');
+  assertEqual(afterColdReload.totalAdministrativeCapital, 6101000, 'Patrimonio intacto tras recarga en frío');
+  if (localStore.getCashMovements().some((cm) => cm.id === 'csm-legacy-v1-base-sugerida')) {
+    throw new Error('La Base sugerida legacy v1 ($200.000 ADJUSTMENT) debía purgarse');
+  }
+
+  // Caso 2: Simular el iPhone afectado por v1.2.16 (sin csm-inj-conciliacion-2026-11-19 en cashMovements,
+  // pero con audit-conciliacion-2026-11-19 intacto en auditLogs y un cobro nuevo de $5.000 ya registrado).
+  await localStore.restoreFullBackupJSON(
+    JSON.stringify({
+      routes: [route],
+      customers: [customer],
+      loans: [loan],
+      installments: [installment],
+      payments: [],
+      renewals: [],
+      settlements: [],
+      promises: [],
+      cashMovements: [],
+      nonPaymentVisits: [],
+      auditLogs: [
+        {
+          id: 'audit-conciliacion-2026-11-19',
+          userId: 'usr-adm-1',
+          timestamp: '2026-11-19T19:35:25.445Z',
+          entity: 'CASH_MOVEMENT',
+          entityId: 'csm-inj-conciliacion-2026-11-19',
+          action: 'CREATE',
+          newValue: '{"capitalInjection":210000}',
+          reason: 'Conciliación auditada del 2026-11-19',
+        },
+      ],
+      officeConfig: { ...DEFAULT_OFFICE_CONFIG, paperworkFeeEnabled: false },
+    })
+  );
+
+  // Cobro de $5.000 hecho por el usuario en la calle entre las 5:12 y las 5:31 PM
+  await localStore.recordPayment({
+    loanId: loan.id,
+    amountReceived: 5000,
+    paymentMethod: 'CASH',
+    collectorId,
+    todayStr: today,
+    idempotencyKey: 'pay-5k-street',
+  });
+
+  const beforeHeal = localStore.getDailyRouteMetrics(today, routeId);
+  assertEqual(beforeHeal.cashAvailableInHand, 5000, 'Antes de v1.2.17: Base caída a $5.000');
+  assertEqual(beforeHeal.totalAdministrativeCapital, 5891000, 'Antes de v1.2.17: Patrimonio caído a $5.891.000');
+
+  // Recarga en v1.2.17: debe auto-recuperar exactamente los $210.000 sin tocar el cobro de $5.000
+  (localStore as any).isInitialized = false;
+  await localStore.initialize();
+
+  const afterHeal = localStore.getDailyRouteMetrics(today, routeId);
+  assertEqual(afterHeal.activeCapitalInStreet, 5886000, 'Cartera tras auto-recuperación ($5.891k - $5k)');
+  assertEqual(afterHeal.cashAvailableInHand, 215000, 'Base auto-recuperada ($210k + $5k = $215k)');
+  assertEqual(afterHeal.totalAdministrativeCapital, 6101000, 'Patrimonio auto-recuperado ($6.101.000)');
+  assertEqual(afterHeal.collectedToday, 5000, 'Cobro nuevo de $5.000 preservado intacto');
+
+  // Segunda recarga en frío: idempotencia total (NO duplica los $210.000)
+  (localStore as any).isInitialized = false;
+  await localStore.initialize();
+  const afterSecondReload = localStore.getDailyRouteMetrics(today, routeId);
+  assertEqual(afterSecondReload.cashAvailableInHand, 215000, 'Segunda recarga idempotente (sin duplicar $210k)');
+  assertEqual(afterSecondReload.totalAdministrativeCapital, 6101000, 'Patrimonio idempotente tras segunda recarga');
+}
+
 export const backupAndNewLoanTests = testFullBackupRoundTripWithRoutesAndBase()
   .then(() => testFbvProductionReconciliationScenario())
+  .then(() => testCapitalInjectionWithBaseWordSurvivesReloadAndAutoRecovers())
   .then(() => {
-    console.log('✅ Test de respaldo completo (rutas/base) y desembolsos con recaudo superado al 100%');
+    console.log('✅ Test de respaldo completo, desembolsos con recaudo y persistencia/recuperación de Base tras recarga superado al 100%');
   });

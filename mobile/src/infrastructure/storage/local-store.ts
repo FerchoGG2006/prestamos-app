@@ -448,21 +448,50 @@ class LocalStore {
         // =========================================================================
         // MIGRACIÓN Y AUTO-SANACIÓN V1 -> V2 (Teléfonos con versión anterior)
         // =========================================================================
-        // 1. Purgar movimientos obsoletos de 'Base sugerida' ($200.000) heredados de v1
-        const legacyBaseMovs = this.cashMovements.filter((cm: any) =>
-          cm.description?.includes('Base') ||
-          cm.notes?.includes('Base') ||
-          (cm.category === 'ADJUSTMENT' && cm.amount === 200000) ||
-          (cm.type === 'INCOME' && cm.amount === 200000 && cm.description?.toLowerCase().includes('base'))
-        );
-        if (legacyBaseMovs.length > 0) {
-          this.cashMovements = this.cashMovements.filter((cm: any) =>
-            !cm.description?.includes('Base') &&
-            !cm.notes?.includes('Base') &&
-            !(cm.category === 'ADJUSTMENT' && cm.amount === 200000) &&
-            !(cm.type === 'INCOME' && cm.amount === 200000 && cm.description?.toLowerCase().includes('base'))
+        // 1. Purgar únicamente movimientos obsoletos de 'Base sugerida' ($200.000) heredados de v1.
+        // NUNCA tocar inyecciones reales de capital (CAPITAL_INJECTION) ni movimientos válidos que mencionen "Base".
+        const isLegacySuggestedBase = (cm: any): boolean => {
+          if (!cm || cm.category === 'CAPITAL_INJECTION') return false;
+          const desc = typeof cm.description === 'string' ? cm.description.toLowerCase() : '';
+          const notes = typeof cm.notes === 'string' ? cm.notes.toLowerCase() : '';
+          return (
+            desc.includes('base sugerida') ||
+            notes.includes('base sugerida') ||
+            (cm.category === 'ADJUSTMENT' && cm.amount === 200000 && desc.includes('base'))
           );
-          safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
+        };
+        const legacyBaseMovs = this.cashMovements.filter(isLegacySuggestedBase);
+        if (legacyBaseMovs.length > 0) {
+          this.cashMovements = this.cashMovements.filter((cm: any) => !isLegacySuggestedBase(cm));
+          await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
+        }
+
+        // 1b. Auto-recuperación idempotente de conciliación auditada del 2026-11-19 si fue purgada por el filtro v1 anterior
+        const hasConciliationAudit = this.auditLogs.some(
+          (a) =>
+            a.id === 'audit-conciliacion-2026-11-19' &&
+            a.entityId === 'csm-inj-conciliacion-2026-11-19'
+        );
+        const hasConciliationReversal = this.auditLogs.some(
+          (a) =>
+            a.entityId === 'csm-inj-conciliacion-2026-11-19' &&
+            (a.action === 'DELETE' || a.action === 'ANNUL')
+        );
+        const hasConciliationMov = this.cashMovements.some(
+          (cm) => cm.id === 'csm-inj-conciliacion-2026-11-19'
+        );
+        if (hasConciliationAudit && !hasConciliationReversal && !hasConciliationMov) {
+          this.cashMovements.push({
+            id: 'csm-inj-conciliacion-2026-11-19',
+            routeId: 'route-1',
+            collectorId: 'usr-adm-1',
+            type: 'INCOME',
+            category: 'CAPITAL_INJECTION',
+            amount: 210000,
+            description: 'Conciliación de capital inicial en caja de ruta (confirmada 2026-11-19)',
+            createdAt: '2026-11-12T00:00:00',
+          });
+          await safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
         }
 
         const hasDemoMovs = this.cashMovements.some((cm) => cm.id === 'cm-001' || cm.routeId === 'route-centro' || cm.routeId === 'route-sur');

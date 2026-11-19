@@ -1,9 +1,9 @@
 import * as Updates from 'expo-updates';
 import { Alert, Platform, Linking } from 'react-native';
 
-export const CURRENT_APP_VERSION = '1.2.16';
-export const CURRENT_VERSION_CODE = 18;
-export const WEB_BUILD_LABEL = 'web 1.2.16 (2026-11-19)';
+export const CURRENT_APP_VERSION = '1.2.17';
+export const CURRENT_VERSION_CODE = 19;
+export const WEB_BUILD_LABEL = 'web 1.2.17 (2026-11-19)';
 
 export async function forceReloadWebBundle(): Promise<void> {
   if (Platform.OS !== 'web' || typeof window === 'undefined') {
