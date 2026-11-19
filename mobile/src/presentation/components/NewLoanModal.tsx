@@ -364,7 +364,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             'Cartulina del Taco Pasada a Digital',
             `Crédito ${res.loan.loanNumber} digitalizado con éxito.\n\n` +
             `• Aporte al Administrativo: ${formatCOP(res.loan.totalAgreed)}\n` +
-            `• Recaudado en el taco (entra a Base): ${paidInstallmentNums.length} de ${installmentCount} (${formatCOP(paidTotal)})\n` +
+            `• Cobrado en el taco (entra a Base): ${paidInstallmentNums.length} de ${installmentCount} (${formatCOP(paidTotal)})\n` +
             `• Saldo pendiente (entra a Cartera en Calle): ${formatCOP(pendingTotal)}\n` +
             `• Cartulina / Papelería registrada: ${isPaperworkEnabled ? formatCOP(paperwork) : '$0 (Desactivada)'}`
           );
@@ -1168,7 +1168,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   <>
                     <View style={styles.calcRow}>
                       <Text style={[styles.calcLabel, { fontWeight: '700', color: '#1D4ED8' }]}>
-                        Recaudado en el Taco (entra a Base):
+                        Cobrado en el Taco (entra a Base):
                       </Text>
                       <Text style={[styles.calcVal, { color: '#1D4ED8' }]}>
                         + {formatCOP(summary.installmentAmount * paidInstallmentNums.length)}

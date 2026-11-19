@@ -412,7 +412,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
         : '',
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
       '',
-      '*1. COBRADO HOY (RECAUDO)*',
+      '*1. COBRADO HOY*',
       `• *Total Cobrado:* ${formatCOP(actualCol)}`,
       `  - Efectivo en caja: ${formatCOP(cashCol)}`,
       `  - Digital / Nequi: ${formatCOP(digCol)}`,

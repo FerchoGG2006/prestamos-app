@@ -4030,7 +4030,7 @@ class LocalStore {
     lines.push(['Capital Principal Colocado (Activos)', totalPrincipalPlaced, 'Suma de capitales base'].join(sep));
     lines.push(['Utilidad Proyectada por Intereses (20%)', totalExpectedInterest, 'Intereses sobre creditos activos'].join(sep));
     lines.push(['Ingresos por Papeleria', totalPaperworkGenerated, 'Papeleria descontada en desembolsos'].join(sep));
-    lines.push(['Pleno Recaudado Hoy (Total)', metrics.collectedToday, `Efectivo: ${metrics.collectedCashToday} | Digital: ${metrics.collectedDigitalToday}`].join(sep));
+    lines.push(['Cobrado Hoy (Pleno Total)', metrics.collectedToday, `Efectivo: ${metrics.collectedCashToday} | Digital: ${metrics.collectedDigitalToday}`].join(sep));
     lines.push(['Salidas / Desembolsos Hoy', metrics.disbursedToday, `${metrics.salidasCount} operaciones hoy`].join(sep));
     lines.push(['Gastos Operativos de Ruta Hoy', metrics.expensesToday, 'Gastos registrados en jornada'].join(sep));
     lines.push(['Recaudo Retirado a Oficina Hoy', metrics.recaudoRetiradoToday, 'Transferencia de base a oficina'].join(sep));
@@ -4086,7 +4086,7 @@ class LocalStore {
     lines.push('');
 
     // SECCIÓN 3: HISTORIAL DE ABONOS Y REVERSOS AUDITADOS
-    lines.push('3. HISTORIAL DE ABONOS Y RECAUDO');
+    lines.push('3. HISTORIAL DE ABONOS Y COBROS');
     lines.push(
       [
         'ID Abono',

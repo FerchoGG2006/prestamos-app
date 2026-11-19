@@ -820,14 +820,14 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         <View style={styles.resumenGrid}>
           {/* Fila 1 */}
           <View style={styles.resumenGridRow}>
-            {/* Tile 1: Recaudado hoy */}
+            {/* Tile 1: Cobrado hoy */}
             <View style={[styles.resumenTile, styles.resumenTileGreen]}>
               <View style={styles.resumenTileHeader}>
                 <View style={styles.resumenTileIconGreen}>
                   <Wallet size={14} color="#16A34A" />
                 </View>
                 <Text style={styles.resumenTileLabel} numberOfLines={1}>
-                  {summaryPeriodFilter === 'TODAY' ? 'Recaudado hoy' : `Recaudado (${summaryFilterLabel})`}
+                  {summaryPeriodFilter === 'TODAY' ? 'Cobrado hoy' : `Cobrado (${summaryFilterLabel})`}
                 </Text>
               </View>
               <Text
@@ -2093,10 +2093,10 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
 
             <View style={styles.filterModalOptionsList}>
               {[
-                { key: 'TODAY', label: 'Hoy', desc: 'Recaudo y balance de la jornada de hoy' },
-                { key: 'YESTERDAY', label: 'Ayer', desc: 'Recaudo consolidado del día anterior' },
-                { key: 'WEEK', label: 'Últimos 7 días', desc: 'Recaudo acumulado en la última semana' },
-                { key: 'MONTH', label: 'Este mes', desc: 'Todo el recaudo del mes en curso' },
+                { key: 'TODAY', label: 'Hoy', desc: 'Cobros y balance de la jornada de hoy' },
+                { key: 'YESTERDAY', label: 'Ayer', desc: 'Cobros consolidados del día anterior' },
+                { key: 'WEEK', label: 'Últimos 7 días', desc: 'Cobros acumulados en la última semana' },
+                { key: 'MONTH', label: 'Este mes', desc: 'Todos los cobros del mes en curso' },
                 { key: 'ALL', label: 'Histórico consolidado', desc: 'Total acumulado de toda la cartera' },
               ].map((opt) => {
                 const isSelected = summaryPeriodFilter === opt.key;
