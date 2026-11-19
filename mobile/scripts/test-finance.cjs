@@ -35,4 +35,5 @@ require(path.join(__dirname, '../src/core/domain/__tests__/calculator.test.ts'))
 (async () => {
   await require(path.join(__dirname, '../src/infrastructure/storage/__tests__/renewal-metrics.test.ts')).renewalMetricsTests;
   await require(path.join(__dirname, '../src/infrastructure/storage/__tests__/renewal-matrix.test.ts')).renewalMatrixTests;
+  await require(path.join(__dirname, '../src/infrastructure/storage/__tests__/backup-and-newloan.test.ts')).backupAndNewLoanTests;
 })().catch(error => { console.error(error); process.exitCode = 1; });

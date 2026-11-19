@@ -137,6 +137,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
     key: LoanFrequency;
     label: string;
     unitLabel: string;
+    singularUnit: string;
     defaultCount: number;
     quickCounts: number[];
   }> = [
@@ -144,6 +145,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
       key: 'DAILY',
       label: 'Diario',
       unitLabel: 'días',
+      singularUnit: 'día',
       defaultCount: 30,
       quickCounts: [20, 24, 30, 36],
     },
@@ -151,6 +153,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
       key: 'WEEKLY',
       label: 'Semanal',
       unitLabel: 'semanas',
+      singularUnit: 'semana',
       defaultCount: 4,
       quickCounts: [4, 6, 8, 10],
     },
@@ -158,8 +161,17 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
       key: 'BIWEEKLY',
       label: 'Quincenal',
       unitLabel: 'quincenas',
+      singularUnit: 'quincena',
       defaultCount: 2,
       quickCounts: [2, 4, 6],
+    },
+    {
+      key: 'MONTHLY',
+      label: 'Mensual',
+      unitLabel: 'meses',
+      singularUnit: 'mes',
+      defaultCount: 1,
+      quickCounts: [1, 2, 3, 6],
     },
   ];
 
@@ -387,7 +399,12 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
               </View>
 
               {/* Selector de Modalidad */}
-              <View style={styles.freqTabsRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginBottom: 10 }}
+                contentContainerStyle={styles.freqTabsRow}
+              >
                 {freqOptions.map((f) => {
                   const isSelected = frequency === f.key;
                   return (
@@ -408,7 +425,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
 
               {/* Selector de Tiempo / Cuotas */}
               <View style={styles.countSelectorContainer}>
@@ -530,7 +547,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                           { fontWeight: '800', color: COLORS.primary },
                         ]}
                       >
-                        {formatCOP(newSummary.installmentAmount)} / {currentFreqConfig.unitLabel.replace(/s$/, '')}
+                        {formatCOP(newSummary.installmentAmount)} / {currentFreqConfig.singularUnit}
                       </Text>
                     </View>
                   </>
@@ -791,16 +808,17 @@ const styles = StyleSheet.create({
   freqTabsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 10,
+    paddingRight: 8,
   },
   freqTabBtn: {
-    flex: 1,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: COLORS.inputBorder,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   freqTabBtnActive: {
     backgroundColor: COLORS.surfaceLavender,

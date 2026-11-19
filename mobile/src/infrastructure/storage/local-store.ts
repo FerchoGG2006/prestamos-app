@@ -1583,15 +1583,75 @@ class LocalStore {
       }
     });
 
-    // 3. Reconstrucción del capital fijo desembolsado de la base inicial:
-    // Se calcula usando únicamente los saldos base de las cartulinas migradas
-    // para que ningún abono registrado en la app altere retroactivamente el desembolso histórico.
-    const chronologicalLoans = [...validLoans].reverse();
+    // 3. Reconstrucción cronológica del capital desembolsado en préstamos regulares:
+    // Incluye los cobros en efectivo realizados en la app ANTES de cada desembolso nuevo
+    // (evitando que un préstamo financiado con recaudo infle la Base y el Administrativo),
+    // sin permitir jamás que cobros POSTERIORES sean absorbidos retroactivamente.
+    const toComparableTimestamp = (raw: string | undefined, defaultTime: string): string => {
+      if (!raw) return `0000-00-00T${defaultTime}`;
+      const trimmed = raw.trim();
+      const match = trimmed.match(
+        /^(\d{4}-\d{2}-\d{2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*([ap])\.?\s*m\.?)?)?/i
+      );
+      if (!match) return `0000-00-00T${defaultTime}`;
+      const datePart = match[1];
+      if (!match[2]) return `${datePart}T${defaultTime}`;
+      let hour = parseInt(match[2], 10);
+      const meridiem = match[5]?.toLowerCase();
+      if (meridiem === 'p' && hour < 12) hour += 12;
+      else if (meridiem === 'a' && hour === 12) hour = 0;
+      else if (hour === 24) hour = 0;
+      const hh = String(hour).padStart(2, '0');
+      const mm = match[3].padStart(2, '0');
+      const ss = (match[4] || '00').padStart(2, '0');
+      return `${datePart}T${hh}:${mm}:${ss}`;
+    };
+
+    const disbursementTsByLoanId = new Map<string, string>();
+    scopedCashMovements.forEach((cm) => {
+      if (cm.type === 'EXPENSE' && cm.category === 'LOAN_DISBURSEMENT' && cm.referenceId) {
+        const ts = toComparableTimestamp(cm.createdAt, '23:59:59');
+        const prev = disbursementTsByLoanId.get(cm.referenceId);
+        if (!prev || ts < prev) {
+          disbursementTsByLoanId.set(cm.referenceId, ts);
+        }
+      }
+    });
+
+    const sortedInAppCashPayments = scopedPayments
+      .filter((p) => p.status === 'COMPLETED' && p.paymentMethod === 'CASH')
+      .map((p) => ({
+        loanId: p.loanId,
+        amount: p.amountReceived,
+        ts: toComparableTimestamp(p.createdAt, '00:00:00'),
+      }))
+      .sort((a, b) => a.ts.localeCompare(b.ts));
+
+    const chronologicalLoans = [...validLoans]
+      .reverse()
+      .map((l, orderIdx) => ({
+        loan: l,
+        orderIdx,
+        isMigrated: isMigratedCardLoan(l),
+        ts:
+          disbursementTsByLoanId.get(l.id) ||
+          toComparableTimestamp(l.createdAt, isMigratedCardLoan(l) ? '00:00:00' : '23:59:59'),
+      }))
+      .sort((a, b) => {
+        const dateCmp = a.ts.slice(0, 10).localeCompare(b.ts.slice(0, 10));
+        if (dateCmp !== 0) return dateCmp;
+        if (a.isMigrated !== b.isMigrated) return a.isMigrated ? -1 : 1;
+        const tsCmp = a.ts.localeCompare(b.ts);
+        if (tsCmp !== 0) return tsCmp;
+        return a.orderIdx - b.orderIdx;
+      });
+
     let runningBaselineCash = manualBaseCapital + totalCapitalInjectedAllTime;
     let fixedHistoricalCapitalDisbursed = 0;
+    const consumedPayments = new Array<boolean>(sortedInAppCashPayments.length).fill(false);
 
     for (let idx = 0; idx < chronologicalLoans.length; idx++) {
-      const l = chronologicalLoans[idx];
+      const { loan: l, isMigrated, ts: loanTs } = chronologicalLoans[idx];
       const loanInsts = this.getInstallmentsByLoanId(l.id);
       const currentPending =
         l.status === 'ACTIVE' || l.status === 'DEFAULTED'
@@ -1612,13 +1672,23 @@ class LocalStore {
       const inAppOnThisLoan = inAppPaymentsByLoan.get(l.id) || 0;
       const initialCollected = Math.max(0, totalCollected - inAppOnThisLoan);
 
-      if (isMigratedCardLoan(l)) {
+      if (isMigrated) {
         runningBaselineCash += initialCollected;
       } else if (l.previousLoanId) {
         // Las renovaciones se descuentan de forma aislada fuera del tope histórico
         // para garantizar que Base baje exactamente (newPrincipal - previousBalanceDeducted)
         runningBaselineCash += initialCollected;
       } else {
+        // Incorporar al efectivo disponible los cobros en efectivo realizados en la app
+        // antes o en el momento de otorgar este crédito (excluyendo abonos del mismo crédito)
+        for (let pIdx = 0; pIdx < sortedInAppCashPayments.length; pIdx++) {
+          const pay = sortedInAppCashPayments[pIdx];
+          if (pay.ts > loanTs) break;
+          if (consumedPayments[pIdx] || pay.loanId === l.id) continue;
+          runningBaselineCash += pay.amount;
+          consumedPayments[pIdx] = true;
+        }
+
         const deducted = Math.min(Math.max(0, runningBaselineCash), l.principal);
         fixedHistoricalCapitalDisbursed += deducted;
         runningBaselineCash -= deducted;
@@ -3112,12 +3182,16 @@ class LocalStore {
 
   /**
    * Exporta la base de datos completa de la cartera a formato JSON estructurado
+   * (incluyendo rutas con initialCashBase, usuarios y sesión activa para fidelidad 100%).
    */
   public exportFullBackupJSON(): string {
     const backup = {
-      version: '1.0',
+      version: '1.1',
       exportedAt: new Date().toISOString(),
       companyName: this.officeConfig.companyName,
+      users: this.users,
+      routes: this.routes,
+      activeSession: this.activeSession,
       customers: this.customers,
       loans: this.loans,
       installments: this.installments,
@@ -3147,6 +3221,9 @@ class LocalStore {
       throw new Error('El respaldo JSON está vacío o no es un objeto válido.');
     }
 
+    if (Array.isArray(data.users) && data.users.length > 0) this.users = data.users;
+    if (Array.isArray(data.routes) && data.routes.length > 0) this.routes = data.routes;
+    if (data.activeSession && typeof data.activeSession === 'object') this.activeSession = data.activeSession;
     if (Array.isArray(data.customers)) this.customers = data.customers;
     if (Array.isArray(data.loans)) this.loans = data.loans;
     if (Array.isArray(data.installments)) this.installments = data.installments;
@@ -3160,6 +3237,9 @@ class LocalStore {
     if (data.officeConfig && typeof data.officeConfig === 'object') this.officeConfig = data.officeConfig;
 
     await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
+      safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession)),
       safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
       safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
       safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),

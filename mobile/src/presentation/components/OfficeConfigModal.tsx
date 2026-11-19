@@ -551,6 +551,80 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
     }
   };
 
+  const handleCopyBackup = async () => {
+    try {
+      const json = localStore.exportFullBackupJSON();
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(json);
+        window.alert(
+          'Respaldo JSON completo copiado al portapapeles (incluye rutas, base inicial, clientes, créditos y cobros).'
+        );
+      } else {
+        setRestoreJsonInput(json);
+        await Share.share({
+          title: `cartera_respaldo_${getLocalTodayStr()}.json`,
+          message: json,
+        });
+      }
+    } catch (err: any) {
+      const json = localStore.exportFullBackupJSON();
+      setRestoreJsonInput(json);
+      if (Platform.OS === 'web') {
+        window.alert(
+          'El navegador bloqueó el portapapeles automático. El respaldo quedó cargado abajo en el cuadro de texto para copiarlo.'
+        );
+      } else {
+        Alert.alert('Respaldo listo', 'El respaldo quedó disponible para compartir o copiar.');
+      }
+    }
+  };
+
+  const handleRestoreFromFileWeb = () => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async (event: any) => {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        let parsed: any;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          window.alert('El archivo seleccionado no es un JSON válido.');
+          return;
+        }
+        const custCount = Array.isArray(parsed?.customers) ? parsed.customers.length : 0;
+        const loanCount = Array.isArray(parsed?.loans) ? parsed.loans.length : 0;
+        const routeCount = Array.isArray(parsed?.routes) ? parsed.routes.length : 0;
+        const confirmed = window.confirm(
+          `¿Restaurar el archivo "${file.name}"?\n\n` +
+            `• Clientes: ${custCount}\n` +
+            `• Créditos: ${loanCount}\n` +
+            `• Rutas incluidas: ${routeCount}\n\n` +
+            'Se reemplazarán los datos locales actuales de este dispositivo por los del respaldo.'
+        );
+        if (!confirmed) return;
+
+        setIsRestoring(true);
+        const res = await localStore.restoreFullBackupJSON(text);
+        window.alert(
+          `Respaldo restaurado con éxito (${res.customersCount} clientes, ${res.loansCount} créditos).`
+        );
+        setRestoreJsonInput('');
+        onSuccess();
+        onClose();
+      } catch (err: any) {
+        window.alert(err?.message || 'Error al restaurar el archivo JSON.');
+      } finally {
+        setIsRestoring(false);
+      }
+    };
+    input.click();
+  };
+
   const handleRestoreBackup = async () => {
     if (!restoreJsonInput.trim()) {
       if (Platform.OS === 'web') window.alert('Pegue el texto JSON del respaldo.');
@@ -1620,7 +1694,21 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                 >
                   <Download size={18} color="#ffffff" style={{ marginRight: 8 }} />
                   <Text style={styles.exportBackupBtnText}>
-                    Descargar Copia de Seguridad (JSON)
+                    Descargar Copia de Seguridad (.json)
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.exportBackupBtn,
+                    { backgroundColor: '#1E3A8A', marginTop: 10 },
+                  ]}
+                  activeOpacity={0.8}
+                  onPress={handleCopyBackup}
+                >
+                  <FileText size={18} color="#ffffff" style={{ marginRight: 8 }} />
+                  <Text style={styles.exportBackupBtnText}>
+                    Copiar Respaldo JSON Completo
                   </Text>
                 </TouchableOpacity>
 
@@ -1742,8 +1830,26 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                 {/* Sección Restaurar */}
                 <Text style={styles.restoreSectionTitle}>Restaurar Copia de Seguridad</Text>
                 <Text style={styles.restoreSectionSub}>
-                  Pegue el contenido JSON del archivo de respaldo a continuación para reestablecer la cartera:
+                  Cargue el archivo .json descargado desde otro dispositivo (ej. PC → iPhone) o pegue el contenido JSON:
                 </Text>
+
+                {Platform.OS === 'web' && (
+                  <TouchableOpacity
+                    style={[
+                      styles.exportBackupBtn,
+                      { backgroundColor: '#0F766E', marginBottom: 12 },
+                      isRestoring && { opacity: 0.6 },
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={handleRestoreFromFileWeb}
+                    disabled={isRestoring}
+                  >
+                    <Upload size={18} color="#ffffff" style={{ marginRight: 8 }} />
+                    <Text style={styles.exportBackupBtnText}>
+                      {isRestoring ? 'Restaurando...' : 'Cargar Archivo de Respaldo (.json)'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 <TextInput
                   style={styles.restoreTextInput}
