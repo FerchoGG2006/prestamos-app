@@ -46,6 +46,8 @@ import java.util.UUID;
 public class ConfigurationView extends VBox {
     private com.cartera.infrastructure.backup.OfficeRecoveryService recovery;
     public void setRecoveryService(com.cartera.infrastructure.backup.OfficeRecoveryService service){recovery=service;}
+    private com.cartera.infrastructure.licensing.OfficeLicensingService licensingService;
+    public void setOfficeLicensingService(com.cartera.infrastructure.licensing.OfficeLicensingService service){licensingService=service;}
 
     private final SystemSettingRepository settingRepository;
     private final AppUserRepository userRepository;
@@ -292,7 +294,14 @@ public class ConfigurationView extends VBox {
         btnOpenFolder.setOnAction(e -> openDbFolder());
 
         Button btnRecovery=new Button("Recuperar oficina / adjuntos");btnRecovery.setOnAction(e->{if(recovery!=null)new RecoveryDialog(ownerStage,recovery).showAndWait();});
-        btns.getChildren().addAll(btnInstant, btnExport, btnOpenFolder,btnRecovery);
+        Button btnVendor = new Button("Panel Comercial (Oficinas y Licencias)");
+        btnVendor.getStyleClass().add("btn-secondary");
+        btnVendor.setOnAction(e -> {
+            if (licensingService != null) {
+                new VendorLicensingDialog(ownerStage, licensingService).show();
+            }
+        });
+        btns.getChildren().addAll(btnInstant, btnExport, btnOpenFolder, btnRecovery, btnVendor);
 
         card.getChildren().addAll(title, desc, lblBackupCounter, btns, lblBackupFeedback);
         return card;

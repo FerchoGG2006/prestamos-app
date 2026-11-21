@@ -27,7 +27,7 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class OfficeRecoveryService {
 
-    private static final int MAX_SUPPORTED_SCHEMA_VERSION = 3;
+    private static final int MAX_SUPPORTED_SCHEMA_VERSION = 4;
     private static final long MAX_UNCOMPRESSED_BYTES = 512L * 1024 * 1024;
     private static final int MAX_ZIP_ENTRIES = 10_000;
 

@@ -315,7 +315,7 @@ public class AuthService {
     private String determineRole(AppUserEntity user) {
         String id = user.getId() != null ? user.getId().toLowerCase() : "";
         String username = user.getUsername() != null ? user.getUsername().toLowerCase() : "";
-        if (id.startsWith("usr-admin") || "admin".equals(username) || "administrador".equals(username)) {
+        if (id.startsWith("usr-adm") || username.startsWith("admin") || "administrador".equals(username)) {
             return "ADMIN";
         }
         if (id.startsWith("usr-sup") || username.contains("superv")) {

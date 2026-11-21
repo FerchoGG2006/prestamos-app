@@ -2,6 +2,8 @@ package com.cartera.infrastructure.security;
 
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
@@ -33,15 +35,31 @@ public final class PasswordHasher {
     }
 
     /**
-     * Verifica si la contraseña en texto plano coincide con el hash almacenado en formato PBKDF2 (saltHex$hashHex).
-     * Rechaza cualquier cadena en texto plano o sin estructura criptográfica válida.
+     * Verifica una contraseña contra el formato PBKDF2 de escritorio (saltHex$hashHex)
+     * o el formato SHA-256 con sal de la app móvil/web (sha256$salt$hash).
      */
     public static boolean verify(String password, String storedHash) {
         if (password == null || storedHash == null || !storedHash.contains("$")) {
             return false;
         }
 
-        String[] parts = storedHash.split("\\$");
+        String trimmedStored = storedHash.trim();
+        if (trimmedStored.startsWith("sha256$")) {
+            String[] parts = trimmedStored.split("\\$");
+            if (parts.length == 3 && !parts[1].isBlank() && !parts[2].isBlank()) {
+                try {
+                    MessageDigest md = MessageDigest.getInstance("SHA-256");
+                    byte[] digest = md.digest((parts[1] + ":" + password.trim()).getBytes(StandardCharsets.UTF_8));
+                    byte[] expected = HexFormat.of().parseHex(parts[2]);
+                    return constantTimeEquals(expected, digest);
+                } catch (Exception e) {
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        String[] parts = trimmedStored.split("\\$");
         if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
             return false;
         }

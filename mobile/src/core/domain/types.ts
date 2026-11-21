@@ -397,5 +397,11 @@ export interface OfficeCompanyConfig {
   autoCloudSyncEnabled?: boolean;   // Sincronización automática en segundo plano cuando hay conexión
   lastSyncedAt?: string;            // Fecha/hora ISO de la última sincronización exitosa
   isSetupCompleted?: boolean;       // Indica si la oficina ya creó sus credenciales personalizadas y rutas
+  officeId?: string;                // Identificador único e inmutable de la oficina (ej. off-fbv-001)
+  activationCode?: string;          // Código de activación único con el que se vinculó el equipo
+  licenseStatus?: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED'; // Estado comercial de la licencia
+  licensePlan?: 'LIFETIME' | 'MONTHLY' | 'ANNUAL';    // Modalidad de licencia
+  licenseExpiresAt?: string | null; // Fecha ISO de expiración opcional (null = vitalicia)
+  cloudSessionToken?: string;       // Token de sesión criptográfico emitido tras autenticar (x-kredia-session)
 }
 

@@ -135,28 +135,42 @@ class CloudSyncEngine {
       }
     }
 
-    // 2. Sincronización Multi-Tenant con Nube (Supabase) si está conectado
-    if (supabaseSyncService.isConnected()) {
+    // 2. Sincronización Multi-Tenant con Nube (Supabase) con token de sesión RLS estricto
+    if (supabaseSyncService.isConnected() && cfg.officeId?.trim() && cfg.cloudSessionToken?.trim()) {
       try {
-        const officeId = (cfg.companyName || 'Inversiones FBV')
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-');
-        const formattedOfficeId = `off-${officeId || 'fbv'}`;
-
-        await supabaseSyncService.upsertOffice(formattedOfficeId, cfg);
-        await supabaseSyncService.syncUsersAndRoutes(
-          formattedOfficeId,
-          localStore.getUsers(),
-          localStore.getRoutes()
-        );
-        await supabaseSyncService.pushFullPortfolio(formattedOfficeId, {
-          customers: localStore.getCustomers(),
-          loans: localStore.getLoans(),
-          installments: localStore.getInstallments(),
-          payments: localStore.getPayments(),
-          cashMovements: localStore.getCashMovements(),
-        });
-        anySyncSuccessful = true;
+        supabaseSyncService.setSessionToken(cfg.cloudSessionToken.trim());
+        const immutableOfficeId = cfg.officeId.trim();
+        const licenseCheck = await supabaseSyncService.checkOfficeLicense(immutableOfficeId);
+        if (!licenseCheck.active) {
+          console.warn(
+            `[CloudSyncEngine] Sincronización bloqueada: licencia ${licenseCheck.status} para oficina ${immutableOfficeId}`
+          );
+          await localStore.updateOfficeConfig({
+            licenseStatus: licenseCheck.status,
+            licenseExpiresAt: licenseCheck.expiresAt,
+          });
+        } else {
+          await supabaseSyncService.upsertOffice(immutableOfficeId, cfg);
+          await supabaseSyncService.syncUsersAndRoutes(
+            immutableOfficeId,
+            localStore.getUsers(),
+            localStore.getRoutes()
+          );
+          await supabaseSyncService.pushFullPortfolio(immutableOfficeId, {
+            customers: localStore.getCustomers(),
+            loans: localStore.getLoans(),
+            installments: localStore.getInstallments(),
+            payments: localStore.getPayments(),
+            renewals: localStore.getRenewals(),
+            settlements: localStore.getSettlements(),
+            cashMovements: localStore.getCashMovements(),
+          });
+          const remoteSnapshot = await supabaseSyncService.pullFullPortfolio(immutableOfficeId);
+          if (remoteSnapshot) {
+            await localStore.mergeCloudPortfolio(remoteSnapshot);
+          }
+          anySyncSuccessful = true;
+        }
       } catch (cloudErr) {
         console.warn('[CloudSyncEngine] Cloud sync error:', cloudErr);
       }

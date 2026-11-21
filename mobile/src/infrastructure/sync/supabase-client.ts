@@ -1,14 +1,55 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { verifyPassword } from '../../core/utils/security';
 import {
   Customer,
   Loan,
   Installment,
   Payment,
+  Renewal,
+  DailySettlement,
   CashMovement,
   Route,
   User,
   OfficeCompanyConfig,
 } from '../../core/domain/types';
+
+export interface ImmutableFinancialEventRow {
+  id: string;
+  office_id: string;
+  idempotency_key: string;
+  event_type:
+    | 'OFFICE_OPENING_BALANCE'
+    | 'LOAN_DISBURSED'
+    | 'PAYMENT_RECEIVED'
+    | 'PAYMENT_REVERSED'
+    | 'RENEWAL_EXECUTED'
+    | 'EXPENSE_RECORDED'
+    | 'CAPITAL_INJECTED'
+    | 'OFFICE_WITHDRAWAL'
+    | 'PAPERWORK_WITHDRAWAL'
+    | 'LOAN_CANCELLED'
+    | 'SETTLEMENT_CLOSED'
+    | 'ADJUSTMENT_ENTRY';
+  entity_type: string;
+  entity_id: string;
+  route_id: string | null;
+  customer_id: string | null;
+  actor_user_id: string | null;
+  amount: number;
+  cash_delta: number;
+  digital_delta: number;
+  portfolio_delta: number;
+  payload: Record<string, any>;
+  occurred_at: string;
+}
+
+function toBogotaTimestamptz(localDateOrTs?: string): string {
+  if (!localDateOrTs) return new Date().toISOString();
+  const s = localDateOrTs.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T12:00:00-05:00`;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return `${s.replace(' ', 'T')}-05:00`;
+  return s;
+}
 
 // Configuración por defecto o variables de entorno
 export const DEFAULT_SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
@@ -18,6 +59,7 @@ class SupabaseSyncService {
   private client: SupabaseClient | null = null;
   private currentUrl = '';
   private currentKey = '';
+  private sessionToken = '';
 
   constructor() {
     if (DEFAULT_SUPABASE_URL && DEFAULT_SUPABASE_ANON_KEY) {
@@ -25,10 +67,15 @@ class SupabaseSyncService {
     }
   }
 
-  public initClient(url: string, anonKey: string): boolean {
+  public initClient(url: string, anonKey: string, sessionToken?: string): boolean {
     if (!url || !anonKey) return false;
     try {
+      const tok = sessionToken !== undefined ? sessionToken.trim() : this.sessionToken;
+      this.sessionToken = tok;
       this.client = createClient(url.trim(), anonKey.trim(), {
+        global: {
+          headers: tok ? { 'x-kredia-session': tok } : {},
+        },
         auth: {
           persistSession: false,
           autoRefreshToken: false,
@@ -41,6 +88,19 @@ class SupabaseSyncService {
       console.warn('[SupabaseSyncService] Failed to init client:', e);
       return false;
     }
+  }
+
+  public setSessionToken(token: string): void {
+    const clean = (token || '').trim();
+    if (clean === this.sessionToken && this.client) return;
+    this.sessionToken = clean;
+    if (this.currentUrl && this.currentKey) {
+      this.initClient(this.currentUrl, this.currentKey, clean);
+    }
+  }
+
+  public getSessionToken(): string {
+    return this.sessionToken;
   }
 
   public isConnected(): boolean {
@@ -128,7 +188,7 @@ class SupabaseSyncService {
   }
 
   /**
-   * Sube todos los clientes, créditos, cuotas, cobros y movimientos de caja
+   * Sube todos los clientes, créditos, cuotas, cobros, renovaciones, liquidaciones y movimientos de caja
    */
   public async pushFullPortfolio(
     officeId: string,
@@ -137,6 +197,8 @@ class SupabaseSyncService {
       loans: Loan[];
       installments: Installment[];
       payments: Payment[];
+      renewals?: Renewal[];
+      settlements?: DailySettlement[];
       cashMovements: CashMovement[];
     }
   ): Promise<boolean> {
@@ -163,7 +225,8 @@ class SupabaseSyncService {
           references: c.references || [],
           updated_at: new Date().toISOString(),
         }));
-        await this.client.from('customers').upsert(custRows);
+        const { error } = await this.client.from('customers').upsert(custRows);
+        if (error) throw error;
       }
 
       if (data.loans.length > 0) {
@@ -189,11 +252,11 @@ class SupabaseSyncService {
           notes: l.notes || '',
           updated_at: new Date().toISOString(),
         }));
-        await this.client.from('loans').upsert(loanRows);
+        const { error } = await this.client.from('loans').upsert(loanRows);
+        if (error) throw error;
       }
 
       if (data.installments.length > 0) {
-        // En bloques de 200 cuotas para optimizar red
         const chunkSize = 200;
         for (let i = 0; i < data.installments.length; i += chunkSize) {
           const chunk = data.installments.slice(i, i + chunkSize).map((inst) => ({
@@ -209,7 +272,8 @@ class SupabaseSyncService {
             last_payment_date: inst.lastPaymentDate || null,
             updated_at: new Date().toISOString(),
           }));
-          await this.client.from('installments').upsert(chunk);
+          const { error } = await this.client.from('installments').upsert(chunk);
+          if (error) throw error;
         }
       }
 
@@ -217,6 +281,7 @@ class SupabaseSyncService {
         const payRows = data.payments.map((p) => ({
           id: p.id,
           office_id: officeId,
+          idempotency_key: p.idempotencyKey || p.id,
           loan_id: p.loanId,
           customer_id: p.customerId,
           collector_id: p.collectorId || null,
@@ -225,11 +290,49 @@ class SupabaseSyncService {
           amount_received: p.amountReceived,
           payment_method: p.paymentMethod || 'CASH',
           digital_reference: '',
+          installments_breakdown: p.installmentsBreakdown || [],
           notes: p.notes || '',
           status: p.status || 'COMPLETED',
-          created_at: p.createdAt,
+          local_created_at: p.createdAt,
+          created_at: toBogotaTimestamptz(p.createdAt),
         }));
-        await this.client.from('payments').upsert(payRows);
+        const { error } = await this.client.from('payments').upsert(payRows);
+        if (error) throw error;
+      }
+
+      if (data.renewals && data.renewals.length > 0) {
+        const renRows = data.renewals.map((r) => ({
+          id: r.id,
+          office_id: officeId,
+          customer_id: r.customerId,
+          previous_loan_id: r.previousLoanId,
+          new_loan_id: r.newLoanId,
+          collector_id: r.collectorId || null,
+          new_principal: r.newPrincipal,
+          previous_balance_deducted: r.previousBalanceDeducted || 0,
+          paperwork_deducted: r.paperworkDeducted || 0,
+          actual_cash_disbursed: r.actualCashDisbursed || 0,
+          local_created_at: r.createdAt,
+          created_at: toBogotaTimestamptz(r.createdAt),
+        }));
+        const { error } = await this.client.from('renewals').upsert(renRows);
+        if (error) throw error;
+      }
+
+      if (data.settlements && data.settlements.length > 0) {
+        const setRows = data.settlements.map((s) => ({
+          id: s.id,
+          office_id: officeId,
+          session_id: s.sessionId || null,
+          route_id: s.routeId || null,
+          collector_id: s.collectorId || null,
+          settlement_date: s.date,
+          status: s.status || 'SETTLED',
+          payload: s,
+          settled_at: s.settledAt || new Date().toISOString(),
+        }));
+        const { error } = await this.client.from('daily_settlements').upsert(setRows);
+        if (error) throw error;
       }
 
       if (data.cashMovements.length > 0) {
@@ -244,9 +347,17 @@ class SupabaseSyncService {
           amount: cm.amount,
           reference_id: cm.referenceId || null,
           description: cm.description || '',
-          created_at: cm.createdAt,
+          local_created_at: cm.createdAt,
+          created_at: toBogotaTimestamptz(cm.createdAt),
         }));
-        await this.client.from('cash_movements').upsert(cmRows);
+        const { error } = await this.client.from('cash_movements').upsert(cmRows);
+        if (error) throw error;
+      }
+
+      // Libro Mayor Financiero Inmutable (Append-Only): insertar hechos financieros sin mutar ni duplicar
+      const ledgerEvents = this.buildImmutableEventsFromPortfolio(officeId, data);
+      if (ledgerEvents.length > 0) {
+        await this.appendFinancialEventsBatch(ledgerEvents);
       }
 
       return true;
@@ -254,6 +365,194 @@ class SupabaseSyncService {
       console.warn('[SupabaseSyncService] pushFullPortfolio error:', err);
       return false;
     }
+  }
+
+  /**
+   * Inserta hechos financieros inmutables en public.financial_events (APPEND-ONLY, idempotente).
+   */
+  public async appendFinancialEventsBatch(events: ImmutableFinancialEventRow[]): Promise<boolean> {
+    if (!this.client || events.length === 0) return false;
+    try {
+      const chunkSize = 100;
+      for (let i = 0; i < events.length; i += chunkSize) {
+        const chunk = events.slice(i, i + chunkSize);
+        const { error } = await this.client
+          .from('financial_events')
+          .upsert(chunk, { onConflict: 'office_id,idempotency_key', ignoreDuplicates: true });
+        if (error) throw error;
+      }
+      return true;
+    } catch (err) {
+      console.warn('[SupabaseSyncService] appendFinancialEventsBatch error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Genera hechos inmutables deterministas (estilo Datomic/Nubank) a partir de operaciones financieras.
+   */
+  public buildImmutableEventsFromPortfolio(
+    officeId: string,
+    data: {
+      loans: Loan[];
+      payments: Payment[];
+      renewals?: Renewal[];
+      cashMovements: CashMovement[];
+    }
+  ): ImmutableFinancialEventRow[] {
+    const events: ImmutableFinancialEventRow[] = [];
+    const loanById = new Map(data.loans.map((l) => [l.id, l]));
+    const renewalByNewLoanId = new Map((data.renewals || []).map((r) => [r.newLoanId, r]));
+
+    // 1. Préstamos nuevos (no renovaciones)
+    for (const l of data.loans) {
+      if (l.previousLoanId || l.status === 'CANCELLED') continue;
+      const isMigrated = Boolean(
+        l.notes?.startsWith('Migrado de cartulina física') ||
+        l.notes?.startsWith('Migrado de cartulina fisica')
+      );
+      events.push({
+        id: `evt-loan-${l.id}`,
+        office_id: officeId,
+        idempotency_key: `loan:${l.id}`,
+        event_type: isMigrated ? 'OFFICE_OPENING_BALANCE' : 'LOAN_DISBURSED',
+        entity_type: 'LOAN',
+        entity_id: l.id,
+        route_id: l.routeId || null,
+        customer_id: l.customerId,
+        actor_user_id: l.collectorId || null,
+        amount: l.principal,
+        cash_delta: isMigrated ? 0 : -l.principal,
+        digital_delta: 0,
+        portfolio_delta: l.totalAgreed,
+        payload: { loanNumber: l.loanNumber, principal: l.principal, totalAgreed: l.totalAgreed, migrated: isMigrated },
+        occurred_at: toBogotaTimestamptz(l.startDate || l.createdAt),
+      });
+    }
+
+    // 2. Renovaciones
+    for (const r of data.renewals || []) {
+      const newLoan = loanById.get(r.newLoanId);
+      const newTotal = newLoan ? newLoan.totalAgreed : r.newPrincipal;
+      events.push({
+        id: `evt-ren-${r.id}`,
+        office_id: officeId,
+        idempotency_key: `renewal:${r.id}`,
+        event_type: 'RENEWAL_EXECUTED',
+        entity_type: 'RENEWAL',
+        entity_id: r.id,
+        route_id: newLoan?.routeId || null,
+        customer_id: r.customerId,
+        actor_user_id: r.collectorId || null,
+        amount: r.actualCashDisbursed,
+        cash_delta: -r.actualCashDisbursed,
+        digital_delta: 0,
+        portfolio_delta: newTotal - (r.previousBalanceDeducted || 0),
+        payload: {
+          previousLoanId: r.previousLoanId,
+          newLoanId: r.newLoanId,
+          newPrincipal: r.newPrincipal,
+          previousBalanceDeducted: r.previousBalanceDeducted,
+          paperworkDeducted: r.paperworkDeducted,
+          actualCashDisbursed: r.actualCashDisbursed,
+        },
+        occurred_at: toBogotaTimestamptz(r.createdAt),
+      });
+    }
+
+    // 3. Pagos recibidos y reversos
+    for (const p of data.payments) {
+      const loan = loanById.get(p.loanId);
+      const isDigital = p.paymentMethod === 'NEQUI' || p.paymentMethod === 'TRANSFER' || p.paymentMethod === 'OTHER';
+      const isReversed = p.status === 'REVERSED';
+      events.push({
+        id: `evt-pay-${p.id}`,
+        office_id: officeId,
+        idempotency_key: `payment:${p.idempotencyKey || p.id}`,
+        event_type: 'PAYMENT_RECEIVED',
+        entity_type: 'PAYMENT',
+        entity_id: p.id,
+        route_id: loan?.routeId || null,
+        customer_id: p.customerId,
+        actor_user_id: p.collectorId || null,
+        amount: p.amountReceived,
+        cash_delta: isDigital ? 0 : p.amountReceived,
+        digital_delta: isDigital ? p.amountReceived : 0,
+        portfolio_delta: -p.amountReceived,
+        payload: { loanId: p.loanId, method: p.paymentMethod, breakdownCount: (p.installmentsBreakdown || []).length },
+        occurred_at: toBogotaTimestamptz(p.createdAt),
+      });
+
+      if (isReversed) {
+        events.push({
+          id: `evt-rev-${p.id}`,
+          office_id: officeId,
+          idempotency_key: `payment-reversal:${p.id}`,
+          event_type: 'PAYMENT_REVERSED',
+          entity_type: 'PAYMENT',
+          entity_id: p.id,
+          route_id: loan?.routeId || null,
+          customer_id: p.customerId,
+          actor_user_id: p.collectorId || null,
+          amount: p.amountReceived,
+          cash_delta: isDigital ? 0 : -p.amountReceived,
+          digital_delta: isDigital ? -p.amountReceived : 0,
+          portfolio_delta: p.amountReceived,
+          payload: { reversedPaymentId: p.id, method: p.paymentMethod },
+          occurred_at: toBogotaTimestamptz(p.createdAt),
+        });
+      }
+    }
+
+    // 4. Movimientos operativos de caja (inyecciones, gastos, retiros, ajustes)
+    for (const cm of data.cashMovements) {
+      if (
+        cm.category === 'COLLECTION' ||
+        cm.category === 'LOAN_DISBURSEMENT' ||
+        cm.category === 'RENEWAL_DISBURSEMENT' ||
+        cm.category === 'PAYMENT_REVERSAL'
+      ) {
+        continue;
+      }
+      let eventType: ImmutableFinancialEventRow['event_type'] = 'ADJUSTMENT_ENTRY';
+      let cashDelta = cm.type === 'INCOME' ? cm.amount : -cm.amount;
+      if (cm.category === 'CAPITAL_INJECTION') {
+        eventType = 'CAPITAL_INJECTED';
+        cashDelta = cm.amount;
+      } else if (cm.category === 'EXPENSE') {
+        eventType = 'EXPENSE_RECORDED';
+        cashDelta = -cm.amount;
+      } else if (cm.category === 'RECAUDO_OFICINA') {
+        eventType = 'OFFICE_WITHDRAWAL';
+        cashDelta = -cm.amount;
+      } else if (cm.category === 'RETIRO_PAPELERIA') {
+        eventType = 'PAPERWORK_WITHDRAWAL';
+        cashDelta = -cm.amount;
+      } else if (cm.category === 'LOAN_CANCELLATION') {
+        eventType = 'LOAN_CANCELLED';
+        cashDelta = cm.amount;
+      }
+
+      events.push({
+        id: `evt-cm-${cm.id}`,
+        office_id: officeId,
+        idempotency_key: `cash:${cm.id}`,
+        event_type: eventType,
+        entity_type: 'CASH_MOVEMENT',
+        entity_id: cm.id,
+        route_id: cm.routeId || null,
+        customer_id: null,
+        actor_user_id: cm.collectorId || null,
+        amount: cm.amount,
+        cash_delta: cashDelta,
+        digital_delta: 0,
+        portfolio_delta: 0,
+        payload: { category: cm.category, description: cm.description || '' },
+        occurred_at: toBogotaTimestamptz(cm.createdAt),
+      });
+    }
+
+    return events;
   }
 
   /**
@@ -267,6 +566,8 @@ class SupabaseSyncService {
     loans: Loan[];
     installments: Installment[];
     payments: Payment[];
+    renewals: Renewal[];
+    settlements: DailySettlement[];
     cashMovements: CashMovement[];
   } | null> {
     if (!this.client) return null;
@@ -279,6 +580,8 @@ class SupabaseSyncService {
         { data: loansData },
         { data: instData },
         { data: payData },
+        { data: renData },
+        { data: setData },
         { data: cmData },
       ] = await Promise.all([
         this.client.from('offices').select('*').eq('id', officeId).maybeSingle(),
@@ -288,6 +591,8 @@ class SupabaseSyncService {
         this.client.from('loans').select('*').eq('office_id', officeId),
         this.client.from('installments').select('*').eq('office_id', officeId),
         this.client.from('payments').select('*').eq('office_id', officeId),
+        this.client.from('renewals').select('*').eq('office_id', officeId),
+        this.client.from('daily_settlements').select('*').eq('office_id', officeId),
         this.client.from('cash_movements').select('*').eq('office_id', officeId),
       ]);
 
@@ -356,7 +661,7 @@ class SupabaseSyncService {
           status: l.status,
           previousLoanId: l.previous_loan_id,
           notes: l.notes,
-          createdAt: l.created_at,
+          createdAt: l.start_date || l.created_at,
           updatedAt: l.updated_at,
         })),
         installments: (instData || []).map((i: any): Installment => ({
@@ -379,10 +684,32 @@ class SupabaseSyncService {
           sessionId: p.session_id || '',
           amountReceived: Number(p.amount_received),
           paymentMethod: p.payment_method || 'CASH',
-          installmentsBreakdown: [],
+          installmentsBreakdown: Array.isArray(p.installments_breakdown) ? p.installments_breakdown : [],
           notes: p.notes,
           status: p.status,
-          createdAt: p.created_at,
+          createdAt: p.local_created_at || p.created_at,
+        })),
+        renewals: (renData || []).map((r: any): Renewal => ({
+          id: r.id,
+          customerId: r.customer_id,
+          previousLoanId: r.previous_loan_id,
+          newLoanId: r.new_loan_id,
+          collectorId: r.collector_id || '',
+          newPrincipal: Number(r.new_principal),
+          previousBalanceDeducted: Number(r.previous_balance_deducted) || 0,
+          paperworkDeducted: Number(r.paperwork_deducted) || 0,
+          actualCashDisbursed: Number(r.actual_cash_disbursed) || 0,
+          createdAt: r.local_created_at || r.created_at,
+        })),
+        settlements: (setData || []).map((s: any): DailySettlement => ({
+          ...(s.payload || {}),
+          id: s.id,
+          sessionId: s.session_id || s.payload?.sessionId || '',
+          date: s.settlement_date || s.payload?.date || '',
+          routeId: s.route_id || s.payload?.routeId || '',
+          collectorId: s.collector_id || s.payload?.collectorId || '',
+          status: s.status || s.payload?.status || 'SETTLED',
+          settledAt: s.settled_at || s.payload?.settledAt || '',
         })),
         cashMovements: (cmData || []).map((cm: any) => ({
           id: cm.id,
@@ -394,12 +721,307 @@ class SupabaseSyncService {
           amount: Number(cm.amount),
           referenceId: cm.reference_id,
           description: cm.description,
-          createdAt: cm.created_at,
+          createdAt: cm.local_created_at || cm.created_at,
         })),
       };
     } catch (err) {
       console.warn('[SupabaseSyncService] pullFullPortfolio error:', err);
       return null;
+    }
+  }
+
+  /**
+   * Verifica el estado comercial de la licencia de una oficina
+   */
+  public async checkOfficeLicense(officeId: string): Promise<{
+    active: boolean;
+    status: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+    expiresAt: string | null;
+  }> {
+    if (!this.client || !officeId) {
+      return { active: false, status: 'SUSPENDED', expiresAt: null };
+    }
+    try {
+      const { data, error } = await this.client
+        .from('offices')
+        .select('license_status, license_expires_at')
+        .eq('id', officeId)
+        .maybeSingle();
+
+      if (error || !data) {
+        return { active: false, status: 'SUSPENDED', expiresAt: null };
+      }
+
+      const expiresAt = data.license_expires_at || null;
+      const isExpired = Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
+      const rawStatus = (data.license_status || 'ACTIVE') as 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+      const effectiveStatus = rawStatus === 'ACTIVE' && isExpired ? 'EXPIRED' : rawStatus;
+
+      return {
+        active: effectiveStatus === 'ACTIVE',
+        status: effectiveStatus,
+        expiresAt,
+      };
+    } catch {
+      return { active: true, status: 'ACTIVE', expiresAt: null };
+    }
+  }
+
+  /**
+   * Autentica y vincula automáticamente el dispositivo usando únicamente Usuario y Contraseña
+   * creados previamente por el vendedor/administrador en la nube.
+   */
+  public async loginWithCloudCredentials(
+    username: string,
+    password: string
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    sessionToken?: string;
+    officeId?: string;
+    activationCode?: string;
+    companyName?: string;
+    licenseStatus?: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+    licensePlan?: 'LIFETIME' | 'MONTHLY' | 'ANNUAL';
+    licenseExpiresAt?: string | null;
+    settings?: Partial<OfficeCompanyConfig>;
+    users?: User[];
+    routes?: Route[];
+    portfolio?: {
+      customers: Customer[];
+      loans: Loan[];
+      installments: Installment[];
+      payments: Payment[];
+      renewals?: Renewal[];
+      settlements?: DailySettlement[];
+      cashMovements: CashMovement[];
+    };
+    authenticatedUser?: User;
+  }> {
+    if (!this.client) {
+      return {
+        ok: false,
+        error: 'El servicio en la nube no está configurado. Contacta al administrador del sistema.',
+      };
+    }
+
+    const cleanUser = username.trim().toLowerCase();
+    if (!cleanUser || !password) {
+      return { ok: false, error: 'Ingresa tu usuario y contraseña.' };
+    }
+
+    try {
+      // Autenticación segura en servidor (verifica contraseña PBKDF2 / sha256 y licencia sin exponer hashes)
+      const { data: authData, error: rpcErr } = await this.client.rpc('authenticate_kredia_user', {
+        p_username: cleanUser,
+        p_password: password,
+      });
+
+      if (rpcErr) throw rpcErr;
+      if (!authData || !authData.ok || !authData.session_token || !authData.office || !authData.user) {
+        return {
+          ok: false,
+          error: authData?.error || 'Credenciales incorrectas o usuario no registrado.',
+        };
+      }
+
+      const sessionToken = String(authData.session_token);
+      this.setSessionToken(sessionToken);
+
+      const officeRow = authData.office;
+      const matchedRow = authData.user;
+      const effectiveStatus = (officeRow.license_status || 'ACTIVE') as 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+      const expiresAt = officeRow.license_expires_at || null;
+
+      const portfolio = await this.pullFullPortfolio(officeRow.id);
+      if (!portfolio) {
+        return { ok: false, error: 'No se pudo cargar la información de la oficina.' };
+      }
+
+      const authenticatedUser =
+        portfolio.users.find((u) => u.id === matchedRow.id) || {
+          id: matchedRow.id,
+          name: matchedRow.name,
+          username: matchedRow.username,
+          password: '',
+          email: `${matchedRow.username}@oficina.com`,
+          role: matchedRow.role,
+          phone: matchedRow.phone || '',
+          isActive: matchedRow.is_active !== false,
+          assignedRouteIds: matchedRow.assigned_route_ids || [],
+          createdAt: matchedRow.created_at || new Date().toISOString(),
+        };
+
+      return {
+        ok: true,
+        sessionToken,
+        officeId: officeRow.id,
+        activationCode: officeRow.activation_code || '',
+        companyName: officeRow.company_name || 'Mi Oficina',
+        licenseStatus: effectiveStatus,
+        licensePlan: officeRow.license_plan || 'LIFETIME',
+        licenseExpiresAt: expiresAt,
+        settings: {
+          ...(officeRow.settings || {}),
+          taxId: officeRow.tax_id || '',
+          city: officeRow.city || '',
+          address: officeRow.address || '',
+          supportPhone: officeRow.support_phone || '',
+          recoveryPin: officeRow.recovery_pin || '',
+        },
+        users: portfolio.users,
+        routes: portfolio.routes,
+        portfolio: {
+          customers: portfolio.customers,
+          loans: portfolio.loans,
+          installments: portfolio.installments,
+          payments: portfolio.payments,
+          renewals: portfolio.renewals,
+          settlements: portfolio.settlements,
+          cashMovements: portfolio.cashMovements,
+        },
+        authenticatedUser,
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        error: err?.message || 'Error de conexión al validar credenciales.',
+      };
+    }
+  }
+
+  /**
+   * Vincula un dispositivo validando código de activación, estado de licencia y credenciales del usuario.
+   */
+  public async verifyAndLinkOffice(
+    activationCode: string,
+    username: string,
+    password: string
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    officeId?: string;
+    activationCode?: string;
+    companyName?: string;
+    licenseStatus?: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+    licensePlan?: 'LIFETIME' | 'MONTHLY' | 'ANNUAL';
+    licenseExpiresAt?: string | null;
+    settings?: Partial<OfficeCompanyConfig>;
+    users?: User[];
+    routes?: Route[];
+    portfolio?: {
+      customers: Customer[];
+      loans: Loan[];
+      installments: Installment[];
+      payments: Payment[];
+      renewals?: Renewal[];
+      settlements?: DailySettlement[];
+      cashMovements: CashMovement[];
+    };
+    authenticatedUser?: User;
+  }> {
+    if (!this.client) {
+      return {
+        ok: false,
+        error: 'El servicio en la nube no está configurado. Verifica la conexión o las variables de Supabase.',
+      };
+    }
+
+    const cleanCode = activationCode.trim().toUpperCase();
+    const cleanUser = username.trim().toLowerCase();
+    if (!cleanCode || !cleanUser || !password) {
+      return { ok: false, error: 'Ingresa código de activación, usuario y contraseña.' };
+    }
+
+    try {
+      let officeRow: any = null;
+      const rpcRes = await this.client.rpc('lookup_office_by_activation_code', {
+        p_activation_code: cleanCode,
+      });
+      if (!rpcRes.error && Array.isArray(rpcRes.data) && rpcRes.data.length > 0) {
+        officeRow = rpcRes.data[0];
+      } else {
+        const directRes = await this.client
+          .from('offices')
+          .select('*')
+          .ilike('activation_code', cleanCode)
+          .maybeSingle();
+        officeRow = directRes.data;
+      }
+
+      if (!officeRow) {
+        return { ok: false, error: 'Código de activación no encontrado. Verifica con tu distribuidor.' };
+      }
+
+      const expiresAt = officeRow.license_expires_at || null;
+      const isExpired = Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
+      const effectiveStatus =
+        officeRow.license_status === 'ACTIVE' && isExpired
+          ? 'EXPIRED'
+          : (officeRow.license_status || 'ACTIVE');
+
+      if (effectiveStatus !== 'ACTIVE') {
+        return {
+          ok: false,
+          error:
+            effectiveStatus === 'EXPIRED'
+              ? 'La licencia de esta oficina ha vencido. Contacta al proveedor para renovarla.'
+              : 'La licencia de esta oficina está suspendida.',
+        };
+      }
+
+      const portfolio = await this.pullFullPortfolio(officeRow.id);
+      if (!portfolio) {
+        return { ok: false, error: 'No se pudo descargar la información de la oficina.' };
+      }
+
+      const matchedUser = portfolio.users.find(
+        (u) => (u.username || '').trim().toLowerCase() === cleanUser && u.isActive !== false
+      );
+      if (!matchedUser) {
+        return { ok: false, error: 'Usuario no encontrado o inactivo en esta oficina.' };
+      }
+
+      const storedHash = matchedUser.password || '';
+      const passwordValid = storedHash ? verifyPassword(password, storedHash) : false;
+      if (!passwordValid) {
+        return { ok: false, error: 'Contraseña incorrecta para este usuario.' };
+      }
+
+      return {
+        ok: true,
+        officeId: officeRow.id,
+        activationCode: officeRow.activation_code || cleanCode,
+        companyName: officeRow.company_name || 'Mi Oficina',
+        licenseStatus: effectiveStatus,
+        licensePlan: officeRow.license_plan || 'LIFETIME',
+        licenseExpiresAt: expiresAt,
+        settings: {
+          ...(officeRow.settings || {}),
+          taxId: officeRow.tax_id || '',
+          city: officeRow.city || '',
+          address: officeRow.address || '',
+          supportPhone: officeRow.support_phone || '',
+          recoveryPin: officeRow.recovery_pin || '',
+        },
+        users: portfolio.users,
+        routes: portfolio.routes,
+        portfolio: {
+          customers: portfolio.customers,
+          loans: portfolio.loans,
+          installments: portfolio.installments,
+          payments: portfolio.payments,
+          renewals: portfolio.renewals,
+          settlements: portfolio.settlements,
+          cashMovements: portfolio.cashMovements,
+        },
+        authenticatedUser: matchedUser,
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        error: err?.message || 'Error de red al validar la oficina.',
+      };
     }
   }
 }

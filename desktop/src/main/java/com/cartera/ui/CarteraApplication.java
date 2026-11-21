@@ -234,6 +234,8 @@ public final class CarteraApplication extends Application {
         reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository, excelReportExporter, stage);
         configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, routeRepository, databaseBackupService, stage);
         configurationView.setRecoveryService(context.getBean(com.cartera.infrastructure.backup.OfficeRecoveryService.class));
+        var licensingService = context.getBean(com.cartera.infrastructure.licensing.OfficeLicensingService.class);
+        configurationView.setOfficeLicensingService(licensingService);
         configurationView.setOnRoutesChanged(this::reloadGlobalRoutes);
 
         mainContainer = new BorderPane();
@@ -244,6 +246,9 @@ public final class CarteraApplication extends Application {
         root.setCenter(mainContainer);
 
         loginView = new LoginView(authService, this::onLoginSuccess);
+        loginView.setOfficeLicensingService(licensingService);
+        desktopCloudSyncService = context.getBean(com.cartera.sync.application.DesktopCloudSyncService.class);
+        loginView.setCloudSyncService(desktopCloudSyncService);
 
         appRoot = new StackPane();
         appRoot.setStyle("-fx-background-color: #F6F4EE;");
@@ -273,6 +278,39 @@ public final class CarteraApplication extends Application {
     }
 
     private VBox navContainer;
+    private com.cartera.sync.application.DesktopCloudSyncService desktopCloudSyncService;
+    private java.util.concurrent.ScheduledExecutorService silentSyncExecutor;
+
+    private void startSilentBackgroundSync() {
+        stopSilentBackgroundSync();
+        if (desktopCloudSyncService == null) return;
+        silentSyncExecutor = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "kredia-silent-sync");
+            t.setDaemon(true);
+            return t;
+        });
+        silentSyncExecutor.scheduleWithFixedDelay(() -> {
+            try {
+                boolean updated = desktopCloudSyncService.syncSilentlyInBackground();
+                if (updated) {
+                    Platform.runLater(() -> {
+                        reloadGlobalRoutes();
+                        if (dashboardView != null) dashboardView.refresh();
+                        if (todayCollectionsView != null) todayCollectionsView.refreshData();
+                        if (customersView != null) customersView.refresh();
+                        if (loansView != null) loansView.refresh();
+                    });
+                }
+            } catch (Exception ignored) {}
+        }, 30, 30, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    private void stopSilentBackgroundSync() {
+        if (silentSyncExecutor != null) {
+            silentSyncExecutor.shutdownNow();
+            silentSyncExecutor = null;
+        }
+    }
 
     private void onLoginSuccess(UserSession session) {
         if (lblUserName != null) {
@@ -295,10 +333,12 @@ public final class CarteraApplication extends Application {
         }
         appRoot.getChildren().setAll(root);
         MotionUtil.transitionView(root);
-        MotionUtil.showToast(appRoot, "Sesión iniciada: " + session.fullName(), MotionUtil.ToastType.SUCCESS);
+        MotionUtil.showToast(appRoot, "Bienvenido, " + session.fullName(), MotionUtil.ToastType.SUCCESS);
+        startSilentBackgroundSync();
     }
 
     private void onLogout() {
+        stopSilentBackgroundSync();
         authService.logout();
         loginView.reset();
         appRoot.getChildren().setAll(loginView);
@@ -646,6 +686,12 @@ public final class CarteraApplication extends Application {
 
     @Override
     public void stop() {
+        stopSilentBackgroundSync();
+        if (desktopCloudSyncService != null) {
+            try {
+                desktopCloudSyncService.syncSilentlyInBackground();
+            } catch (Exception ignored) {}
+        }
         if (context != null) {
             context.close();
         }

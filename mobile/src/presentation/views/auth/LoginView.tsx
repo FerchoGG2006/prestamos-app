@@ -32,6 +32,7 @@ import {
   AlertTriangle,
 } from 'lucide-react-native';
 import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
+import { supabaseSyncService } from '../../../infrastructure/sync/supabase-client';
 import { verifyPassword } from '../../../core/utils/security';
 import { COLORS, FONT_FAMILY } from '../../theme/colors';
 import {
@@ -87,6 +88,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const isOfficeRegistered = Boolean(
     officeConfig.isSetupCompleted && officeConfig.companyName?.trim()
   );
+  const isDeviceLinked = Boolean(
+    officeConfig.officeId?.trim() && officeConfig.isSetupCompleted
+  );
+  const hasLegacyUnlinked = !isDeviceLinked && localStore.hasLegacyUnlinkedData();
+  const needsCloudLogin = !isOfficeRegistered && !hasLegacyUnlinked;
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -127,6 +133,52 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [recoveryKeyInput, setRecoveryKeyInput] = useState('');
   const [recoveryNewPasswordInput, setRecoveryNewPasswordInput] = useState('');
 
+  const handleCloudCredentialLogin = async (cleanUser: string, cleanPass: string) => {
+    setIsLoading(true);
+    setErrorMessage('');
+    setSavedNotice('');
+
+    try {
+      const res = await supabaseSyncService.loginWithCloudCredentials(cleanUser, cleanPass);
+      if (!res.ok || !res.officeId || !res.authenticatedUser) {
+        setErrorMessage(res.error || 'Credenciales incorrectas o usuario no creado.');
+        triggerShake();
+        return;
+      }
+
+      await localStore.applyLinkedOfficeBundle({
+        officeId: res.officeId,
+        activationCode: res.activationCode || '',
+        companyName: res.companyName || 'Mi Oficina',
+        licenseStatus: res.licenseStatus || 'ACTIVE',
+        licensePlan: res.licensePlan || 'LIFETIME',
+        licenseExpiresAt: res.licenseExpiresAt ?? null,
+        cloudSessionToken: res.sessionToken || '',
+        settings: res.settings,
+        users: res.users || [],
+        routes: res.routes || [],
+        portfolio: res.portfolio,
+        preserveLocalPortfolio: false,
+      });
+
+      if (rememberPassword) {
+        safeStorage.setItem(
+          '@prestamos_remembered_credentials',
+          JSON.stringify({ username: cleanUser, password: cleanPass })
+        );
+      } else {
+        safeStorage.removeItem('@prestamos_remembered_credentials');
+      }
+
+      onLoginSuccess(res.authenticatedUser, rememberPassword);
+    } catch (err: any) {
+      setErrorMessage(err?.message || 'Error al validar credenciales.');
+      triggerShake();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLogin = () => {
     const cleanUser = username.trim().toLowerCase();
     const cleanPass = password.trim();
@@ -134,6 +186,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (!cleanUser || !cleanPass) {
       setErrorMessage('Ingresa tu usuario y contraseña.');
       triggerShake();
+      return;
+    }
+
+    if (needsCloudLogin) {
+      handleCloudCredentialLogin(cleanUser, cleanPass);
       return;
     }
 
@@ -150,17 +207,21 @@ export const LoginView: React.FC<LoginViewProps> = ({
           (u.email || '').toLowerCase() === cleanUser
       );
 
-      // Si es intento de login de administración (admin-fbv, admin, etc.)
+      if (!matchedUser && supabaseSyncService.isConnected()) {
+        await handleCloudCredentialLogin(cleanUser, cleanPass);
+        return;
+      }
+
+      // Si el usuario admin local heredado aún no tiene contraseña guardada
       const isAdminLogin =
         cleanUser === 'admin-fbv' ||
         cleanUser.startsWith('admin') ||
         cleanUser === 'administrador';
 
-      // Si el usuario admin aún no tiene contraseña guardada o es primer acceso del admin
-      if (isAdminLogin && (!matchedUser || !matchedUser.password?.trim()) && cleanPass.length >= 6) {
+      if (isAdminLogin && matchedUser && !matchedUser.password?.trim() && cleanPass.length >= 6) {
         try {
           matchedUser = await localStore.updateAdminCredentials({
-            name: matchedUser?.name || 'Administrador FBV',
+            name: matchedUser.name || 'Administrador',
             username: cleanUser,
             password: cleanPass,
           });
@@ -181,14 +242,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
         return;
       }
 
-      // Asegurar que la oficina esté marcada como configurada
-      if (!localStore.getOfficeConfig().isSetupCompleted) {
-        await localStore.updateOfficeConfig({
-          isSetupCompleted: true,
-          companyName: localStore.getOfficeConfig().companyName?.trim() || 'Inversiones FBV',
-        });
-      }
-
       if (rememberPassword) {
         safeStorage.setItem(
           '@prestamos_remembered_credentials',
@@ -196,6 +249,26 @@ export const LoginView: React.FC<LoginViewProps> = ({
         );
       } else {
         safeStorage.removeItem('@prestamos_remembered_credentials');
+      }
+
+      // Si este dispositivo no tiene token de sesión RLS o le falta officeId, autenticar en segundo plano conservando datos locales
+      if (
+        (!localStore.getOfficeConfig().officeId?.trim() || !localStore.getOfficeConfig().cloudSessionToken?.trim()) &&
+        supabaseSyncService.isConnected()
+      ) {
+        try {
+          const cloudCheck = await supabaseSyncService.loginWithCloudCredentials(cleanUser, cleanPass);
+          if (cloudCheck.ok && cloudCheck.officeId) {
+            await localStore.updateOfficeConfig({
+              officeId: cloudCheck.officeId,
+              activationCode: cloudCheck.activationCode || '',
+              licenseStatus: cloudCheck.licenseStatus || 'ACTIVE',
+              licensePlan: cloudCheck.licensePlan || 'LIFETIME',
+              licenseExpiresAt: cloudCheck.licenseExpiresAt ?? null,
+              cloudSessionToken: cloudCheck.sessionToken || '',
+            });
+          }
+        } catch {}
       }
 
       // El sistema identifica automáticamente si es Administrador o a qué Ruta pertenece el cobrador
@@ -547,18 +620,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
             <Text style={styles.appBrandName}>Kredia</Text>
             <Text style={styles.appTagline}>Gestión de Cartera y Cobro en Ruta</Text>
 
-            {isOfficeRegistered ? (
+            {isOfficeRegistered && (
               <View style={styles.activeOfficeBadge}>
                 <Building2 size={12} color={COLORS.primary} style={{ marginRight: 5 }} />
                 <Text style={styles.activeOfficeBadgeText} numberOfLines={1}>
                   {officeConfig.companyName}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.unconfiguredNoticeBadge}>
-                <AlertTriangle size={12} color={COLORS.warning} style={{ marginRight: 5 }} />
-                <Text style={styles.unconfiguredNoticeText}>
-                  Oficina pendiente de configuración inicial
                 </Text>
               </View>
             )}
@@ -656,31 +722,57 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </Animated.View>
           </StagedView>
 
-          {/* Botón para Registrar o Configurar Oficina y Credenciales */}
-          <TouchableOpacity
-            style={[
-              styles.setupPill,
-              !isOfficeRegistered && styles.setupPillHighlight,
-            ]}
-            activeOpacity={0.75}
-            onPress={openSetupModal}
-          >
-            <SlidersHorizontal
-              size={14}
-              color={!isOfficeRegistered ? COLORS.accent : COLORS.primary}
-              style={{ marginRight: 6 }}
-            />
-            <Text
-              style={[
-                styles.setupPillText,
-                !isOfficeRegistered && { color: COLORS.primary, fontWeight: '800' },
-              ]}
+          {hasLegacyUnlinked && (
+            <TouchableOpacity
+              style={[styles.setupPill, styles.setupPillHighlight, { marginBottom: 8 }]}
+              activeOpacity={0.75}
+              onPress={() => {
+                const backupJson = localStore.exportFullBackupJson();
+                if (Platform.OS === 'web' && typeof document !== 'undefined') {
+                  try {
+                    const blob = new Blob([backupJson], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `respaldo-fbv-${new Date().toISOString().slice(0, 10)}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    setSavedNotice('Respaldo descargado con éxito. Tus datos locales están protegidos.');
+                  } catch {}
+                } else {
+                  Alert.alert(
+                    'Respaldo Generado',
+                    `Se preparó el respaldo seguro (${backupJson.length} caracteres).`
+                  );
+                }
+              }}
             >
-              {isOfficeRegistered
-                ? 'Configurar oficina y rutas (Requiere clave Admin)'
-                : 'Registrar mi oficina y crear credenciales'}
-            </Text>
-          </TouchableOpacity>
+              <ShieldCheck size={14} color={COLORS.primary} style={{ marginRight: 6 }} />
+              <Text style={[styles.setupPillText, { color: COLORS.primary, fontWeight: '800' }]}>
+                Respaldar datos actuales antes de vincular oficina
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Botón para Configurar Oficina (solo visible cuando ya hay una oficina vinculada o datos locales) */}
+          {isOfficeRegistered && (
+            <TouchableOpacity
+              style={styles.setupPill}
+              activeOpacity={0.75}
+              onPress={openSetupModal}
+            >
+              <SlidersHorizontal
+                size={14}
+                color={COLORS.primary}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.setupPillText}>
+                Configurar oficina y rutas (Requiere clave Admin)
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* Indicador de versión y botón de actualización forzada */}
           <View style={{ marginTop: 18, alignItems: 'center', paddingBottom: 24 }}>

@@ -57,7 +57,7 @@ import {
 import { perfMonitor } from '../telemetry/perf-monitor';
 
 export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
-  companyName: 'Inversiones FBV',
+  companyName: '',
   taxId: '',
   city: '',
   address: '',
@@ -79,7 +79,12 @@ export const DEFAULT_OFFICE_CONFIG: OfficeCompanyConfig = {
   officeServerUrl: 'http://192.168.1.10:8765',
   recoveryPin: '',
   autoCloudSyncEnabled: true,
-  isSetupCompleted: true,
+  isSetupCompleted: false,
+  officeId: '',
+  activationCode: '',
+  licenseStatus: 'ACTIVE',
+  licensePlan: 'LIFETIME',
+  licenseExpiresAt: null,
 };
 
 const STORAGE_KEYS = {
@@ -258,17 +263,18 @@ class LocalStore {
         safeStorage.getItem(STORAGE_KEYS.OFFICE_CONFIG),
       ]);
 
-      // Cargar cada colección de forma independiente y segura sin perder usuarios ni oficina
+      // Cargar cada colección de forma independiente y segura.
+      // En instalaciones nuevas (limpias) NO se precargan usuarios ni rutas de "Inversiones FBV".
       if (savedUsers) {
         try { this.users = JSON.parse(savedUsers); } catch {}
       } else {
-        this.users = [...INITIAL_USERS];
+        this.users = [];
       }
 
       if (savedRoutes) {
         try { this.routes = JSON.parse(savedRoutes); } catch {}
       } else {
-        this.routes = [...INITIAL_ROUTES];
+        this.routes = [];
       }
 
       if (savedCustomers) {
@@ -359,40 +365,14 @@ class LocalStore {
         this.officeConfig = { ...DEFAULT_OFFICE_CONFIG };
       }
 
-      // Asegurar que el nombre de oficina y estado completado siempre existan
-      if (!this.officeConfig.companyName?.trim()) {
-        this.officeConfig.companyName = 'Inversiones FBV';
-      }
-      this.officeConfig.isSetupCompleted = true;
-
-      // Garantizar que admin-fbv exista en la lista de usuarios
-      const hasAdminFbv = this.users.some(
-        (u) => (u.username || '').toLowerCase() === 'admin-fbv'
-      );
-      if (!hasAdminFbv) {
-        const legacyAdminIdx = this.users.findIndex(
-          (u) => (u.username || '').toLowerCase() === 'admin'
-        );
-        if (legacyAdminIdx >= 0) {
-          this.users[legacyAdminIdx] = {
-            ...this.users[legacyAdminIdx],
-            username: 'admin-fbv',
-            name: this.users[legacyAdminIdx].name || 'Administrador FBV',
-            email: 'admin@inversionesfbv.com',
-          };
-        } else {
-          this.users.unshift({
-            id: 'usr-adm-1',
-            name: 'Administrador FBV',
-            username: 'admin-fbv',
-            password: '',
-            email: 'admin@inversionesfbv.com',
-            role: 'ADMIN',
-            assignedRouteIds: ['ALL', ...(this.routes || []).map((r) => r.id)],
-            isActive: true,
-            createdAt: getLocalTodayStr(),
-          });
-        }
+      // Compatibilidad con dispositivos antiguos que ya tenían datos reales locales antes de la vinculación multi-oficina
+      const hasLegacyLocalPortfolio =
+        this.customers.length > 0 ||
+        this.loans.length > 0 ||
+        this.payments.length > 0 ||
+        Boolean(this.officeConfig.companyName?.trim());
+      if (hasLegacyLocalPortfolio && !this.officeConfig.isSetupCompleted) {
+        this.officeConfig.isSetupCompleted = true;
       }
 
       // Eliminar contraseñas predeterminadas heredadas ('123')
@@ -805,6 +785,153 @@ class LocalStore {
     await safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
     this.notify();
     return { ...this.officeConfig };
+  }
+
+  public isDeviceLinked(): boolean {
+    return Boolean(this.officeConfig.officeId?.trim() && this.officeConfig.isSetupCompleted);
+  }
+
+  public hasLegacyUnlinkedData(): boolean {
+    if (this.officeConfig.officeId?.trim()) return false;
+    return (
+      this.customers.length > 0 ||
+      this.loans.length > 0 ||
+      this.payments.length > 0 ||
+      Boolean(this.officeConfig.companyName?.trim())
+    );
+  }
+
+  public exportFullBackupJson(): string {
+    return JSON.stringify(
+      {
+        exportedAt: new Date().toISOString(),
+        officeConfig: this.officeConfig,
+        users: this.users,
+        routes: this.routes,
+        customers: this.customers,
+        loans: this.loans,
+        installments: this.installments,
+        payments: this.payments,
+        renewals: this.renewals,
+        settlements: this.settlements,
+        promises: this.promises,
+        cashMovements: this.cashMovements,
+      },
+      null,
+      2
+    );
+  }
+
+  public async applyLinkedOfficeBundle(params: {
+    officeId: string;
+    activationCode: string;
+    companyName: string;
+    licenseStatus: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+    licensePlan?: 'LIFETIME' | 'MONTHLY' | 'ANNUAL';
+    licenseExpiresAt?: string | null;
+    cloudSessionToken?: string;
+    settings?: Partial<OfficeCompanyConfig>;
+    users: User[];
+    routes: Route[];
+    portfolio?: {
+      customers: Customer[];
+      loans: Loan[];
+      installments: Installment[];
+      payments: Payment[];
+      renewals?: Renewal[];
+      settlements?: DailySettlement[];
+      cashMovements: CashMovement[];
+    };
+    preserveLocalPortfolio?: boolean;
+  }): Promise<void> {
+    this.officeConfig = {
+      ...DEFAULT_OFFICE_CONFIG,
+      ...this.officeConfig,
+      ...(params.settings || {}),
+      officeId: params.officeId,
+      activationCode: params.activationCode,
+      companyName: params.companyName,
+      licenseStatus: params.licenseStatus,
+      licensePlan: params.licensePlan || 'LIFETIME',
+      licenseExpiresAt: params.licenseExpiresAt ?? null,
+      cloudSessionToken: params.cloudSessionToken || this.officeConfig.cloudSessionToken || '',
+      isSetupCompleted: true,
+    };
+
+    if (params.users.length > 0) {
+      this.users = params.users;
+    }
+    if (params.routes.length > 0) {
+      this.routes = params.routes;
+    }
+
+    if (!params.preserveLocalPortfolio && params.portfolio) {
+      this.customers = params.portfolio.customers;
+      this.loans = params.portfolio.loans;
+      this.installments = params.portfolio.installments;
+      this.payments = params.portfolio.payments;
+      if (params.portfolio.renewals) this.renewals = params.portfolio.renewals;
+      if (params.portfolio.settlements) this.settlements = params.portfolio.settlements;
+      this.cashMovements = params.portfolio.cashMovements;
+    }
+
+    this.rebuildIndexes();
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig)),
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
+      safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
+      safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
+      safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
+      safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments)),
+      safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify(this.renewals)),
+      safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(this.settlements)),
+      safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
+    ]);
+    this.notify();
+  }
+
+  public async mergeCloudPortfolio(remote: {
+    users: User[];
+    routes: Route[];
+    customers: Customer[];
+    loans: Loan[];
+    installments: Installment[];
+    payments: Payment[];
+    renewals: Renewal[];
+    settlements: DailySettlement[];
+    cashMovements: CashMovement[];
+  }): Promise<void> {
+    const mergeById = <T extends { id: string }>(localArr: T[], remoteArr: T[]): T[] => {
+      const map = new Map<string, T>();
+      for (const item of localArr) map.set(item.id, item);
+      for (const item of remoteArr) map.set(item.id, item);
+      return Array.from(map.values());
+    };
+
+    if (remote.users.length > 0) this.users = mergeById(this.users, remote.users);
+    if (remote.routes.length > 0) this.routes = mergeById(this.routes, remote.routes);
+    if (remote.customers.length > 0) this.customers = mergeById(this.customers, remote.customers);
+    if (remote.loans.length > 0) this.loans = mergeById(this.loans, remote.loans);
+    if (remote.installments.length > 0) this.installments = mergeById(this.installments, remote.installments);
+    if (remote.payments.length > 0) this.payments = mergeById(this.payments, remote.payments);
+    if (remote.renewals.length > 0) this.renewals = mergeById(this.renewals, remote.renewals);
+    if (remote.settlements.length > 0) this.settlements = mergeById(this.settlements, remote.settlements);
+    if (remote.cashMovements.length > 0) this.cashMovements = mergeById(this.cashMovements, remote.cashMovements);
+
+    this.rebuildIndexes();
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
+      safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
+      safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
+      safeStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(this.installments)),
+      safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments)),
+      safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify(this.renewals)),
+      safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(this.settlements)),
+      safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
+    ]);
+    this.notify();
   }
 
   public async saveUsersAndRoutes(users: User[], routes: Route[]): Promise<void> {

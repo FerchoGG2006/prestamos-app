@@ -43,6 +43,16 @@ public class LoginView extends StackPane {
 
     private final AuthService authService;
     private final Consumer<UserSession> onLoginSuccess;
+    private com.cartera.infrastructure.licensing.OfficeLicensingService licensingService;
+    private com.cartera.sync.application.DesktopCloudSyncService cloudSyncService;
+
+    public void setOfficeLicensingService(com.cartera.infrastructure.licensing.OfficeLicensingService licensingService) {
+        this.licensingService = licensingService;
+    }
+
+    public void setCloudSyncService(com.cartera.sync.application.DesktopCloudSyncService cloudSyncService) {
+        this.cloudSyncService = cloudSyncService;
+    }
 
     private final Label lblActiveOfficeBadge = new Label();
     private final TextField txtUsername = new TextField();
@@ -131,12 +141,16 @@ public class LoginView extends StackPane {
 
         loginCard.getChildren().addAll(lblSuccess, lblError, lblUser, txtUsername, lblPass, txtPassword, btnLogin);
 
-        btnSetup.setMinHeight(36);
-        btnSetup.setStyle("-fx-background-color: #ffffff; -fx-border-color: #e2e8f0; -fx-border-radius: 20; -fx-background-radius: 20; -fx-text-fill: #475569; -fx-font-size: 12px; -fx-font-weight: bold; -fx-padding: 7 16; -fx-cursor: hand;");
-        btnSetup.setOnAction(e -> openOfficeSetupDialog());
-        MotionUtil.installTactileButton(btnSetup);
+        Button btnVendorPanel = new Button("Acceso distribuidor");
+        btnVendorPanel.setMinHeight(28);
+        btnVendorPanel.setStyle("-fx-background-color: transparent; -fx-text-fill: #94a3b8; -fx-font-size: 11px; -fx-font-weight: bold; -fx-cursor: hand;");
+        btnVendorPanel.setOnAction(e -> {
+            if (licensingService != null && getScene() != null && getScene().getWindow() instanceof Stage st) {
+                new VendorLicensingDialog(st, licensingService).show();
+            }
+        });
 
-        wrapper.getChildren().addAll(header, loginCard, btnSetup);
+        wrapper.getChildren().addAll(header, loginCard, btnVendorPanel);
         getChildren().add(wrapper);
         MotionUtil.transitionView(wrapper);
     }
@@ -386,33 +400,61 @@ public class LoginView extends StackPane {
         }
 
         btnLogin.setDisable(true);
-        try {
-            var optSession = authService.authenticate(username, password);
-            if (optSession.isPresent()) {
-                UserSession session = optSession.get();
-                if (session.isCollector()) {
-                    authService.getActiveRoutes().stream()
-                            .filter(r -> session.userId().equals(r.getCollectorId()))
-                            .findFirst()
-                            .ifPresent(r -> UserSessionContext.setSelectedRouteId(r.getId()));
+        btnLogin.setText("Ingresando...");
+        lblError.setVisible(false);
+        lblError.setManaged(false);
+
+        Thread worker = new Thread(() -> {
+            try {
+                final boolean ok;
+                final UserSession session;
+                final String errMsg;
+
+                if (cloudSyncService != null) {
+                    var res = cloudSyncService.authenticateAndSync(username, password);
+                    ok = res.ok();
+                    session = res.session();
+                    errMsg = res.message();
                 } else {
-                    UserSessionContext.setSelectedRouteId("ALL");
+                    var opt = authService.authenticate(username, password);
+                    ok = opt.isPresent();
+                    session = opt.orElse(null);
+                    errMsg = "Usuario o contraseña incorrectos.";
                 }
-                lblError.setVisible(false);
-                lblError.setManaged(false);
-                if (onLoginSuccess != null) {
-                    onLoginSuccess.accept(session);
-                }
-            } else {
-                showError("Credenciales incorrectas. Verifica tu usuario y clave.");
-                txtPassword.clear();
-                txtPassword.requestFocus();
+
+                javafx.application.Platform.runLater(() -> {
+                    btnLogin.setDisable(false);
+                    btnLogin.setText("Ingresar");
+                    if (ok && session != null) {
+                        if (session.isCollector()) {
+                            authService.getActiveRoutes().stream()
+                                    .filter(r -> session.userId().equals(r.getCollectorId()))
+                                    .findFirst()
+                                    .ifPresent(r -> UserSessionContext.setSelectedRouteId(r.getId()));
+                        } else {
+                            UserSessionContext.setSelectedRouteId("ALL");
+                        }
+                        lblError.setVisible(false);
+                        lblError.setManaged(false);
+                        if (onLoginSuccess != null) {
+                            onLoginSuccess.accept(session);
+                        }
+                    } else {
+                        showError(errMsg == null || errMsg.isBlank() ? "Usuario o contraseña incorrectos." : errMsg);
+                        txtPassword.clear();
+                        txtPassword.requestFocus();
+                    }
+                });
+            } catch (Exception ex) {
+                javafx.application.Platform.runLater(() -> {
+                    btnLogin.setDisable(false);
+                    btnLogin.setText("Ingresar");
+                    showError("No se pudo iniciar sesión. Intenta nuevamente.");
+                });
             }
-        } catch (Exception ex) {
-            showError("Error: " + ex.getMessage());
-        } finally {
-            btnLogin.setDisable(false);
-        }
+        }, "kredia-login-worker");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void showError(String message) {
