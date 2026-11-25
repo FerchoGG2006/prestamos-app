@@ -54,6 +54,8 @@ import {
 import {
   hashPassword,
   verifyPassword,
+  isHashedPassword,
+  validateSecurePassword,
   encryptBackupData,
   decryptBackupData,
 } from '../../core/utils/security';
@@ -1513,38 +1515,54 @@ class LocalStore {
   public async updateAdminCredentials(params: {
     name: string;
     username: string;
-    password: string;
+    password?: string;
   }): Promise<User> {
     const cleanUsername = params.username.trim().toLowerCase();
-    const cleanPass = params.password.trim();
-    if (!cleanUsername || !cleanPass) {
-      throw new Error('El usuario y la contraseña del administrador no pueden estar vacíos.');
-    }
-    if (cleanPass.length < 6 || cleanPass === '123' || cleanPass === '123456') {
-      throw new Error('Por seguridad, la contraseña del administrador debe tener al menos 6 caracteres y no ser una clave por defecto.');
-    }
-
-    const conflict = this.users.find(
-      (u) => u.role === 'COBRADOR' && (u.username || '').toLowerCase() === cleanUsername
-    );
-    if (conflict) {
-      throw new Error(`El usuario "${cleanUsername}" ya está asignado a un cobrador de ruta.`);
+    const cleanPass = (params.password || '').trim();
+    if (!cleanUsername) {
+      throw new Error('El usuario del administrador no puede estar vacío.');
     }
 
     const adminIdx = this.users.findIndex((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+    const existingAdmin = adminIdx >= 0 ? this.users[adminIdx] : undefined;
+
+    let finalPasswordHash: string;
+    if (!cleanPass) {
+      if (existingAdmin?.password?.trim()) {
+        finalPasswordHash = existingAdmin.password.trim();
+      } else {
+        throw new Error('Ingresa una contraseña de al menos 6 caracteres para el administrador.');
+      }
+    } else if (isHashedPassword(cleanPass)) {
+      finalPasswordHash = cleanPass;
+    } else {
+      const passErr = validateSecurePassword(cleanPass, 'la contraseña del administrador');
+      if (passErr) throw new Error(passErr);
+      finalPasswordHash = hashPassword(cleanPass);
+    }
+
+    const conflict = this.users.find(
+      (u) =>
+        u.id !== existingAdmin?.id &&
+        (u.username || '').toLowerCase() === cleanUsername
+    );
+    if (conflict) {
+      throw new Error(`El usuario "${cleanUsername}" ya está asignado a otro miembro de la oficina.`);
+    }
+
     const updatedAdmin: User =
-      adminIdx >= 0
+      existingAdmin
         ? {
-            ...this.users[adminIdx],
-            name: params.name.trim() || this.users[adminIdx].name,
+            ...existingAdmin,
+            name: params.name.trim() || existingAdmin.name,
             username: cleanUsername,
-            password: hashPassword(cleanPass),
+            password: finalPasswordHash,
           }
         : {
             id: 'usr-adm-1',
             name: params.name.trim() || 'Administrador FBV',
             username: cleanUsername,
-            password: hashPassword(cleanPass),
+            password: finalPasswordHash,
             email: `${cleanUsername}@oficina.com`,
             role: 'ADMIN',
             assignedRouteIds: ['ALL', ...this.routes.map((r) => r.id)],
@@ -1572,32 +1590,45 @@ class LocalStore {
     routeName: string;
     collectorName: string;
     username: string;
-    password: string;
+    password?: string;
     description?: string;
     initialCashBase?: number;
     targetAdministrative?: number;
     expectedCustomersCount?: number;
-  }): Promise<void> {
+  }): Promise<{ route: Route; collector: User }> {
     const routeIdx = this.routes.findIndex((r) => r.id === params.routeId);
     if (routeIdx === -1) throw new Error('Ruta no encontrada.');
 
+    const cleanRouteName = params.routeName.trim();
     const cleanUsername = params.username.trim().toLowerCase();
-    const cleanPassword = params.password.trim();
-    if (!params.routeName.trim() || !cleanUsername || !cleanPassword) {
-      throw new Error('Nombre de ruta, usuario y contraseña son obligatorios.');
-    }
-    if (cleanPassword.length < 6 || cleanPassword === '123' || cleanPassword === '123456') {
-      throw new Error('Por seguridad, la contraseña de la ruta debe tener al menos 6 caracteres y no ser una clave por defecto.');
+    const cleanPassword = (params.password || '').trim();
+    if (!cleanRouteName || !cleanUsername) {
+      throw new Error('El nombre de la ruta y el usuario del cobrador son obligatorios.');
     }
 
     const currentRoute = this.routes[routeIdx];
-    const isCollectorShared = this.routes.some(
-      (r) => r.id !== params.routeId && r.collectorId === currentRoute.collectorId
-    );
+    const isCollectorShared =
+      Boolean(currentRoute.collectorId) &&
+      this.routes.some(
+        (r) => r.id !== params.routeId && r.collectorId === currentRoute.collectorId
+      );
+
+    // Si la ruta no tenía collectorId explícito, buscar un cobrador ya asignado a esta ruta antes de crear uno nuevo
+    const linkedExistingCollector =
+      !currentRoute.collectorId
+        ? this.users.find(
+            (u) =>
+              (u.role === 'COBRADOR' || u.role === 'COLLECTOR') &&
+              (u.routeId === currentRoute.id || u.assignedRouteIds?.includes(currentRoute.id))
+          )
+        : undefined;
+
     const collectorId =
-      !currentRoute.collectorId || isCollectorShared
-        ? `usr-col-${Date.now()}`
-        : currentRoute.collectorId;
+      currentRoute.collectorId && !isCollectorShared
+        ? currentRoute.collectorId
+        : linkedExistingCollector && !this.routes.some((r) => r.id !== params.routeId && r.collectorId === linkedExistingCollector.id)
+        ? linkedExistingCollector.id
+        : `usr-col-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
     const duplicateUser = this.users.find(
       (u) =>
@@ -1609,21 +1640,40 @@ class LocalStore {
     }
 
     const userIdx = this.users.findIndex((u) => u.id === collectorId);
+    const existingCollector = userIdx >= 0 ? this.users[userIdx] : undefined;
+
+    let finalPasswordHash: string;
+    if (!cleanPassword) {
+      if (existingCollector?.password?.trim()) {
+        finalPasswordHash = existingCollector.password.trim();
+      } else {
+        throw new Error('Ingresa una contraseña de al menos 6 caracteres para el cobrador de esta ruta.');
+      }
+    } else if (isHashedPassword(cleanPassword)) {
+      finalPasswordHash = cleanPassword;
+    } else {
+      const passErr = validateSecurePassword(cleanPassword, 'la contraseña de la ruta');
+      if (passErr) throw new Error(passErr);
+      finalPasswordHash = hashPassword(cleanPassword);
+    }
+
     const updatedCollector: User =
-      userIdx >= 0
+      existingCollector
         ? {
-            ...this.users[userIdx],
-            name: params.collectorName.trim() || this.users[userIdx].name,
+            ...existingCollector,
+            name: params.collectorName.trim() || existingCollector.name,
             username: cleanUsername,
-            password: hashPassword(cleanPassword),
+            password: finalPasswordHash,
+            role: existingCollector.role === 'COLLECTOR' ? 'COBRADOR' : existingCollector.role,
             routeId: currentRoute.id,
             assignedRouteIds: [currentRoute.id],
+            isActive: true,
           }
         : {
             id: collectorId,
-            name: params.collectorName.trim() || 'Cobrador',
+            name: params.collectorName.trim() || cleanRouteName,
             username: cleanUsername,
-            password: hashPassword(cleanPassword),
+            password: finalPasswordHash,
             email: `${cleanUsername}@oficina.com`,
             role: 'COBRADOR',
             routeId: currentRoute.id,
@@ -1638,9 +1688,9 @@ class LocalStore {
       this.users.push(updatedCollector);
     }
 
-    this.routes[routeIdx] = {
+    const updatedRoute: Route = {
       ...currentRoute,
-      name: params.routeName.trim(),
+      name: cleanRouteName,
       collectorId,
       collectorName: updatedCollector.name,
       description: params.description?.trim() ?? currentRoute.description,
@@ -1655,12 +1705,14 @@ class LocalStore {
           ? params.expectedCustomersCount
           : currentRoute.expectedCustomersCount,
     };
+    this.routes[routeIdx] = updatedRoute;
 
     await Promise.all([
       safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
       safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
     ]);
     this.notify();
+    return { route: updatedRoute, collector: updatedCollector };
   }
 
   /**

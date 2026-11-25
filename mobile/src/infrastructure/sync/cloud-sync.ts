@@ -249,6 +249,62 @@ class CloudSyncEngine {
   }
 
   /**
+   * Sincronización inmediata de usuarios y rutas (credenciales de oficina/cobradores) hacia Supabase.
+   * Garantiza que al cambiar usuario/clave o crear una ruta, el login en la nube funcione de inmediato.
+   */
+  public async syncUsersAndRoutesNow(): Promise<{
+    ok: boolean;
+    error?: string;
+    usernameConflict?: boolean;
+    networkError?: boolean;
+    skippedLocalOnly?: boolean;
+  }> {
+    if (!supabaseSyncService.isConnected()) {
+      return { ok: true, skippedLocalOnly: true };
+    }
+    let cfg = localStore.getOfficeConfig();
+    if (!cfg.officeId?.trim()) {
+      return { ok: true, skippedLocalOnly: true };
+    }
+    if (!cfg.cloudSessionToken?.trim()) {
+      const recovered = await this.tryRecoverCloudSessionFromRememberedCredentials();
+      if (recovered) {
+        cfg = localStore.getOfficeConfig();
+      }
+    }
+    if (!cfg.cloudSessionToken?.trim() || !cfg.officeId?.trim()) {
+      return {
+        ok: false,
+        error: 'Tu sesión de nube venció. Vuelve a iniciar sesión como administrador para subir las credenciales.',
+      };
+    }
+
+    const officeId = cfg.officeId.trim();
+    supabaseSyncService.setSessionToken(cfg.cloudSessionToken.trim());
+    let res = await supabaseSyncService.syncUsersAndRoutes(
+      officeId,
+      localStore.getUsers(),
+      localStore.getRoutes()
+    );
+    if (!res.ok && !res.usernameConflict && !res.networkError) {
+      // Un reintento silencioso renovando token si expiró en el servidor
+      const recovered = await this.tryRecoverCloudSessionFromRememberedCredentials();
+      if (recovered) {
+        cfg = localStore.getOfficeConfig();
+        if (cfg.cloudSessionToken?.trim()) {
+          supabaseSyncService.setSessionToken(cfg.cloudSessionToken.trim());
+          res = await supabaseSyncService.syncUsersAndRoutes(
+            officeId,
+            localStore.getUsers(),
+            localStore.getRoutes()
+          );
+        }
+      }
+    }
+    return res;
+  }
+
+  /**
    * Ejecuta sincronización bidireccional (Push de cobros/créditos locales + Pull de cartera actualizada)
    * soportando Servidor LAN (192.168.1.10:8765) y Nube Multi-Tenant (Supabase) sin pérdida de datos.
    */
@@ -332,31 +388,37 @@ class CloudSyncEngine {
               promises: localStore.getPromises(),
               nonPaymentVisits: localStore.getNonPaymentVisits(),
             });
-            await supabaseSyncService.syncUsersAndRoutes(
+            const usersRoutesResult = await supabaseSyncService.syncUsersAndRoutes(
               immutableOfficeId,
               localStore.getUsers(),
               localStore.getRoutes()
             );
 
-            // REGLA DE ORO: PUSH primero; solo ejecutar PULL + MERGE si PUSH completó 100% sin errores
-            const pushResult = await supabaseSyncService.pushFullPortfolio(immutableOfficeId, {
-              customers: localStore.getCustomers(),
-              loans: localStore.getLoans(),
-              installments: localStore.getInstallments(),
-              payments: localStore.getPayments(),
-              renewals: localStore.getRenewals(),
-              settlements: localStore.getSettlements(),
-              cashMovements: localStore.getCashMovements(),
-            });
-
-            if (!pushResult.ok) {
-              cloudErrorMessage = `No se pudieron subir los cambios locales (${pushResult.error || 'error de red'}). Tus datos locales permanecen intactos.`;
+            if (!usersRoutesResult.ok) {
+              cloudErrorMessage =
+                usersRoutesResult.error ||
+                'No se pudieron subir los cambios de usuarios/rutas a la nube. Tus datos locales permanecen intactos.';
             } else {
-              const remoteSnapshot = await supabaseSyncService.pullFullPortfolio(immutableOfficeId);
-              if (remoteSnapshot) {
-                await localStore.mergeCloudPortfolio(remoteSnapshot);
+              // REGLA DE ORO: PUSH primero; solo ejecutar PULL + MERGE si PUSH completó 100% sin errores
+              const pushResult = await supabaseSyncService.pushFullPortfolio(immutableOfficeId, {
+                customers: localStore.getCustomers(),
+                loans: localStore.getLoans(),
+                installments: localStore.getInstallments(),
+                payments: localStore.getPayments(),
+                renewals: localStore.getRenewals(),
+                settlements: localStore.getSettlements(),
+                cashMovements: localStore.getCashMovements(),
+              });
+
+              if (!pushResult.ok) {
+                cloudErrorMessage = `No se pudieron subir los cambios locales (${pushResult.error || 'error de red'}). Tus datos locales permanecen intactos.`;
+              } else {
+                const remoteSnapshot = await supabaseSyncService.pullFullPortfolio(immutableOfficeId);
+                if (remoteSnapshot) {
+                  await localStore.mergeCloudPortfolio(remoteSnapshot);
+                }
+                anySyncSuccessful = true;
               }
-              anySyncSuccessful = true;
             }
           }
         }

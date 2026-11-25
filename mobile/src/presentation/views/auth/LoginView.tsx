@@ -35,7 +35,7 @@ import {
 import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
 import { supabaseSyncService } from '../../../infrastructure/sync/supabase-client';
 import { cloudSyncEngine } from '../../../infrastructure/sync/cloud-sync';
-import { verifyPassword } from '../../../core/utils/security';
+import { verifyPassword, FORBIDDEN_DEFAULT_PASSWORDS } from '../../../core/utils/security';
 import { COLORS, FONT_FAMILY } from '../../theme/colors';
 import {
   StagedView,
@@ -59,19 +59,6 @@ interface EditableRouteDraft {
   targetAdministrativeStr: string;
   expectedCustomersCountStr: string;
 }
-
-const FORBIDDEN_DEFAULT_PASSWORDS = new Set([
-  '123',
-  '1234',
-  '12345',
-  '123456',
-  '000',
-  '0000',
-  '000000',
-  'admin',
-  'password',
-  'cobrador',
-]);
 
 export const LoginView: React.FC<LoginViewProps> = ({
   onLoginSuccess,

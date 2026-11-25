@@ -358,26 +358,71 @@ class SupabaseSyncService {
     }
   }
 
+  private normalizeCloudRole(role?: string): 'ADMIN' | 'COBRADOR' | 'SUPERVISOR' | 'SUPER_ADMIN' {
+    const r = String(role || 'COBRADOR').trim().toUpperCase();
+    if (r === 'ADMIN' || r === 'SUPERVISOR' || r === 'SUPER_ADMIN' || r === 'COBRADOR') {
+      return r;
+    }
+    if (r === 'COLLECTOR') return 'COBRADOR';
+    return 'COBRADOR';
+  }
+
   /**
-   * Sincroniza usuarios y rutas de la oficina
+   * Sincroniza usuarios y rutas de la oficina verificando errores reales de Supabase/PostgreSQL.
    */
-  public async syncUsersAndRoutes(officeId: string, users: User[], routes: Route[]): Promise<boolean> {
-    if (!this.client) return false;
+  public async syncUsersAndRoutes(
+    officeId: string,
+    users: User[],
+    routes: Route[]
+  ): Promise<{ ok: boolean; error?: string; usernameConflict?: boolean; networkError?: boolean }> {
+    if (!this.client) {
+      return { ok: false, error: 'Servicio en la nube no configurado.', networkError: true };
+    }
     try {
       if (users.length > 0) {
         const payloadUsers = users.map((u) => ({
           id: u.id,
           office_id: officeId,
-          name: u.name,
+          name: u.name || u.username || 'Usuario',
           username: (u.username || u.name).toLowerCase().trim(),
           password_hash: u.password || '',
-          role: u.role,
+          role: this.normalizeCloudRole(u.role),
           phone: u.phone || '',
           is_active: u.isActive !== false,
           assigned_route_ids: u.assignedRouteIds || [],
           updated_at: new Date().toISOString(),
         }));
-        await this.client.from('users').upsert(payloadUsers);
+        const { error: usersErr } = await this.client
+          .from('users')
+          .upsert(payloadUsers, { onConflict: 'id' });
+        if (usersErr) {
+          const code = String(usersErr.code || '');
+          const msg = String(usersErr.message || '');
+          const lower = `${code} ${msg}`.toLowerCase();
+          if (
+            code === '23505' ||
+            lower.includes('uq_users_global_username') ||
+            lower.includes('uq_office_username') ||
+            lower.includes('duplicate key')
+          ) {
+            return {
+              ok: false,
+              usernameConflict: true,
+              error:
+                'Ese nombre de usuario ya está registrado en otra cuenta o ruta de Kredia. Elige un usuario distinto (ej. nombre.ruta1).',
+            };
+          }
+          if (code === '42501' || lower.includes('row-level security') || lower.includes('permission')) {
+            return {
+              ok: false,
+              error: 'Tu sesión de nube venció. Vuelve a iniciar sesión como administrador para sincronizar credenciales.',
+            };
+          }
+          return {
+            ok: false,
+            error: `No se pudieron guardar los usuarios en la nube: ${msg || code}`,
+          };
+        }
       }
 
       if (routes.length > 0) {
@@ -393,12 +438,26 @@ class SupabaseSyncService {
           is_active: r.isActive !== false,
           updated_at: new Date().toISOString(),
         }));
-        await this.client.from('routes').upsert(payloadRoutes);
+        const { error: routesErr } = await this.client
+          .from('routes')
+          .upsert(payloadRoutes, { onConflict: 'id' });
+        if (routesErr) {
+          return {
+            ok: false,
+            error: `No se pudieron guardar las rutas en la nube: ${routesErr.message || routesErr.code}`,
+          };
+        }
       }
-      return true;
-    } catch (err) {
+      return { ok: true };
+    } catch (err: any) {
       console.warn('[SupabaseSyncService] syncUsersAndRoutes error:', err);
-      return false;
+      const msg = String(err?.message || err || '');
+      const isNet = /network|fetch|timeout|failed to fetch|offline/i.test(msg);
+      return {
+        ok: false,
+        networkError: isNet,
+        error: msg || 'Error de conexión al sincronizar usuarios y rutas.',
+      };
     }
   }
 

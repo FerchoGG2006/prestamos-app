@@ -103,13 +103,64 @@ function generateSalt(length = 16): string {
   return salt;
 }
 
+export const FORBIDDEN_DEFAULT_PASSWORDS = new Set([
+  '123',
+  '1234',
+  '12345',
+  '123456',
+  '000',
+  '0000',
+  '000000',
+  'admin',
+  'password',
+  'cobrador',
+]);
+
+/**
+ * Determina si una cadena ya corresponde a un hash criptográfico soportado
+ * (`sha256$<salt>$<hash>` del móvil o `<32hex>$<64hex>` PBKDF2 de escritorio).
+ */
+export function isHashedPassword(value?: string): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (trimmed.startsWith('sha256$')) {
+    const parts = trimmed.split('$');
+    return parts.length === 3 && parts[1].length > 0 && parts[2].length === 64;
+  }
+  const parts = trimmed.split('$');
+  return (
+    parts.length === 2 &&
+    /^[0-9a-fA-F]{32}$/.test(parts[0]) &&
+    /^[0-9a-fA-F]{64}$/.test(parts[1])
+  );
+}
+
+/**
+ * Valida una contraseña en texto plano con la misma política estricta que LoginView.
+ * Retorna mensaje de error si es inválida, o null si es válida.
+ */
+export function validateSecurePassword(plainPassword: string, label = 'la contraseña'): string | null {
+  const clean = (plainPassword || '').trim();
+  if (!clean) {
+    return `Ingresa ${label}.`;
+  }
+  if (clean.length < 6) {
+    return `Por seguridad, ${label} debe tener al menos 6 caracteres.`;
+  }
+  if (FORBIDDEN_DEFAULT_PASSWORDS.has(clean.toLowerCase())) {
+    return `Por seguridad, ${label} no puede ser una clave común (como 123456, 000000, admin, cobrador o password).`;
+  }
+  return null;
+}
+
 /**
  * Hashea una contraseña usando SHA-256 con Salt.
  * Formato resultante: sha256$<salt>$<hash>
+ * Idempotente: si ya es un hash válido (sha256$ o PBKDF2 de escritorio), lo conserva intacto.
  */
 export function hashPassword(plainPassword: string, customSalt?: string): string {
   if (!plainPassword) return '';
-  if (plainPassword.startsWith('sha256$')) return plainPassword;
+  if (isHashedPassword(plainPassword)) return plainPassword.trim();
   const salt = customSalt || generateSalt(16);
   const hash = sha256(`${salt}:${plainPassword.trim()}`);
   return `sha256$${salt}$${hash}`;

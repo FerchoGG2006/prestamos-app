@@ -1,6 +1,7 @@
 import { localStore, safeStorage } from '../../storage/local-store';
 import { cloudSyncEngine } from '../cloud-sync';
 import { supabaseSyncService } from '../supabase-client';
+import { hashPassword, isHashedPassword, verifyPassword } from '../../../core/utils/security';
 
 const assert = {
   equal<T>(actual: T, expected: T, msg?: string) {
@@ -77,7 +78,7 @@ export const cloudSyncSafetyTests = (async () => {
       expiresAt: null,
     });
     supabaseSyncService.upsertOffice = async () => true;
-    supabaseSyncService.syncUsersAndRoutes = async () => true;
+    supabaseSyncService.syncUsersAndRoutes = async () => ({ ok: true });
     supabaseSyncService.pushFullPortfolio = async () => ({ ok: false, error: 'Simulated network timeout' });
     supabaseSyncService.pullFullPortfolio = async () => {
       pullCalled = true;
@@ -327,7 +328,112 @@ export const cloudSyncSafetyTests = (async () => {
     assert.equal(syncedDesktopVisit?.reason, 'NO_ESTABA', 'Visita No Pago creada en Desktop debe llegar al Móvil');
     assert.equal(preservedMobileVisit?.reason, 'LOCAL_CERRADO', 'Visita No Pago local del Móvil debe conservarse tras merge');
 
-    console.log('PASS cloud-sync-safety.test.ts (10/10 assertions)');
+    // 8. Regresión mobile-route-credentials-sync:
+    //    a) hashPassword es idempotente con PBKDF2 de escritorio (32hex$64hex) y sha256$
+    const samplePbkdf2 = '0123456789abcdef0123456789abcdef$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+    assert.equal(isHashedPassword(samplePbkdf2), true, 'Debe reconocer hash PBKDF2 de escritorio');
+    assert.equal(hashPassword(samplePbkdf2), samplePbkdf2, 'hashPassword NO debe re-hashear PBKDF2 de escritorio');
+
+    //    b) updateRouteWithCredentials conserva clave existente si viene vacía, normaliza COLLECTOR->COBRADOR,
+    //       rechaza claves prohibidas (cobrador/000000) y actualiza correctamente con nueva clave verificable
+    await localStore.saveUsersAndRoutes(
+      [
+        {
+          id: 'usr-col-edit-1',
+          name: 'Cobrador Viejo',
+          username: 'viejo1',
+          password: samplePbkdf2,
+          email: 'viejo1@oficina.com',
+          role: 'COLLECTOR',
+          routeId: 'rt-edit-1',
+          assignedRouteIds: ['rt-edit-1'],
+          isActive: true,
+          createdAt: '2026-11-25',
+        },
+      ],
+      [
+        {
+          id: 'rt-edit-1',
+          name: 'Ruta 1',
+          code: 'R1',
+          collectorId: 'usr-col-edit-1',
+          isActive: true,
+          createdAt: '2026-11-25',
+        },
+      ]
+    );
+
+    const keptPassRes = await localStore.updateRouteWithCredentials({
+      routeId: 'rt-edit-1',
+      routeName: 'Ruta Norte Nueva',
+      collectorName: 'Ruta Norte Nueva',
+      username: 'cobrador.norte',
+      password: '',
+    });
+    assert.equal(keptPassRes.route.name, 'Ruta Norte Nueva');
+    assert.equal(keptPassRes.collector.username, 'cobrador.norte');
+    assert.equal(keptPassRes.collector.role, 'COBRADOR', 'Debe normalizar COLLECTOR -> COBRADOR');
+    assert.equal(keptPassRes.collector.password, samplePbkdf2, 'Clave vacía al editar debe conservar el hash PBKDF2');
+
+    let forbiddenRejected = false;
+    try {
+      await localStore.updateRouteWithCredentials({
+        routeId: 'rt-edit-1',
+        routeName: 'Ruta Norte Nueva',
+        collectorName: 'Ruta Norte Nueva',
+        username: 'cobrador.norte',
+        password: 'cobrador',
+      });
+    } catch {
+      forbiddenRejected = true;
+    }
+    assert.equal(forbiddenRejected, true, 'Debe rechazar contraseñas prohibidas igual que LoginView');
+
+    const newCredsRes = await localStore.updateRouteWithCredentials({
+      routeId: 'rt-edit-1',
+      routeName: 'Ruta Sur Activa',
+      collectorName: 'Ruta Sur Activa',
+      username: 'sur.cobro1',
+      password: 'ClaveSegura2026!',
+    });
+    assert.equal(verifyPassword('ClaveSegura2026!', newCredsRes.collector.password || ''), true);
+    assert.equal(isHashedPassword(newCredsRes.collector.password), true);
+
+    //    c) Si syncUsersAndRoutes falla (ej. usuario duplicado global), syncBidirectional NO debe ejecutar pull/merge
+    await localStore.updateOfficeConfig({ cloudSessionToken: 'valid-tok-123' });
+    let pullCalledOnUserErr = false;
+    supabaseSyncService.checkOfficeLicense = async () => ({
+      active: true,
+      status: 'ACTIVE',
+      expiresAt: null,
+    });
+    supabaseSyncService.syncUsersAndRoutes = async () => ({
+      ok: false,
+      usernameConflict: true,
+      error: 'Ese nombre de usuario ya está registrado en otra cuenta.',
+    });
+    supabaseSyncService.pullFullPortfolio = async () => {
+      pullCalledOnUserErr = true;
+      return null;
+    };
+    const syncBlockedOnUserErr = await cloudSyncEngine.syncBidirectional('');
+    assert.equal(syncBlockedOnUserErr, false);
+    assert.equal(pullCalledOnUserErr, false, 'NO debe ejecutar pull/merge si syncUsersAndRoutes falló');
+
+    //    d) syncUsersAndRoutesNow sube inmediatamente usuarios y rutas con token activo
+    let pushedNowUsers: any[] = [];
+    let pushedNowRoutes: any[] = [];
+    supabaseSyncService.syncUsersAndRoutes = async (_oid, u, r) => {
+      pushedNowUsers = u;
+      pushedNowRoutes = r;
+      return { ok: true };
+    };
+    const immediateRes = await cloudSyncEngine.syncUsersAndRoutesNow();
+    assert.equal(immediateRes.ok, true);
+    assert.equal(pushedNowUsers.some((u) => u.username === 'sur.cobro1'), true);
+    assert.equal(pushedNowRoutes.some((r) => r.name === 'Ruta Sur Activa'), true);
+
+    console.log('PASS cloud-sync-safety.test.ts (18/18 assertions)');
   } finally {
     restoreMocks();
   }

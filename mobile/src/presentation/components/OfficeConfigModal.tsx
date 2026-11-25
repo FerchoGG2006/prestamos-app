@@ -19,8 +19,14 @@ import { getLocalTodayStr } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import {
   localStore,
+  safeStorage,
   DEFAULT_OFFICE_CONFIG,
 } from '../../infrastructure/storage/local-store';
+import {
+  hashPassword,
+  isHashedPassword,
+  validateSecurePassword,
+} from '../../core/utils/security';
 import { formatCOP } from '../../core/config/business-rules';
 import { checkAllUpdates, CURRENT_APP_VERSION } from '../utils/appUpdates';
 import { cloudSyncEngine } from '../../infrastructure/sync/cloud-sync';
@@ -153,6 +159,19 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   const [editExpectedCustomersStr, setEditExpectedCustomersStr] = useState('40');
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingRouteCreds, setIsSavingRouteCreds] = useState(false);
+  const [routeFeedback, setRouteFeedback] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  const notifyUser = (title: string, message: string) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
 
   useEffect(() => {
     if (visible) {
@@ -202,9 +221,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       if (adm) {
         setAdminNameEdit(adm.name || 'Administración General');
         setAdminUserEdit(adm.username || 'admin');
-        setAdminPassEdit(adm.password || '');
+        setAdminPassEdit('');
       }
       setEditingRouteId(null);
+      setRouteFeedback(null);
       return () => clearTimeout(timer);
     }
   }, [visible, initialTab]);
@@ -271,41 +291,85 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   };
 
   const handleSaveAdminCredentials = async () => {
+    if (isSavingRouteCreds) return;
+    setIsSavingRouteCreds(true);
+    setRouteFeedback(null);
+    const prevUsers = [...localStore.getUsers()];
+    const prevRoutes = [...localStore.getRoutes()];
     try {
-      await localStore.updateAdminCredentials({
+      const updatedAdmin = await localStore.updateAdminCredentials({
         name: adminNameEdit,
         username: adminUserEdit,
         password: adminPassEdit,
       });
+
+      const syncRes = await cloudSyncEngine.syncUsersAndRoutesNow();
+      if (!syncRes.ok && syncRes.usernameConflict) {
+        await localStore.saveUsersAndRoutes(prevUsers, prevRoutes);
+        setUsersList([...localStore.getUsers()]);
+        const msg = syncRes.error || 'Ese usuario ya está registrado en otra cuenta de Kredia.';
+        setRouteFeedback({ type: 'error', text: msg });
+        notifyUser('Usuario no disponible', msg);
+        return;
+      }
+
       setUsersList([...localStore.getUsers()]);
-      Alert.alert(
-        'Credenciales de Administrador Actualizadas',
-        `Usuario Admin: ${adminUserEdit.trim().toLowerCase()}\nContraseña: ${adminPassEdit.trim()}`
+      const changedPass = adminPassEdit.trim();
+      setAdminPassEdit('');
+      if (changedPass) {
+        try {
+          await safeStorage.setItem(
+            '@prestamos_remembered_credentials',
+            JSON.stringify({ username: updatedAdmin.username, password: changedPass })
+          );
+        } catch {}
+      }
+
+      const msg = syncRes.ok
+        ? syncRes.skippedLocalOnly
+          ? `Credenciales del administrador guardadas (${updatedAdmin.username}).`
+          : `Credenciales del administrador guardadas y sincronizadas en la nube (${updatedAdmin.username}).`
+        : `Guardado en este dispositivo (${updatedAdmin.username}), pero no se pudo subir a la nube: ${syncRes.error || 'sin conexión'}.`;
+
+      setRouteFeedback({ type: syncRes.ok ? 'success' : 'error', text: msg });
+      notifyUser(
+        syncRes.ok ? 'Credenciales de Administrador Actualizadas' : 'Guardado solo localmente',
+        msg
       );
       onSuccess();
     } catch (err: any) {
-      Alert.alert('Aviso', err.message || 'No se pudieron actualizar las credenciales.');
+      const msg = err?.message || 'No se pudieron actualizar las credenciales.';
+      setRouteFeedback({ type: 'error', text: msg });
+      notifyUser('Aviso', msg);
+    } finally {
+      setIsSavingRouteCreds(false);
     }
   };
 
   const handleStartEditRoute = (route: Route, collector?: User) => {
     setEditingRouteId(route.id);
     setEditRouteName(route.name);
-    setEditCollectorName(collector?.name || route.collectorName || '');
+    setEditCollectorName(collector?.name || route.collectorName || route.name || '');
     setEditUsername(collector?.username || '');
-    setEditPassword(collector?.password || '');
+    // Nunca precargar el hash criptográfico en el campo de clave: vacío = conservar clave actual
+    setEditPassword('');
     setEditTargetAdminStr(String(route.targetAdministrative || 0));
     setEditInitialCashBaseStr(String(route.initialCashBase || 0));
     setEditExpectedCustomersStr(String(route.expectedCustomersCount || 40));
+    setRouteFeedback(null);
   };
 
   const handleSaveEditedRoute = async () => {
-    if (!editingRouteId) return;
+    if (!editingRouteId || isSavingRouteCreds) return;
+    setIsSavingRouteCreds(true);
+    setRouteFeedback(null);
+    const prevUsers = [...localStore.getUsers()];
+    const prevRoutes = [...localStore.getRoutes()];
     try {
       const parsedAdmin = parseInt(editTargetAdminStr.replace(/\D/g, ''), 10) || 0;
       const parsedCashBase = parseInt(editInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
       const parsedCustomers = parseInt(editExpectedCustomersStr.replace(/\D/g, ''), 10) || 0;
-      await localStore.updateRouteWithCredentials({
+      const { route, collector } = await localStore.updateRouteWithCredentials({
         routeId: editingRouteId,
         routeName: editRouteName,
         collectorName: editCollectorName,
@@ -315,13 +379,41 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         initialCashBase: parsedCashBase,
         expectedCustomersCount: parsedCustomers,
       });
+
+      const syncRes = await cloudSyncEngine.syncUsersAndRoutesNow();
+      if (!syncRes.ok && syncRes.usernameConflict) {
+        await localStore.saveUsersAndRoutes(prevUsers, prevRoutes);
+        setRoutesList([...localStore.getRoutes()]);
+        setUsersList([...localStore.getUsers()]);
+        const msg = syncRes.error || 'Ese usuario ya existe en el sistema. Elige otro distinto.';
+        setRouteFeedback({ type: 'error', text: msg });
+        notifyUser('Usuario no disponible', msg);
+        return;
+      }
+
       setRoutesList([...localStore.getRoutes()]);
       setUsersList([...localStore.getUsers()]);
       setEditingRouteId(null);
-      Alert.alert('Ruta Actualizada', 'Se guardaron los cambios de la ruta, administrativo, base y credenciales.');
+      setEditPassword('');
+
+      const msg = syncRes.ok
+        ? syncRes.skippedLocalOnly
+          ? `Ruta "${route.name}" y usuario "${collector.username}" guardados correctamente.`
+          : `Ruta "${route.name}" y credenciales del cobrador "${collector.username}" guardadas y sincronizadas en la nube. Ya puedes iniciar sesión con este usuario.`
+        : `Guardado en este dispositivo (${collector.username}), pero no se pudo subir a la nube: ${syncRes.error || 'sin conexión'}. Intenta tocar Sincronizar antes de cerrar sesión.`;
+
+      setRouteFeedback({ type: syncRes.ok ? 'success' : 'error', text: msg });
+      notifyUser(
+        syncRes.ok ? 'Ruta y Credenciales Guardadas' : 'Guardado solo en este dispositivo',
+        msg
+      );
       onSuccess();
     } catch (err: any) {
-      Alert.alert('Aviso', err.message || 'No se pudo actualizar la ruta.');
+      const msg = err?.message || 'No se pudo actualizar la ruta.';
+      setRouteFeedback({ type: 'error', text: msg });
+      notifyUser('Aviso', msg);
+    } finally {
+      setIsSavingRouteCreds(false);
     }
   };
 
@@ -372,19 +464,41 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
   };
 
   const handleCreateRouteWithCredentials = async () => {
-    if (!newRouteName.trim() || !newUsername.trim() || !newPassword.trim()) {
-      Alert.alert('Campos Incompletos', 'Por favor ingresa el nombre de la ruta, usuario y contraseña.');
+    if (isSavingRouteCreds) return;
+    const cleanName = newRouteName.trim();
+    const cleanUser = newUsername.trim().toLowerCase();
+    const cleanPass = newPassword.trim();
+    if (!cleanName || !cleanUser || !cleanPass) {
+      const msg = 'Por favor ingresa el nombre de la ruta, usuario y contraseña.';
+      setRouteFeedback({ type: 'error', text: msg });
+      notifyUser('Campos Incompletos', msg);
       return;
     }
-    if (newPassword.trim().length < 6 || newPassword.trim() === '123' || newPassword.trim() === '123456') {
-      Alert.alert('Contraseña insegura', 'Por seguridad, la contraseña de la ruta debe tener al menos 6 caracteres y no ser una clave por defecto.');
+    const passErr = validateSecurePassword(cleanPass, 'la contraseña de la ruta');
+    if (passErr) {
+      setRouteFeedback({ type: 'error', text: passErr });
+      notifyUser('Contraseña insegura', passErr);
+      return;
+    }
+    const localDup = localStore
+      .getUsers()
+      .find((u) => (u.username || '').trim().toLowerCase() === cleanUser);
+    if (localDup) {
+      const msg = `El usuario "${cleanUser}" ya está siendo usado por otro miembro de la oficina.`;
+      setRouteFeedback({ type: 'error', text: msg });
+      notifyUser('Usuario duplicado', msg);
       return;
     }
 
+    setIsSavingRouteCreds(true);
+    setRouteFeedback(null);
+    const prevUsers = [...localStore.getUsers()];
+    const prevRoutes = [...localStore.getRoutes()];
     try {
-      const routeId = `route-${Date.now()}`;
-      const collectorId = `usr-col-${Date.now()}`;
-      const colDisplayName = newCollectorName.trim() || newRouteName.trim();
+      const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const routeId = `route-${suffix}`;
+      const collectorId = `usr-col-${suffix}`;
+      const colDisplayName = newCollectorName.trim() || cleanName;
       const parsedNewAdmin = parseInt(newTargetAdminStr.replace(/\D/g, ''), 10) || 0;
       const parsedNewCashBase = parseInt(newInitialCashBaseStr.replace(/\D/g, ''), 10) || 0;
       const parsedNewCustomers = parseInt(newExpectedCustomersStr.replace(/\D/g, ''), 10) || 40;
@@ -392,9 +506,9 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       const newCollector: User = {
         id: collectorId,
         name: colDisplayName,
-        username: newUsername.trim().toLowerCase(),
-        password: newPassword.trim(),
-        email: `${newUsername.trim().toLowerCase()}@cartera.com`,
+        username: cleanUser,
+        password: hashPassword(cleanPass),
+        email: `${cleanUser}@oficina.com`,
         role: 'COBRADOR',
         routeId,
         assignedRouteIds: [routeId],
@@ -404,8 +518,8 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
       const newRoute: Route = {
         id: routeId,
-        name: newRouteName.trim(),
-        code: `R-${routesList.length + 1}`,
+        name: cleanName,
+        code: `R-${prevRoutes.length + 1}`,
         collectorId: collectorId,
         collectorName: colDisplayName,
         isActive: true,
@@ -416,13 +530,24 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         createdAt: new Date().toISOString(),
       };
 
-      const updatedUsers = [...usersList, newCollector];
-      const updatedRoutes = [...routesList, newRoute];
+      const updatedUsers = [...prevUsers, newCollector];
+      const updatedRoutes = [...prevRoutes, newRoute];
 
       await localStore.saveUsersAndRoutes(updatedUsers, updatedRoutes);
 
-      setUsersList(updatedUsers);
-      setRoutesList(updatedRoutes);
+      const syncRes = await cloudSyncEngine.syncUsersAndRoutesNow();
+      if (!syncRes.ok && syncRes.usernameConflict) {
+        await localStore.saveUsersAndRoutes(prevUsers, prevRoutes);
+        setUsersList([...localStore.getUsers()]);
+        setRoutesList([...localStore.getRoutes()]);
+        const msg = syncRes.error || 'Ese nombre de usuario ya existe en el sistema. Elige otro.';
+        setRouteFeedback({ type: 'error', text: msg });
+        notifyUser('Usuario no disponible', msg);
+        return;
+      }
+
+      setUsersList([...localStore.getUsers()]);
+      setRoutesList([...localStore.getRoutes()]);
       setShowNewRouteForm(false);
       setNewRouteName('');
       setNewCollectorName('');
@@ -432,12 +557,21 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setNewInitialCashBaseStr('0');
       setNewExpectedCustomersStr('40');
 
-      Alert.alert(
-        '¡Ruta Creada Exitosamente!',
-        `Se habilitó "${newRoute.name}".\n\nAdministrativo: ${formatCOP(parsedNewAdmin)}\nBase de Efectivo: ${formatCOP(parsedNewCashBase)}\nCredenciales de Acceso:\nUsuario: ${newCollector.username}\nContraseña: ${newCollector.password}`
+      const msg = syncRes.ok
+        ? `Se habilitó "${newRoute.name}" y se sincronizó en la nube.\n\nUsuario: ${newCollector.username}\nYa puedes iniciar sesión con estas credenciales.`
+        : `Se creó "${newRoute.name}" localmente (${newCollector.username}), pero no se pudo subir a la nube: ${syncRes.error || 'sin conexión'}.`;
+      setRouteFeedback({ type: syncRes.ok ? 'success' : 'error', text: msg });
+      notifyUser(
+        syncRes.ok ? '¡Ruta Creada y Sincronizada!' : 'Ruta Creada Solo Localmente',
+        msg
       );
+      onSuccess();
     } catch (err: any) {
-      Alert.alert('Error al crear ruta', err.message || 'No se pudo guardar la ruta.');
+      const msg = err?.message || 'No se pudo guardar la ruta.';
+      setRouteFeedback({ type: 'error', text: msg });
+      notifyUser('Error al crear ruta', msg);
+    } finally {
+      setIsSavingRouteCreds(false);
     }
   };
 
@@ -1358,6 +1492,29 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
             {/* PESTAÑA 4: GESTIÓN DE RUTAS Y CREDENCIALES */}
             {activeTab === 'RUTAS' && (
               <View style={styles.sectionContainer}>
+                {routeFeedback && (
+                  <View
+                    style={{
+                      padding: 12,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      backgroundColor: routeFeedback.type === 'success' ? '#ECFDF5' : '#FEF2F2',
+                      borderColor: routeFeedback.type === 'success' ? '#A7F3D0' : '#FECACA',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontFamily: FONT_FAMILY,
+                        fontSize: 12,
+                        fontWeight: '700',
+                        color: routeFeedback.type === 'success' ? '#065F46' : '#B91C1C',
+                      }}
+                    >
+                      {routeFeedback.text}
+                    </Text>
+                  </View>
+                )}
+
                 {/* 4.A: Credenciales del Administrador de la Oficina */}
                 <View style={styles.newRouteCard}>
                   <Text style={styles.newRouteCardTitle}>
@@ -1377,13 +1534,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                       />
                     </View>
                     <View style={[styles.inputGroup, { flex: 1 }]}>
-                      <Text style={styles.inputLabel}>Clave Admin</Text>
+                      <Text style={styles.inputLabel}>Nueva Clave Admin</Text>
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <TextInput
                           style={[styles.textInput, { flex: 1 }]}
                           value={adminPassEdit}
                           onChangeText={setAdminPassEdit}
-                          placeholder="Clave"
+                          placeholder="Vacío = mantener"
                           placeholderTextColor={COLORS.textMuted}
                           secureTextEntry={!showAdminPassEdit}
                           autoCapitalize="none"
@@ -1403,12 +1560,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   </View>
 
                   <TouchableOpacity
-                    style={styles.createRouteSubmitBtn}
+                    style={[styles.createRouteSubmitBtn, isSavingRouteCreds && { opacity: 0.6 }]}
+                    disabled={isSavingRouteCreds}
                     onPress={handleSaveAdminCredentials}
                   >
                     <CheckCircle size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
                     <Text style={styles.createRouteSubmitText}>
-                      Guardar Credencial Admin
+                      {isSavingRouteCreds ? 'Guardando en la nube...' : 'Guardar Credencial Admin'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1490,8 +1648,14 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
                 {/* Listado Compacto de Rutas y Credenciales Activas */}
                 {routesList.map((route, idx) => {
-                  const assignedCollector = usersList.find((u) => u.id === route.collectorId);
-                  const username = assignedCollector?.username || `ruta${idx + 1}`;
+                  const assignedCollector =
+                    usersList.find((u) => u.id === route.collectorId) ||
+                    usersList.find(
+                      (u) =>
+                        (u.role === 'COBRADOR' || u.role === 'COLLECTOR') &&
+                        (u.routeId === route.id || u.assignedRouteIds?.includes(route.id))
+                    );
+                  const username = assignedCollector?.username || 'Sin asignar';
                   const password = assignedCollector?.password || '';
                   const isPasswordRevealed = !!revealedPasswords[route.id];
                   const isEditingThis = editingRouteId === route.id;
@@ -1552,24 +1716,37 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                           </View>
                           <View style={styles.inputRow}>
                             <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                              <Text style={styles.inputLabel}>Usuario</Text>
+                              <Text style={styles.inputLabel}>Usuario Cobrador</Text>
                               <TextInput
                                 style={styles.textInput}
                                 value={editUsername}
                                 onChangeText={setEditUsername}
+                                placeholder="Ej. cobrador1"
+                                placeholderTextColor={COLORS.textMuted}
                                 autoCapitalize="none"
                               />
                             </View>
                             <View style={[styles.inputGroup, { flex: 1 }]}>
-                              <Text style={styles.inputLabel}>Clave</Text>
+                              <Text style={styles.inputLabel}>Nueva Clave</Text>
                               <TextInput
                                 style={styles.textInput}
                                 value={editPassword}
                                 onChangeText={setEditPassword}
+                                placeholder={
+                                  assignedCollector?.password
+                                    ? 'Vacío = conservar clave'
+                                    : 'Mínimo 6 caracteres'
+                                }
+                                placeholderTextColor={COLORS.textMuted}
                                 autoCapitalize="none"
                               />
                             </View>
                           </View>
+                          <Text style={{ fontSize: 10.5, color: '#64748B', marginTop: -2 }}>
+                            {assignedCollector?.password
+                              ? 'Escribe una nueva contraseña (mín. 6 caracteres) o déjala vacía para mantener la actual.'
+                              : 'Define una contraseña segura de mínimo 6 caracteres (no uses 123456, 000000 ni cobrador).'}
+                          </Text>
                           <View style={styles.inputRow}>
                             <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
                               <Text style={styles.inputLabel}>Administrativo de la Ruta ($ COP)</Text>
@@ -1591,12 +1768,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                             </View>
                           </View>
                           <TouchableOpacity
-                            style={styles.createRouteSubmitBtn}
+                            style={[styles.createRouteSubmitBtn, isSavingRouteCreds && { opacity: 0.6 }]}
+                            disabled={isSavingRouteCreds}
                             onPress={handleSaveEditedRoute}
                           >
                             <CheckCircle size={14} color="#FFFFFF" style={{ marginRight: 6 }} />
                             <Text style={styles.createRouteSubmitText}>
-                              Guardar Cambios
+                              {isSavingRouteCreds ? 'Guardando en la nube...' : 'Guardar Cambios'}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -1610,7 +1788,13 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                                 CLAVE
                               </Text>
                               <Text style={styles.credValue}>
-                                {isPasswordRevealed ? password : '••••••'}
+                                {!password
+                                  ? 'Sin definir'
+                                  : isPasswordRevealed
+                                  ? isHashedPassword(password)
+                                    ? 'Protegida (usa Editar)'
+                                    : password
+                                  : '••••••'}
                               </Text>
                               <TouchableOpacity
                                 onPress={() => togglePasswordVisibility(route.id)}
