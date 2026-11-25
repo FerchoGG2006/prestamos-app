@@ -611,17 +611,16 @@ public final class CarteraApplication extends Application {
         brandBox.setAlignment(Pos.CENTER_LEFT);
         brandBox.setPadding(new Insets(0, 0, 16, 4));
 
-        var logoBadge = new Label("SC");
-        logoBadge.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-padding: 8 10; -fx-background-radius: 8;");
-
-        var brandText = new VBox(2);
-        var title = new Label("SISTEMA CARTERA");
-        title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
+        var brandText = new VBox(4);
+        var wordmark = new javafx.scene.image.ImageView(getClass().getResource("/ui/kredia.png").toExternalForm());
+        wordmark.setFitWidth(98);
+        wordmark.setPreserveRatio(true);
+        wordmark.setAccessibleText("Kredia");
         var subtitle = new Label("Cobros & Administración");
         subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
-        brandText.getChildren().addAll(title, subtitle);
+        brandText.getChildren().addAll(wordmark, subtitle);
 
-        brandBox.getChildren().addAll(logoBadge, brandText);
+        brandBox.getChildren().add(brandText);
 
         // Tarjeta de Identificación de Rol Dinámica
         var userCard = new VBox(3);

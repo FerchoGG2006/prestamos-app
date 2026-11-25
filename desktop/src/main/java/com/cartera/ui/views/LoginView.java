@@ -64,13 +64,10 @@ public class LoginView extends StackPane {
         VBox header = new VBox(4);
         header.setAlignment(Pos.CENTER);
 
-        Label emblem = new Label("K");
-        emblem.setAlignment(Pos.CENTER);
-        emblem.setPrefSize(50, 50);
-        emblem.setStyle("-fx-background-color: #0d9488; -fx-text-fill: #ffffff; -fx-font-size: 24px; -fx-font-weight: 900; -fx-background-radius: 15;");
-
-        Label appTitle = new Label("Kredia");
-        appTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 23px; -fx-font-weight: 900;");
+        var wordmark = new javafx.scene.image.ImageView(getClass().getResource("/ui/kredia.png").toExternalForm());
+        wordmark.setFitWidth(152);
+        wordmark.setPreserveRatio(true);
+        wordmark.setAccessibleText("Kredia");
         Label subtitle = new Label("Sistema de Gestión de Cartera y Rutas");
         subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px; -fx-font-weight: bold;");
 
@@ -78,7 +75,7 @@ public class LoginView extends StackPane {
         lblActiveOfficeBadge.setManaged(false);
         lblActiveOfficeBadge.setStyle("-fx-background-color: #e6f7f5; -fx-text-fill: #0f766e; -fx-border-color: #99f6e4; -fx-border-radius: 12; -fx-background-radius: 12; -fx-padding: 3 10; -fx-font-size: 11px; -fx-font-weight: bold;");
 
-        header.getChildren().addAll(emblem, appTitle, subtitle, lblActiveOfficeBadge);
+        header.getChildren().addAll(wordmark, subtitle, lblActiveOfficeBadge);
 
         // Tarjeta Blanca: solo Usuario y Contraseña
         loginCard = new VBox(12);

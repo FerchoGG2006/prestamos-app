@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
+  Image,
   Text,
   TextInput,
   TouchableOpacity,
@@ -639,15 +640,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.centerContent}>
-          {/* Identidad Visual Unificada: Azul Tinta (#12263F) + Ocre (#C9892B) */}
           <View style={styles.header}>
-            <View style={styles.brandEmblem}>
-              <Text style={styles.brandEmblemLetter}>K</Text>
-              <View style={styles.brandEmblemDot}>
-                <ShieldCheck size={11} color="#FFFFFF" />
-              </View>
-            </View>
-            <Text style={styles.appBrandName}>Kredia</Text>
+            <Image source={require("../../../../assets/kredia.png")} style={styles.wordmark} resizeMode="contain" accessibilityLabel="Kredia" accessible />
             <Text style={styles.appTagline}>Gestión de Cartera y Cobro en Ruta</Text>
 
             {isOfficeRegistered && (
@@ -1264,47 +1258,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 18,
   },
-  brandEmblem: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  brandEmblemLetter: {
-    color: '#FFFFFF',
-    fontFamily: FONT_FAMILY,
-    fontSize: 25,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  brandEmblemDot: {
-    position: 'absolute',
-    bottom: -3,
-    right: -3,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: COLORS.accent,
-    borderWidth: 2,
-    borderColor: COLORS.bgPrimary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appBrandName: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY,
-    fontSize: 24,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-    marginBottom: 2,
+  wordmark: {
+    width: 156,
+    height: 38,
+    marginBottom: 8,
   },
   appTagline: {
     color: COLORS.textSecondary,
