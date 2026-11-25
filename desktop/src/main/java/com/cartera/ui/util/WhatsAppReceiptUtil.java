@@ -2,6 +2,8 @@ package com.cartera.ui.util;
 
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.awt.Desktop;
 import java.math.BigDecimal;
@@ -19,6 +21,7 @@ import java.util.Locale;
  */
 public final class WhatsAppReceiptUtil {
 
+    private static final Logger log = LoggerFactory.getLogger(WhatsAppReceiptUtil.class);
     private static final NumberFormat CURRENCY = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-CO"));
     static {
         CURRENCY.setMaximumFractionDigits(0);
@@ -153,9 +156,88 @@ public final class WhatsAppReceiptUtil {
         return sb.toString();
     }
 
+    public static String generateDailySettlementMessage(
+            String companyName,
+            String routeName,
+            String dateStr,
+            String collectorName,
+            BigDecimal totalCollected,
+            BigDecimal collectedInCash,
+            BigDecimal collectedDigitally,
+            BigDecimal openingRouteBase,
+            BigDecimal routeExpenses,
+            BigDecimal netExpectedCash,
+            boolean isClosed,
+            BigDecimal actualDelivered,
+            BigDecimal cashDifference,
+            BigDecimal withdrawToOffice,
+            BigDecimal projectedTomorrowBase,
+            String notes,
+            String denominationsBlock
+    ) {
+        String comp = (companyName != null && !companyName.isBlank()) ? companyName.toUpperCase() : "SISTEMA DE CARTERA";
+        BigDecimal totalCol = totalCollected != null ? totalCollected : BigDecimal.ZERO;
+        BigDecimal cashCol = collectedInCash != null ? collectedInCash : BigDecimal.ZERO;
+        BigDecimal digCol = collectedDigitally != null ? collectedDigitally : BigDecimal.ZERO;
+        BigDecimal openBase = openingRouteBase != null ? openingRouteBase : BigDecimal.ZERO;
+        BigDecimal expenses = routeExpenses != null ? routeExpenses : BigDecimal.ZERO;
+        BigDecimal netExp = netExpectedCash != null ? netExpectedCash : BigDecimal.ZERO;
+        BigDecimal collectedPlusBase = cashCol.add(openBase);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        sb.append("*REPORTE DE CUADRE DIARIO*\n");
+        sb.append("*").append(comp).append("*\n");
+        if (routeName != null && !routeName.isBlank()) {
+            sb.append("*Ruta:* ").append(routeName).append("\n");
+        }
+        sb.append("*Fecha:* ").append(dateStr != null ? dateStr : "").append("\n");
+        sb.append("*Cobrador:* ").append(collectorName != null ? collectorName : "Cobrador").append("\n");
+        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+        sb.append("*1. COBRADO HOY Y BASE DE INICIO*\n");
+        sb.append("• *Cobrado Hoy (Total):* ").append(CURRENCY.format(totalCol)).append("\n");
+        sb.append("  - Efectivo cobrado hoy: ").append(CURRENCY.format(cashCol)).append("\n");
+        sb.append("  - Digital (Nequi/Transf): ").append(CURRENCY.format(digCol)).append("\n");
+        sb.append("• *(+) Base de Inicio (Ruta):* ").append(CURRENCY.format(openBase)).append("\n");
+        sb.append("• *(=) Cobrado Hoy + Base:* ").append(CURRENCY.format(collectedPlusBase)).append("\n\n");
+        sb.append("*2. GASTOS DE RUTA:* ").append(CURRENCY.format(expenses)).append("\n");
+        sb.append("*3. NETO ESPERADO EN EFECTIVO:* *").append(CURRENCY.format(netExp)).append("*\n\n");
+
+        if (denominationsBlock != null && !denominationsBlock.isBlank()) {
+            sb.append(denominationsBlock).append("\n");
+        }
+
+        if (isClosed) {
+            sb.append("*ESTADO:* JORNADA CERRADA\n");
+            if (actualDelivered != null) {
+                sb.append("• *Efectivo Entregado:* ").append(CURRENCY.format(actualDelivered)).append("\n");
+            }
+            if (cashDifference != null) {
+                sb.append("• *Diferencia:* ").append(CURRENCY.format(cashDifference)).append("\n");
+            }
+            if (notes != null && !notes.isBlank()) {
+                sb.append("• *Observaciones:* ").append(notes.trim()).append("\n");
+            }
+        } else {
+            sb.append("*ESTADO:* JORNADA EN CURSO\n");
+            if (withdrawToOffice != null && withdrawToOffice.compareTo(BigDecimal.ZERO) > 0) {
+                sb.append("• *Retiro a Oficina:* ").append(CURRENCY.format(withdrawToOffice)).append("\n");
+            }
+            if (projectedTomorrowBase != null) {
+                sb.append("• *Base proyectada mañana:* ").append(CURRENCY.format(projectedTomorrowBase)).append("\n");
+            }
+        }
+        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        sb.append("_Generado desde Kredia Desktop v").append(com.cartera.infrastructure.version.AppVersion.CURRENT).append("_");
+        return sb.toString();
+    }
+
     public static String normalizeColombianPhone(String rawPhone) {
         if (rawPhone == null) return "";
         String digits = rawPhone.replaceAll("[^0-9]", "");
+        if (digits.length() < 7) {
+            return "";
+        }
         if (digits.length() == 10 && digits.startsWith("3")) {
             return "57" + digits;
         }
@@ -163,11 +245,12 @@ public final class WhatsAppReceiptUtil {
     }
 
     public static boolean sendViaWhatsApp(String phone, String message) {
+        String safeMessage = message != null ? message : "";
         // 1. Copiar al portapapeles como respaldo inmediato
         try {
             Clipboard clipboard = Clipboard.getSystemClipboard();
             ClipboardContent content = new ClipboardContent();
-            content.putString(message);
+            content.putString(safeMessage);
             clipboard.setContent(content);
         } catch (Throwable ignored) {
             // Puede ocurrir en entornos headless de pruebas
@@ -176,7 +259,7 @@ public final class WhatsAppReceiptUtil {
         // 2. Abrir enlace wa.me en navegador predeterminado / app de WhatsApp
         try {
             String normalizedPhone = normalizeColombianPhone(phone);
-            String encodedText = URLEncoder.encode(message, StandardCharsets.UTF_8);
+            String encodedText = URLEncoder.encode(safeMessage, StandardCharsets.UTF_8).replace("+", "%20");
             String url = normalizedPhone.isEmpty()
                     ? "https://wa.me/?text=" + encodedText
                     : "https://wa.me/" + normalizedPhone + "?text=" + encodedText;
@@ -185,7 +268,8 @@ public final class WhatsAppReceiptUtil {
                 Desktop.getDesktop().browse(new URI(url));
                 return true;
             }
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            log.warn("No se pudo abrir WhatsApp automáticamente: {}", ex.getMessage());
         }
         return false;
     }

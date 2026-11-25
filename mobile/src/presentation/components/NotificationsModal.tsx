@@ -207,11 +207,11 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
         >
           {/* Header */}
           <View style={styles.header}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-              <View style={styles.headerIconWrap}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0, marginRight: 10 }}>
+              <View style={[styles.headerIconWrap, { flexShrink: 0 }]}>
                 <Bell size={18} color="#2563EB" />
               </View>
-              <View>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.headerTitle}>Alertas de Cartera</Text>
                 <Text style={styles.headerSub}>
                   {alertItems.length === 0
@@ -220,7 +220,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
                 </Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.75}>
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { flexShrink: 0 }]} activeOpacity={0.75}>
               <X size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>

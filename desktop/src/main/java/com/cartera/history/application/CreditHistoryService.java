@@ -133,11 +133,24 @@ public class CreditHistoryService {
      * Busca clientes por nombre o cédula para soporte de autocompletado y selección rápida.
      */
     public List<CustomerEntity> searchCustomers(String query) {
-        if (query == null || query.isBlank()) {
-            return customerRepository.findAll();
+        List<CustomerEntity> raw = (query == null || query.isBlank())
+                ? customerRepository.findAll()
+                : customerRepository.findByFullNameContainingIgnoreCaseOrDocumentNumberContaining(query.trim(), query.trim());
+
+        var session = com.cartera.infrastructure.security.UserSessionContext.getSession().orElse(null);
+        if (session != null && session.isCollector()) {
+            String selectedRoute = com.cartera.infrastructure.security.UserSessionContext.getSelectedRouteId();
+            if (selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute)) {
+                return raw.stream()
+                        .filter(c -> selectedRoute.equalsIgnoreCase(c.getRouteId())
+                                || (c.getCollectorId() != null && session.userId().equalsIgnoreCase(c.getCollectorId())))
+                        .toList();
+            }
+            return raw.stream()
+                    .filter(c -> c.getCollectorId() != null && session.userId().equalsIgnoreCase(c.getCollectorId()))
+                    .toList();
         }
-        String q = query.trim();
-        return customerRepository.findByFullNameContainingIgnoreCaseOrDocumentNumberContaining(q, q);
+        return raw;
     }
 
     private CreditHistoryReport buildReportForCustomer(CustomerEntity customer) {
@@ -151,7 +164,7 @@ public class CreditHistoryService {
             return db.compareTo(da);
         });
 
-        int totalLoansCount = allLoans.size();
+        int totalLoansCount = 0;
         int completedLoansCount = 0;
         int activeLoansCount = 0;
 
@@ -167,17 +180,22 @@ public class CreditHistoryService {
         List<LoanHistoryItem> loanItems = new ArrayList<>();
 
         for (LoanEntity loan : allLoans) {
-            totalBorrowed = totalBorrowed.add(loan.getPrincipal() != null ? loan.getPrincipal() : BigDecimal.ZERO);
-            totalAgreed = totalAgreed.add(loan.getTotalAgreed() != null ? loan.getTotalAgreed() : BigDecimal.ZERO);
-
             String st = loan.getStatus() != null ? loan.getStatus().trim() : "";
+            boolean isCancelled = "ANULADO".equalsIgnoreCase(st) || "CANCELLED".equalsIgnoreCase(st);
             boolean isActive = "ACTIVO".equalsIgnoreCase(st) || "ACTIVE".equalsIgnoreCase(st);
             boolean isRenewed = "RENOVADO".equalsIgnoreCase(st);
             boolean isCompleted = "FINALIZADO".equalsIgnoreCase(st)
+                    || "COMPLETADO".equalsIgnoreCase(st)
                     || "PAGADO".equalsIgnoreCase(st)
                     || "PAID".equalsIgnoreCase(st)
                     || "CANCELADO".equalsIgnoreCase(st)
                     || isRenewed;
+
+            if (!isCancelled) {
+                totalLoansCount++;
+                totalBorrowed = totalBorrowed.add(loan.getPrincipal() != null ? loan.getPrincipal() : BigDecimal.ZERO);
+                totalAgreed = totalAgreed.add(loan.getTotalAgreed() != null ? loan.getTotalAgreed() : BigDecimal.ZERO);
+            }
 
             if (isActive) {
                 activeLoansCount++;
@@ -224,43 +242,50 @@ public class CreditHistoryService {
             int latePaidInstCount = 0;
             int maxLoanDelayDays = 0;
 
-            for (InstallmentEntity inst : installments) {
-                BigDecimal pending = inst.getPendingAmount() != null ? inst.getPendingAmount() : BigDecimal.ZERO;
-                BigDecimal paid = inst.getPaidAmount() != null ? inst.getPaidAmount() : BigDecimal.ZERO;
-                loanPaid = loanPaid.add(paid);
-                loanPending = loanPending.add(pending);
+            if (!isCancelled) {
+                for (InstallmentEntity inst : installments) {
+                    if ("ANULADA".equalsIgnoreCase(inst.getStatus())) {
+                        continue;
+                    }
+                    BigDecimal pending = inst.getPendingAmount() != null ? inst.getPendingAmount() : BigDecimal.ZERO;
+                    BigDecimal paid = inst.getPaidAmount() != null ? inst.getPaidAmount() : BigDecimal.ZERO;
+                    loanPaid = loanPaid.add(paid);
+                    loanPending = loanPending.add(pending);
 
-                if (pending.compareTo(BigDecimal.ZERO) <= 0) {
-                    paidInstCount++;
-                }
+                    if (pending.compareTo(BigDecimal.ZERO) <= 0
+                            || "PAGADA".equalsIgnoreCase(inst.getStatus())
+                            || "ADELANTADA".equalsIgnoreCase(inst.getStatus())) {
+                        paidInstCount++;
+                    }
 
-                if (inst.getDueDate() != null && !inst.getDueDate().isBlank()) {
-                    try {
-                        LocalDate dueDate = LocalDate.parse(inst.getDueDate());
-                        if (pending.compareTo(BigDecimal.ZERO) > 0 && today.isAfter(dueDate)) {
-                            // Cuota aún pendiente y vencida
-                            overdueInstCount++;
-                            loanOverdueAmount = loanOverdueAmount.add(pending);
-                            long days = ChronoUnit.DAYS.between(dueDate, today);
-                            if (days > maxLoanDelayDays) {
-                                maxLoanDelayDays = (int) days;
-                            }
-                        } else if (pending.compareTo(BigDecimal.ZERO) <= 0) {
-                            // Cuota ya pagada: verificar si se pagó después de su fecha de vencimiento
-                            LocalDate paidDate = paidDateByInstallment.get(inst.getId());
-                            if (paidDate != null && paidDate.isAfter(dueDate)) {
-                                latePaidInstCount++;
-                                long days = ChronoUnit.DAYS.between(dueDate, paidDate);
+                    if (inst.getDueDate() != null && !inst.getDueDate().isBlank()) {
+                        try {
+                            LocalDate dueDate = LocalDate.parse(inst.getDueDate());
+                            if (pending.compareTo(BigDecimal.ZERO) > 0 && today.isAfter(dueDate)) {
+                                overdueInstCount++;
+                                loanOverdueAmount = loanOverdueAmount.add(pending);
+                                long days = ChronoUnit.DAYS.between(dueDate, today);
                                 if (days > maxLoanDelayDays) {
                                     maxLoanDelayDays = (int) days;
                                 }
+                            } else if (pending.compareTo(BigDecimal.ZERO) <= 0) {
+                                LocalDate paidDate = paidDateByInstallment.get(inst.getId());
+                                if (paidDate != null && paidDate.isAfter(dueDate)) {
+                                    latePaidInstCount++;
+                                    long days = ChronoUnit.DAYS.between(dueDate, paidDate);
+                                    if (days > maxLoanDelayDays) {
+                                        maxLoanDelayDays = (int) days;
+                                    }
+                                }
                             }
-                        }
-                    } catch (Exception ignored) {}
+                        } catch (Exception ignored) {}
+                    }
                 }
             }
 
-            totalPaid = totalPaid.add(loanPaid);
+            if (!isCancelled) {
+                totalPaid = totalPaid.add(loanPaid);
+            }
             if (isActive) {
                 currentRemainingBalance = currentRemainingBalance.add(loanPending);
                 if (overdueInstCount > 0) {
@@ -280,7 +305,10 @@ public class CreditHistoryService {
             String behaviorVerdict;
             String behaviorColor;
 
-            if (isRenewed) {
+            if (isCancelled) {
+                behaviorVerdict = "✕ Anulado (no afecta historial)";
+                behaviorColor = "#94a3b8";
+            } else if (isRenewed) {
                 if (maxLoanDelayDays > 0) {
                     hasPastLoansWithDelay = true;
                     behaviorVerdict = "↻ Renovado (con atraso previo de " + maxLoanDelayDays + " días)";

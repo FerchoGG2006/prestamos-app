@@ -2,10 +2,13 @@ package com.cartera.ui.views;
 
 import com.cartera.collections.application.TodayCollectionsService;
 import com.cartera.collections.application.TodayCollectionsService.CollectionItem;
+import com.cartera.collections.application.TodayCollectionsService.CollectionPeriod;
 import com.cartera.infrastructure.persistence.entity.AppUserEntity;
 import com.cartera.infrastructure.persistence.entity.RouteEntity;
+import com.cartera.infrastructure.persistence.entity.SystemSettingEntity;
 import com.cartera.infrastructure.persistence.repository.AppUserRepository;
 import com.cartera.infrastructure.persistence.repository.RouteRepository;
+import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -61,6 +64,39 @@ public class DashboardView extends VBox {
     private final AppUserRepository userRepository;
     private final Consumer<String> onNavigate;
     private final Consumer<String> onSelectRoute;
+    private SystemSettingRepository settingRepository;
+
+    private static final String KEY_PRIVACY_MODE = "ui.privacy_mode";
+    private boolean privacyMode = false;
+    private final ComboBox<CollectionPeriod> cmbPeriod = new ComboBox<>();
+    private final Button btnPrivacyToggle = new Button("Ocultar montos");
+
+    public void setSettingRepository(SystemSettingRepository settingRepository) {
+        this.settingRepository = settingRepository;
+        if (settingRepository != null) {
+            this.privacyMode = settingRepository.findById(KEY_PRIVACY_MODE)
+                    .map(s -> "true".equalsIgnoreCase(s.getSettingValue()))
+                    .orElse(false);
+            updatePrivacyButtonAppearance();
+        }
+    }
+
+    private String formatMoney(BigDecimal value) {
+        if (privacyMode) {
+            return "$ •••••••";
+        }
+        return CURRENCY.format(value != null ? value : BigDecimal.ZERO);
+    }
+
+    private void updatePrivacyButtonAppearance() {
+        if (privacyMode) {
+            btnPrivacyToggle.setText("Mostrar montos");
+            btnPrivacyToggle.setStyle("-fx-background-color: #0f172a; -fx-text-fill: #f8fafc; -fx-border-color: #0f172a; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-size: 11.5px; -fx-font-weight: bold; -fx-padding: 6 12; -fx-cursor: hand;");
+        } else {
+            btnPrivacyToggle.setText("Ocultar montos");
+            btnPrivacyToggle.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-size: 11.5px; -fx-font-weight: bold; -fx-padding: 6 12; -fx-cursor: hand;");
+        }
+    }
 
     // Métricas Hero
     private final Label lblCollectedHero = new Label("$ 0");
@@ -72,6 +108,7 @@ public class DashboardView extends VBox {
     // Pilares Financieros
     private final Label lblDigital = new Label("$ 0");
     private final Label lblCash = new Label("$ 0");
+    private final Label lblCashPaperworkSub = new Label("");
     private final Label lblActiveDebt = new Label("$ 0");
     private final Label lblAdministrative = new Label("$ 0");
     private final Label lblOverdue = new Label("$ 0");
@@ -110,23 +147,56 @@ public class DashboardView extends VBox {
         setStyle("-fx-background-color: #f8fafc;");
 
         buildView();
-        refresh();
     }
+
+    private Label lblDate;
+    private Label heroTitle;
 
     private void buildView() {
         VBox contentBox = new VBox(20);
         contentBox.setPadding(new Insets(24, 28, 28, 28));
 
-        // 1. Header con fecha ejecutiva
+        // 1. Header con fecha ejecutiva + Filtro de Período + Modo Privacidad
+        HBox headerRow = new HBox(12);
+        headerRow.setAlignment(Pos.CENTER_LEFT);
+
         VBox headerBox = new VBox(2);
         Label title = new Label("Centro de Control y Supervisión");
         title.getStyleClass().add("section-title");
 
         String formattedDate = LocalDate.now().format(DATE_FORMATTER);
         formattedDate = formattedDate.substring(0, 1).toUpperCase() + formattedDate.substring(1);
-        Label lblDate = new Label(formattedDate + " • Consolidado Administrativo de Operación");
+        lblDate = new Label(formattedDate + " • Consolidado Administrativo de Operación");
         lblDate.setStyle("-fx-text-fill: #64748b; -fx-font-size: 13px;");
         headerBox.getChildren().addAll(title, lblDate);
+        HBox.setHgrow(headerBox, Priority.ALWAYS);
+
+        Label lblPeriod = new Label("Período:");
+        lblPeriod.setStyle("-fx-text-fill: #475569; -fx-font-size: 11.5px; -fx-font-weight: bold;");
+        cmbPeriod.getItems().setAll(CollectionPeriod.values());
+        cmbPeriod.setValue(CollectionPeriod.TODAY);
+        cmbPeriod.getStyleClass().add("search-field");
+        cmbPeriod.setPrefWidth(145);
+        cmbPeriod.setOnAction(e -> refresh());
+
+        updatePrivacyButtonAppearance();
+        btnPrivacyToggle.setTooltip(new Tooltip("Oculta o muestra los montos del panel cuando hay terceros mirando la pantalla"));
+        btnPrivacyToggle.setOnAction(e -> {
+            privacyMode = !privacyMode;
+            updatePrivacyButtonAppearance();
+            if (settingRepository != null) {
+                try {
+                    settingRepository.save(new SystemSettingEntity(
+                            KEY_PRIVACY_MODE,
+                            String.valueOf(privacyMode),
+                            java.time.Instant.now().toString()
+                    ));
+                } catch (Exception ignored) {}
+            }
+            refresh();
+        });
+
+        headerRow.getChildren().addAll(headerBox, lblPeriod, cmbPeriod, btnPrivacyToggle);
 
         // 2. Tarjeta Bento Hero (Recaudo del Día & Avance)
         HBox heroCard = new HBox(28);
@@ -136,7 +206,7 @@ public class DashboardView extends VBox {
         VBox heroLeft = new VBox(6);
         HBox.setHgrow(heroLeft, Priority.ALWAYS);
 
-        Label heroTitle = new Label("COBRADO HOY (CONSOLIDADO)");
+        heroTitle = new Label("COBRADO HOY (CONSOLIDADO)");
         heroTitle.getStyleClass().add("hero-title");
 
         lblCollectedHero.getStyleClass().add("hero-value");
@@ -170,11 +240,17 @@ public class DashboardView extends VBox {
         TilePane pillars = new TilePane(14, 14);
         pillars.setPrefColumns(3);
         pillars.setPrefTileWidth(230);
+        VBox cashCard = createMetricCard("BASE EN CAJA", lblCash, "metric-value-green", "Efectivo físico operativo");
+        lblCashPaperworkSub.setStyle("-fx-text-fill: #7c3aed; -fx-font-size: 11px; -fx-font-weight: bold;");
+        lblCashPaperworkSub.setVisible(false);
+        lblCashPaperworkSub.setManaged(false);
+        cashCard.getChildren().add(lblCashPaperworkSub);
+
         pillars.getChildren().addAll(
-                createMetricCard("BASE EN CAJA", lblCash, "metric-value-green", "Efectivo físico"),
+                cashCard,
                 createMetricCard("FONDOS DIGITALES", lblDigital, "metric-value-green", "Nequi y transferencias"),
                 createMetricCard("CARTERA EN CALLE", lblActiveDebt, "metric-value", "Saldo capital en deuda"),
-                createMetricCard("PATRIMONIO DE RUTA", lblAdministrative, "metric-value", "Capital total administrado"),
+                createMetricCard("PATRIMONIO DE RUTA", lblAdministrative, "metric-value", "Cartera + Efectivo base + Digital"),
                 createMetricCard("CARTERA EN MORA", lblOverdue, "metric-value-red", "Cuotas vencidas hoy")
         );
 
@@ -193,7 +269,7 @@ public class DashboardView extends VBox {
                 createActionCard("04", "Patrimonio & Caja", "Movimientos de capital y flujo de efectivo", () -> navigate("Administrativo"))
         );
 
-        contentBox.getChildren().addAll(headerBox, heroCard, alertsContainer, pillars, multiRouteCard, lblActionsTitle, actionCards);
+        contentBox.getChildren().addAll(headerRow, heroCard, alertsContainer, pillars, multiRouteCard, lblActionsTitle, actionCards);
 
         ScrollPane scrollPane = new ScrollPane(contentBox);
         scrollPane.setFitToWidth(true);
@@ -268,11 +344,11 @@ public class DashboardView extends VBox {
         colCollector.setPrefWidth(140);
 
         TableColumn<RouteRowItem, String> colTarget = new TableColumn<>("META HOY");
-        colTarget.setCellValueFactory(d -> new SimpleStringProperty(CURRENCY.format(d.getValue().targetToday())));
+        colTarget.setCellValueFactory(d -> new SimpleStringProperty(formatMoney(d.getValue().targetToday())));
         colTarget.setPrefWidth(110);
 
         TableColumn<RouteRowItem, String> colCollected = new TableColumn<>("COBRADO");
-        colCollected.setCellValueFactory(d -> new SimpleStringProperty(CURRENCY.format(d.getValue().collectedToday())));
+        colCollected.setCellValueFactory(d -> new SimpleStringProperty(formatMoney(d.getValue().collectedToday())));
         colCollected.setStyle("-fx-font-weight: bold; -fx-text-fill: #059669;");
         colCollected.setPrefWidth(110);
 
@@ -303,7 +379,7 @@ public class DashboardView extends VBox {
         colProgress.setPrefWidth(140);
 
         TableColumn<RouteRowItem, String> colActiveDebt = new TableColumn<>("CARTERA EN CALLE");
-        colActiveDebt.setCellValueFactory(d -> new SimpleStringProperty(CURRENCY.format(d.getValue().activeDebt())));
+        colActiveDebt.setCellValueFactory(d -> new SimpleStringProperty(formatMoney(d.getValue().activeDebt())));
         colActiveDebt.setPrefWidth(120);
 
         TableColumn<RouteRowItem, RouteRowItem> colAction = new TableColumn<>("SUPERVISIÓN");
@@ -422,21 +498,54 @@ public class DashboardView extends VBox {
             progressRatio = (double) paidCount / actionableCount;
         }
 
-        // 2. Asignar valores
-        lblCollectedHero.setText(CURRENCY.format(collected));
+        // 2. Asignar valores (respetando período seleccionado y modo privacidad)
+        String selectedRoute = com.cartera.infrastructure.security.UserSessionContext.getSelectedRouteId();
+        CollectionPeriod period = cmbPeriod.getValue() != null ? cmbPeriod.getValue() : CollectionPeriod.TODAY;
+        BigDecimal heroCollected = (period == CollectionPeriod.TODAY)
+                ? collected
+                : collectionsService.getCollectedAmountForPeriod(period, today, selectedRoute);
+
+        lblCollectedHero.setText(formatMoney(heroCollected));
         progressBar.setProgress(progressRatio);
 
         int pctInt = (int) Math.round(progressRatio * 100);
         lblProgressPct.setText(pctInt + "% de la meta alcanzada");
 
         lblPendingCountHero.setText("Cobrados: " + paidCount + " / " + actionableCount + " clientes");
-        lblTargetHero.setText("Meta esperada: " + CURRENCY.format(expectedToday.max(collected)));
+        lblTargetHero.setText("Meta esperada: " + formatMoney(expectedToday.max(collected)));
 
-        lblAdministrative.setText(CURRENCY.format(m.totalAdministrativeCapital()));
-        lblActiveDebt.setText(CURRENCY.format(m.totalActiveDebt()));
-        lblCash.setText(CURRENCY.format(m.cashBalance()));
-        lblDigital.setText(CURRENCY.format(m.digitalBalance()));
-        lblOverdue.setText(CURRENCY.format(m.overdueAmount()));
+        boolean isAllRoutes = selectedRoute == null || "ALL".equalsIgnoreCase(selectedRoute);
+        String routeScopeName = "CONSOLIDADO";
+        if (!isAllRoutes && routeRepository != null) {
+            routeScopeName = routeRepository.findById(selectedRoute).map(RouteEntity::getName).orElse(selectedRoute);
+        }
+        String liveDate = today.format(DATE_FORMATTER);
+        liveDate = liveDate.substring(0, 1).toUpperCase() + liveDate.substring(1);
+        if (lblDate != null) {
+            lblDate.setText(liveDate + " • " + (isAllRoutes ? "Consolidado Administrativo de Operación" : "Ruta Activa: " + routeScopeName));
+        }
+        if (heroTitle != null) {
+            String periodLabel = period.label().toUpperCase(Locale.ROOT);
+            heroTitle.setText("COBRADO " + periodLabel + " (" + routeScopeName.toUpperCase() + ")");
+        }
+
+        lblAdministrative.setText(formatMoney(m.totalAdministrativeCapital()));
+        lblActiveDebt.setText(formatMoney(m.totalActiveDebt()));
+        // Base física total en oficina = Efectivo base operativo + Papelería disponible en caja (Spec 008)
+        lblCash.setText(formatMoney(m.totalPhysicalCashInBox()));
+        BigDecimal paperworkBalance = m.paperworkBalance() != null ? m.paperworkBalance() : BigDecimal.ZERO;
+        if (paperworkBalance.compareTo(BigDecimal.ZERO) > 0) {
+            lblCashPaperworkSub.setText("Efectivo base: " + formatMoney(m.cashBalance())
+                    + " · Papelería: " + formatMoney(paperworkBalance) + " (no suma al Administrativo)");
+            lblCashPaperworkSub.setVisible(true);
+            lblCashPaperworkSub.setManaged(true);
+        } else {
+            lblCashPaperworkSub.setText("");
+            lblCashPaperworkSub.setVisible(false);
+            lblCashPaperworkSub.setManaged(false);
+        }
+        lblDigital.setText(formatMoney(m.digitalBalance()));
+        lblOverdue.setText(formatMoney(m.overdueAmount()));
 
         // 2b. Alertas Operativas Accionables
         alertsContainer.getChildren().clear();
@@ -450,7 +559,7 @@ public class DashboardView extends VBox {
 
             VBox textCol = new VBox(2);
             HBox.setHgrow(textCol, Priority.ALWAYS);
-            Label title = new Label("Cartera en Mora Detectada (" + CURRENCY.format(overdue) + ")");
+            Label title = new Label("Cartera en Mora Detectada (" + formatMoney(overdue) + ")");
             title.getStyleClass().add("alert-title");
             title.setStyle("-fx-text-fill: #DC2626; -fx-font-weight: bold;");
             Label desc = new Label("Existen cuotas vencidas que requieren gestión o cobro prioritario en las rutas.");
@@ -536,6 +645,7 @@ public class DashboardView extends VBox {
                 ));
             }
             routeRows.setAll(rows);
+            multiRouteTable.refresh();
         }
     }
 }

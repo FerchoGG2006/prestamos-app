@@ -23,7 +23,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Enumeration;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Servidor HTTP ligero integrado (Java HttpServer) en puerto 8765 para sincronización
@@ -32,9 +36,10 @@ import java.util.concurrent.Executors;
 @Service
 public class LanSyncServerService {
 
+    private static final Logger log = LoggerFactory.getLogger(LanSyncServerService.class);
     public static final int DEFAULT_PORT = 8765;
     private static final int MAX_SYNC_PAYLOAD_BYTES = 5 * 1024 * 1024; // Límite defensivo de 5 MB por paquete
-    private static final long MIN_REQUEST_INTERVAL_MS = 150L; // Rate limit básico por IP en LAN
+    private static final long MIN_REQUEST_INTERVAL_MS = 80L; // Rate limit básico por IP en LAN
 
     private final MobileSyncProcessorService syncProcessorService;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -47,6 +52,7 @@ public class LanSyncServerService {
     private final ThreadLocal<Pairing> requestPairing=new ThreadLocal<>();
     private volatile boolean running;
     private HttpServer server;
+    private ExecutorService serverExecutor;
     private int activePort = DEFAULT_PORT;
     private volatile Runnable onSyncReceivedCallback;
     private volatile String requiredSyncPin = null;
@@ -83,25 +89,42 @@ public class LanSyncServerService {
             server.createContext("/api/sync/push", this::handlePackage);
             server.createContext("/api/v1/app-version", this::handleAppVersion);
             server.createContext("/api/v1/download-apk", this::handleDownloadApk);
-            server.setExecutor(Executors.newCachedThreadPool(r -> {
+            serverExecutor = Executors.newCachedThreadPool(r -> {
                 Thread t = new Thread(r, "lan-sync-http-worker");
                 t.setDaemon(true);
                 return t;
-            }));
+            });
+            server.setExecutor(serverExecutor);
             server.start();
-            running=true;
-        } catch (Exception ignored) {
-            // No bloquear el arranque de la aplicación si el entorno restringe sockets
+            running = true;
+            log.info("Servidor LAN Sync iniciado en {}:{}", getLocalIpAddress(), activePort);
+        } catch (Exception ex) {
+            running = false;
+            log.warn("No se pudo iniciar el servidor LAN Sync: {}", ex.getMessage());
         }
     }
 
     @PreDestroy
     public void stopServer() {
+        running = false;
+        pairings.clear();
         if (server != null) {
             try {
                 server.stop(0);
+            } catch (Exception ex) {
+                log.warn("Error deteniendo HttpServer LAN Sync: {}", ex.getMessage());
+            }
+        }
+        if (serverExecutor != null) {
+            try {
+                serverExecutor.shutdownNow();
             } catch (Exception ignored) {}
         }
+    }
+
+    public int getActivePairingsCount() {
+        pairings.entrySet().removeIf(e -> e.getValue().expires().isBefore(java.time.Instant.now()));
+        return pairings.size();
     }
 
     public boolean isRunning() {
@@ -114,25 +137,56 @@ public class LanSyncServerService {
 
     public String getLocalIpAddress() {
         try {
+            String fallbackPrivate = null;
             Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
             while (interfaces.hasMoreElements()) {
                 NetworkInterface iface = interfaces.nextElement();
                 if (iface.isLoopback() || !iface.isUp() || iface.isVirtual()) continue;
+                String displayName = (iface.getDisplayName() != null ? iface.getDisplayName() : "").toLowerCase(Locale.ROOT);
+                String name = (iface.getName() != null ? iface.getName() : "").toLowerCase(Locale.ROOT);
+                if (isVirtualAdapterName(displayName) || isVirtualAdapterName(name)) continue;
+
                 Enumeration<InetAddress> addresses = iface.getInetAddresses();
                 while (addresses.hasMoreElements()) {
                     InetAddress addr = addresses.nextElement();
-                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
+                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress() && !addr.isLinkLocalAddress()) {
                         String ip = addr.getHostAddress();
-                        if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.")) {
+                        if (ip.startsWith("192.168.")) {
                             return ip;
+                        }
+                        if (fallbackPrivate == null && isPrivateRfc1918(ip)) {
+                            fallbackPrivate = ip;
                         }
                     }
                 }
             }
+            if (fallbackPrivate != null) return fallbackPrivate;
             return InetAddress.getLocalHost().getHostAddress();
         } catch (Exception e) {
             return "127.0.0.1";
         }
+    }
+
+    private static boolean isVirtualAdapterName(String name) {
+        return name.contains("virtual") || name.contains("vmware") || name.contains("vbox")
+                || name.contains("hyper-v") || name.contains("vethernet") || name.contains("wsl")
+                || name.contains("docker") || name.contains("tailscale") || name.contains("zerotier")
+                || name.contains("hamachi") || name.contains("tap-") || name.contains("tun")
+                || name.contains("loopback") || name.contains("bluetooth");
+    }
+
+    private static boolean isPrivateRfc1918(String ip) {
+        if (ip.startsWith("192.168.") || ip.startsWith("10.")) return true;
+        if (ip.startsWith("172.")) {
+            String[] parts = ip.split("\\.");
+            if (parts.length == 4) {
+                try {
+                    int second = Integer.parseInt(parts[1]);
+                    return second >= 16 && second <= 31;
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+        return false;
     }
 
     public String getServerEndpointDisplay() {
@@ -206,7 +260,7 @@ public class LanSyncServerService {
 
     private void addCorsHeaders(HttpExchange exchange) {
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
         exchange.getResponseHeaders().set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Office-Sync-Pin");
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
     }
@@ -217,6 +271,9 @@ public class LanSyncServerService {
         }
         String ip = exchange.getRemoteAddress().getAddress().getHostAddress();
         long now = System.currentTimeMillis();
+        if (lastRequestByIp.size() > 1000) {
+            lastRequestByIp.entrySet().removeIf(e -> (now - e.getValue()) > 60_000L);
+        }
         Long prev = lastRequestByIp.put(ip, now);
         return prev != null && (now - prev) < MIN_REQUEST_INTERVAL_MS;
     }
@@ -286,9 +343,19 @@ public class LanSyncServerService {
                     sendErrorResponse(exchange, 400, "El cuerpo del paquete de sincronización está vacío.");
                     return;
                 }
-                if(requestPairing.get()!=null){
-                    var scope=requestPairing.get();var payload=mapper.readTree(body);
-                    if(!scope.route().equals(payload.path("routeId").asText()) || !scope.collector().equals(payload.path("collectorId").asText())){sendErrorResponse(exchange,403,"Paquete fuera de la ruta enlazada.");return;}
+                if (requestPairing.get() != null) {
+                    var scope = requestPairing.get();
+                    var payload = mapper.readTree(body);
+                    String payloadRoute = payload.path("routeId").asText("");
+                    String payloadCollector = payload.path("collectorId").asText("");
+                    boolean routeMismatch = !scope.route().equals(payloadRoute);
+                    boolean collectorMismatch = scope.collector() != null
+                            && !scope.collector().isBlank()
+                            && !scope.collector().equals(payloadCollector);
+                    if (routeMismatch || collectorMismatch) {
+                        sendErrorResponse(exchange, 403, "Paquete fuera de la ruta enlazada.");
+                        return;
+                    }
                 }
                 SyncImportResult res = syncProcessorService.importPackage(body);
 

@@ -4,6 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "route")
@@ -24,6 +25,9 @@ public class RouteEntity {
     @Column(name = "created_at", nullable = false)
     private String createdAt;
 
+    @Column(name = "initial_cash_base", nullable = false)
+    private BigDecimal initialCashBase = BigDecimal.ZERO;
+
     public RouteEntity() {}
 
     public RouteEntity(String id, String name, String collectorId, Integer active, String createdAt) {
@@ -32,6 +36,7 @@ public class RouteEntity {
         this.collectorId = collectorId;
         this.active = active;
         this.createdAt = createdAt;
+        this.initialCashBase = BigDecimal.ZERO;
     }
 
     public String getId() { return id; }
@@ -44,4 +49,8 @@ public class RouteEntity {
     public void setActive(Integer active) { this.active = active; }
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+    public BigDecimal getInitialCashBase() { return initialCashBase != null ? initialCashBase : BigDecimal.ZERO; }
+    public void setInitialCashBase(BigDecimal initialCashBase) {
+        this.initialCashBase = initialCashBase != null ? initialCashBase : BigDecimal.ZERO;
+    }
 }

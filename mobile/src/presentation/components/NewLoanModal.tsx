@@ -19,6 +19,8 @@ import { formatCOP, addDays as addDaysToDate } from '../../core/config/business-
 import {
   calculateLoanSummary,
   calculatePaperworkFee,
+  generateAnchoredMigrationSchedule,
+  getUpcomingWeekdayDate,
 } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
@@ -102,6 +104,10 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   const [fixedDueDateStr, setFixedDueDateStr] = useState<string>(
     () => initialFixedDueDate || addDaysToDate(todayStr, 7)
   );
+  const [migrationNextDueDateStr, setMigrationNextDueDateStr] = useState<string>(
+    () => todayStr
+  );
+  const [calendarTarget, setCalendarTarget] = useState<'FIXED_DATE' | 'MIGRATION_PAYDAY'>('FIXED_DATE');
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
   const [calendarYear, setCalendarYear] = useState<number>(() => {
     try {
@@ -138,7 +144,20 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       const lastLoanWasTaco = Boolean(
         loans[0]?.notes?.startsWith('Migrado de cartulina')
       );
-      if (preselectedCustomerId) {
+      if (isCollector) {
+        // El cobrador nunca puede activar el modo de migración de cartulina física
+        setIsCardMigration(false);
+        if (preselectedCustomerId) {
+          setCustomerMode('EXISTING');
+          setSelectedCustomerId(preselectedCustomerId);
+        } else if (customers.length === 0) {
+          setCustomerMode('NEW');
+        } else if (initialCustomerMode) {
+          setCustomerMode(initialCustomerMode);
+        } else {
+          setCustomerMode('EXISTING');
+        }
+      } else if (preselectedCustomerId) {
         setCustomerMode('EXISTING');
         setSelectedCustomerId(preselectedCustomerId);
         setIsCardMigration(false);
@@ -157,10 +176,11 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       if (initialFixedDueDate) {
         setFixedDueDateStr(initialFixedDueDate);
       }
+      setMigrationNextDueDateStr(todayStr);
       const cfgRate = localStore.getOfficeConfig().defaultInterestRate || 0.2;
       setInterestPercentStr(String(Math.round(cfgRate * 100)));
     }
-  }, [visible, preselectedCustomerId, initialFrequency, initialFixedDueDate, defaultRouteId]);
+  }, [visible, preselectedCustomerId, initialFrequency, initialFixedDueDate, defaultRouteId, isCollector, todayStr]);
 
   const resetNewCustomerFields = () => {
     setFullName('');
@@ -195,7 +215,8 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
 
   const principal = parseInt(principalStr.replace(/\D/g, ''), 10) || 0;
   const isFixedDate = frequency === 'FIXED_DATE';
-  const installmentCount = isFixedDate ? 1 : (parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 30);
+  const parsedInstallmentCount = parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 0;
+  const installmentCount = isFixedDate ? 1 : parsedInstallmentCount;
 
   const getFirstDueDate = (): string => {
     if (isFixedDate) return fixedDueDateStr;
@@ -213,7 +234,71 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       ? calculateLoanSummary(principal, effectiveInterestRate, installmentCount)
       : null;
   const isPaperworkEnabled = officeConfig.paperworkFeeEnabled ?? true;
-  const isMigration = isCardMigration;
+  const isMigration = isCollector ? false : isCardMigration;
+
+  const formatShortDateEs = (isoDate: string): string => {
+    if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
+    const d = new Date(isoDate + 'T00:00:00');
+    const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+  };
+
+  const formatTinyDayMonth = (isoDate: string): string => {
+    if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return '';
+    const [, m, day] = isoDate.split('-');
+    return `${day}/${m}`;
+  };
+
+  const migrationTomorrowStr = useMemo(() => {
+    const tmr = addDaysToDate(todayStr, 1);
+    if (frequency === 'DAILY' && (officeConfig.excludeSundays ?? true)) {
+      const d = new Date(tmr + 'T00:00:00');
+      if (d.getDay() === 0) return addDaysToDate(todayStr, 2);
+    }
+    return tmr;
+  }, [todayStr, frequency, officeConfig.excludeSundays]);
+
+  const migrationPreview = useMemo(() => {
+    if (!isMigration || isFixedDate || !summary || !/^\d{4}-\d{2}-\d{2}$/.test(migrationNextDueDateStr)) {
+      return null;
+    }
+    return generateAnchoredMigrationSchedule({
+      loanId: 'preview',
+      summary,
+      frequency,
+      nextDueDateStr: migrationNextDueDateStr,
+      paidInstallmentNumbers: paidInstallmentNums,
+      config: {
+        defaultInterestRate: summary.interestRate,
+        defaultInstallmentsCount: summary.installmentCount,
+        defaultFrequency: frequency,
+        excludeSundays: officeConfig.excludeSundays ?? true,
+        interestType: 'FLAT_INITIAL_CAPITAL',
+      },
+    });
+  }, [isMigration, isFixedDate, summary, frequency, migrationNextDueDateStr, paidInstallmentNums, officeConfig.excludeSundays]);
+
+  const openCalendarFor = (target: 'FIXED_DATE' | 'MIGRATION_PAYDAY') => {
+    const baseDate = target === 'MIGRATION_PAYDAY' ? migrationNextDueDateStr : fixedDueDateStr;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(baseDate)) {
+      const [y, m] = baseDate.split('-');
+      setCalendarYear(parseInt(y, 10));
+      setCalendarMonth(parseInt(m, 10) - 1);
+    }
+    setCalendarTarget(target);
+    setCalendarModalVisible(true);
+  };
+
+  const activeCalendarDate =
+    calendarTarget === 'MIGRATION_PAYDAY' ? migrationNextDueDateStr : fixedDueDateStr;
+  const setActiveCalendarDate = (dateStr: string) => {
+    if (calendarTarget === 'MIGRATION_PAYDAY') {
+      setMigrationNextDueDateStr(dateStr);
+    } else {
+      setFixedDueDateStr(dateStr);
+    }
+  };
   const paperwork =
     principal > 0 && isPaperworkEnabled
       ? calculatePaperworkFee(principal, {
@@ -274,10 +359,28 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       Alert.alert('Capital inválido', msg);
       return;
     }
+    if (withLoan && !isFixedDate && installmentCount <= 0) {
+      const msg = `Ingrese una cantidad de ${currentFreqConfig.unitLabel} mayor a 0.`;
+      setFormError(msg);
+      Alert.alert('Plazo inválido', msg);
+      return;
+    }
     if (withLoan && isFixedDate && !fixedDueDateStr) {
       const msg = 'Seleccione o ingrese la fecha fija de vencimiento.';
       setFormError(msg);
       Alert.alert('Fecha inválida', msg);
+      return;
+    }
+    if (
+      withLoan &&
+      !isCollector &&
+      isCardMigration &&
+      !isFixedDate &&
+      !/^\d{4}-\d{2}-\d{2}$/.test(migrationNextDueDateStr.trim())
+    ) {
+      const msg = 'Seleccione un Día de pago válido (YYYY-MM-DD).';
+      setFormError(msg);
+      Alert.alert('Día de pago inválido', msg);
       return;
     }
 
@@ -343,6 +446,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
           `${fullName.trim()} fue registrado exitosamente en el directorio de la ruta.`
         );
       } else {
+        const effectiveMigration = isCollector ? false : isCardMigration;
         const res = await localStore.createLoan({
           customerId: targetCustomerId,
           principal,
@@ -352,12 +456,13 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
           routeId: targetRouteId,
           collectorId: targetCollectorId,
           fixedDueDate: isFixedDate ? fixedDueDateStr : undefined,
+          nextDueDate: effectiveMigration && !isFixedDate ? migrationNextDueDateStr.trim() : undefined,
           todayStr,
-          isCardMigration,
-          paidInstallmentNumbers: isCardMigration ? paidInstallmentNums : undefined,
+          isCardMigration: effectiveMigration,
+          paidInstallmentNumbers: effectiveMigration ? paidInstallmentNums : undefined,
         });
 
-        if (isCardMigration) {
+        if (effectiveMigration) {
           const paidTotal = res.loan.installmentAmount * paidInstallmentNums.length;
           const pendingTotal = Math.max(0, res.loan.totalAgreed - paidTotal);
           Alert.alert(
@@ -383,8 +488,9 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       resetNewCustomerFields();
       setPaidInstallmentNums([]);
       setQuickPaidCountStr('');
+      setMigrationNextDueDateStr(todayStr);
       onSuccess();
-      if (keepOpenForNextTaco) {
+      if (keepOpenForNextTaco && !isCollector) {
         setCustomerMode('NEW');
         setIsCardMigration(true);
       } else {
@@ -419,13 +525,13 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         >
           <View style={styles.sheetHandle} />
           <View style={styles.header}>
-            <View>
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
               <Text style={styles.title}>Originación de Crédito</Text>
               <Text style={styles.subtitle}>
                 Tasa pactada ({interestPercentStr || '0'}%) sobre capital • {isPaperworkEnabled ? `Papelería $${(officeConfig.paperworkRate || 5000).toLocaleString('es-CO')} / $100k` : 'Sin cobro de papelería'}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { flexShrink: 0 }]}>
               <X size={20} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -472,40 +578,42 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  {
-                    flex: 1.25,
-                    flexDirection: 'row',
-                    justifyContent: 'center',
-                    gap: 5,
-                    paddingVertical: 10,
-                    paddingHorizontal: 8,
-                    borderRadius: 12,
-                    borderWidth: 1.5,
-                    borderColor: withLoan && isCardMigration ? '#0D9488' : '#E2E8F0',
-                    backgroundColor: withLoan && isCardMigration ? '#E6F7F5' : '#F8FAFC',
-                    alignItems: 'center',
-                  },
-                ]}
-                onPress={() => {
-                  setWithLoan(true);
-                  setIsCardMigration(true);
-                  setCustomerMode('NEW');
-                }}
-              >
-                <ClipboardList size={13} color={withLoan && isCardMigration ? '#0F766E' : '#64748B'} />
-                <Text
-                  style={{
-                    fontFamily: FONT_FAMILY,
-                    fontSize: 11.5,
-                    fontWeight: '800',
-                    color: withLoan && isCardMigration ? '#0F766E' : '#64748B',
+              {!isCollector && (
+                <TouchableOpacity
+                  style={[
+                    {
+                      flex: 1.25,
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      gap: 5,
+                      paddingVertical: 10,
+                      paddingHorizontal: 8,
+                      borderRadius: 12,
+                      borderWidth: 1.5,
+                      borderColor: withLoan && isCardMigration ? '#0D9488' : '#E2E8F0',
+                      backgroundColor: withLoan && isCardMigration ? '#E6F7F5' : '#F8FAFC',
+                      alignItems: 'center',
+                    },
+                  ]}
+                  onPress={() => {
+                    setWithLoan(true);
+                    setIsCardMigration(true);
+                    setCustomerMode('NEW');
                   }}
                 >
-                  Cartulina a Digital
-                </Text>
-              </TouchableOpacity>
+                  <ClipboardList size={13} color={withLoan && isCardMigration ? '#0F766E' : '#64748B'} />
+                  <Text
+                    style={{
+                      fontFamily: FONT_FAMILY,
+                      fontSize: 11.5,
+                      fontWeight: '800',
+                      color: withLoan && isCardMigration ? '#0F766E' : '#64748B',
+                    }}
+                  >
+                    Cartulina a Digital
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               {customerMode === 'NEW' && !isCardMigration && (
                 <TouchableOpacity
@@ -670,7 +778,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 )}
 
                 <View style={styles.formRow}>
-                  <View style={{ flex: 1.3 }}>
+                  <View style={{ flex: 1.3, minWidth: 0 }}>
                     <Text style={styles.fieldLabel}>Nombre Completo *</Text>
                     <TextInput
                       style={styles.textField}
@@ -680,7 +788,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       onChangeText={setFullName}
                     />
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fieldLabel}>Cédula / NIT *</Text>
                     <TextInput
                       style={styles.textField}
@@ -694,7 +802,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </View>
 
                 <View style={styles.formRow}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fieldLabel}>Teléfono Llamadas *</Text>
                     <TextInput
                       style={styles.textField}
@@ -708,7 +816,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       }}
                     />
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fieldLabel}>WhatsApp</Text>
                     <TextInput
                       style={styles.textField}
@@ -722,7 +830,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </View>
 
                 <View style={styles.formRow}>
-                  <View style={{ flex: 1.2 }}>
+                  <View style={{ flex: 1.2, minWidth: 0 }}>
                     <Text style={styles.fieldLabel}>Dirección</Text>
                     <TextInput
                       style={styles.textField}
@@ -732,7 +840,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                       onChangeText={setAddress}
                     />
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.fieldLabel}>Barrio / Sector</Text>
                     <TextInput
                       style={styles.textField}
@@ -745,17 +853,17 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                 </View>
 
                 <View style={styles.formRow}>
-                  <View style={{ flex: 1.4 }}>
-                    <Text style={styles.fieldLabel}>Negocio / Ocupación (Opcional)</Text>
+                  <View style={{ flex: 1.4, minWidth: 0 }}>
+                    <Text style={styles.fieldLabel}>Negocio / Ocupación</Text>
                     <TextInput
                       style={styles.textField}
-                      placeholder="Ej. Tienda, taller, restaurante..."
+                      placeholder="Ej. Tienda, taller..."
                       placeholderTextColor="#94A3B8"
                       value={businessName}
                       onChangeText={setBusinessName}
                     />
                   </View>
-                  <View style={{ flex: 0.7 }}>
+                  <View style={{ flex: 0.75, minWidth: 0 }}>
                     <Text style={styles.fieldLabel}>Orden en Ruta</Text>
                     <TextInput
                       style={styles.textField}
@@ -895,7 +1003,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   <TouchableOpacity
                     style={styles.btnOpenCalendarPill}
                     activeOpacity={0.8}
-                    onPress={() => setCalendarModalVisible(true)}
+                    onPress={() => openCalendarFor('FIXED_DATE')}
                   >
                     <Text style={styles.btnOpenCalendarPillText}>Calendario</Text>
                   </TouchableOpacity>
@@ -924,7 +1032,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             ) : (
               <View style={{ marginBottom: 16 }}>
                 <Text style={styles.label}>
-                  4. {currentFreqConfig.questionLabel} ({installmentCount} {currentFreqConfig.unitLabel})
+                  4. {currentFreqConfig.questionLabel} ({installmentCount > 0 ? `${installmentCount} ${currentFreqConfig.unitLabel}` : `ingresa ${currentFreqConfig.unitLabel}`})
                 </Text>
                 <ScrollView
                   horizontal
@@ -932,6 +1040,32 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   style={{ marginBottom: 14 }}
                   contentContainerStyle={styles.installmentsRow}
                 >
+                  {/* Campo editable libre de primero (Diario / Semanal / Quincenal / Mensual) */}
+                  <View
+                    style={[
+                      styles.customCountPill,
+                      installmentCount > 0 &&
+                        !currentFreqConfig.options.includes(installmentCount) &&
+                        styles.customCountPillActive,
+                    ]}
+                  >
+                    <TextInput
+                      style={styles.customCountInput}
+                      keyboardType="number-pad"
+                      maxLength={3}
+                      value={installmentCountStr}
+                      onChangeText={(val) =>
+                        setInstallmentCountStr(val.replace(/\D/g, '').slice(0, 3))
+                      }
+                      placeholder="#"
+                      placeholderTextColor="#94A3B8"
+                      selectTextOnFocus
+                    />
+                    <Text style={styles.customCountUnit} numberOfLines={1}>
+                      {currentFreqConfig.unitLabel}
+                    </Text>
+                  </View>
+
                   {currentFreqConfig.options.map((cnt) => (
                     <TouchableOpacity
                       key={cnt}
@@ -987,7 +1121,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             </View>
 
             {/* Cartulina Física Interactiva cuando está en modo Migración */}
-            {isCardMigration && !isFixedDate && summary && (
+            {!isCollector && isCardMigration && !isFixedDate && summary && (
               <View
                 style={{
                   backgroundColor: '#F8FAFC',
@@ -1055,34 +1189,272 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   </TouchableOpacity>
                 </View>
 
+                {/* Día de pago (ancla las cuotas pagadas hacia atrás y las pendientes hacia adelante) */}
+                <View
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderRadius: 10,
+                    padding: 10,
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    gap: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F172A' }}>
+                      Día de pago
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => openCalendarFor('MIGRATION_PAYDAY')}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        backgroundColor: '#F0FDFA',
+                        borderWidth: 1,
+                        borderColor: '#5EEAD4',
+                        borderRadius: 8,
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                      }}
+                    >
+                      <Calendar size={12} color="#0F766E" />
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#0F766E' }}>
+                        {formatShortDateEs(migrationNextDueDateStr)}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {frequency === 'WEEKLY' ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                      {[
+                        { label: 'Lun', dow: 1 },
+                        { label: 'Mar', dow: 2 },
+                        { label: 'Mié', dow: 3 },
+                        { label: 'Jue', dow: 4 },
+                        { label: 'Vie', dow: 5 },
+                        { label: 'Sáb', dow: 6 },
+                      ].map((w) => {
+                        const targetDate = getUpcomingWeekdayDate(todayStr, w.dow);
+                        const selectedDow = /^\d{4}-\d{2}-\d{2}$/.test(migrationNextDueDateStr)
+                          ? new Date(migrationNextDueDateStr + 'T00:00:00').getDay()
+                          : -1;
+                        const active = selectedDow === w.dow;
+                        return (
+                          <TouchableOpacity
+                            key={w.dow}
+                            onPress={() => setMigrationNextDueDateStr(targetDate)}
+                            style={{
+                              flex: 1,
+                              minWidth: 42,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                              borderWidth: 1,
+                              borderColor: active ? '#0F766E' : '#CBD5E1',
+                              backgroundColor: active ? '#0F766E' : '#F8FAFC',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                fontWeight: '800',
+                                color: active ? '#FFFFFF' : '#334155',
+                              }}
+                            >
+                              {w.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TouchableOpacity
+                        onPress={() => setMigrationNextDueDateStr(todayStr)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 7,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: migrationNextDueDateStr === todayStr ? '#0F766E' : '#CBD5E1',
+                          backgroundColor: migrationNextDueDateStr === todayStr ? '#0F766E' : '#F8FAFC',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: '800',
+                            color: migrationNextDueDateStr === todayStr ? '#FFFFFF' : '#334155',
+                          }}
+                        >
+                          Hoy
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setMigrationNextDueDateStr(migrationTomorrowStr)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 7,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: migrationNextDueDateStr === migrationTomorrowStr ? '#0F766E' : '#CBD5E1',
+                          backgroundColor: migrationNextDueDateStr === migrationTomorrowStr ? '#0F766E' : '#F8FAFC',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: '800',
+                            color: migrationNextDueDateStr === migrationTomorrowStr ? '#FFFFFF' : '#334155',
+                          }}
+                        >
+                          Mañana
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => openCalendarFor('MIGRATION_PAYDAY')}
+                        style={{
+                          flex: 1.2,
+                          flexDirection: 'row',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: 4,
+                          paddingVertical: 7,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor:
+                            migrationNextDueDateStr !== todayStr &&
+                            migrationNextDueDateStr !== migrationTomorrowStr
+                              ? '#0F766E'
+                              : '#CBD5E1',
+                          backgroundColor:
+                            migrationNextDueDateStr !== todayStr &&
+                            migrationNextDueDateStr !== migrationTomorrowStr
+                              ? '#0F766E'
+                              : '#F8FAFC',
+                        }}
+                      >
+                        <Calendar
+                          size={12}
+                          color={
+                            migrationNextDueDateStr !== todayStr &&
+                            migrationNextDueDateStr !== migrationTomorrowStr
+                              ? '#FFFFFF'
+                              : '#334155'
+                          }
+                        />
+                        <Text
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: '800',
+                            color:
+                              migrationNextDueDateStr !== todayStr &&
+                              migrationNextDueDateStr !== migrationTomorrowStr
+                                ? '#FFFFFF'
+                                : '#334155',
+                          }}
+                        >
+                          Calendario
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {migrationPreview && (() => {
+                    const paidInsts = migrationPreview.installments.filter((i) => i.status === 'PAGADA');
+                    const nextPending = migrationPreview.installments.find((i) => i.status !== 'PAGADA');
+                    const lastInst = migrationPreview.installments[migrationPreview.installments.length - 1];
+                    const nextStatusLabel = !nextPending
+                      ? 'Crédito saldado'
+                      : nextPending.dueDate < todayStr
+                        ? 'En mora'
+                        : nextPending.dueDate === todayStr
+                          ? 'Cobra hoy'
+                          : 'Al día';
+                    const nextStatusColor = !nextPending
+                      ? '#065F46'
+                      : nextPending.dueDate < todayStr
+                        ? '#DC2626'
+                        : nextPending.dueDate === todayStr
+                          ? '#1D4ED8'
+                          : '#0F766E';
+                    return (
+                      <View
+                        style={{
+                          backgroundColor: '#F8FAFC',
+                          borderRadius: 8,
+                          padding: 8,
+                          borderWidth: 1,
+                          borderColor: '#E2E8F0',
+                          gap: 2,
+                        }}
+                      >
+                        {paidInsts.length > 0 && (
+                          <Text style={{ fontSize: 10.5, fontWeight: '700', color: '#065F46' }}>
+                            ✓ Pagadas ({paidInsts.length}):{' '}
+                            {paidInsts.length === 1
+                              ? formatShortDateEs(paidInsts[0].dueDate)
+                              : `${formatShortDateEs(paidInsts[0].dueDate)} – ${formatShortDateEs(paidInsts[paidInsts.length - 1].dueDate)}`}
+                          </Text>
+                        )}
+                        {nextPending && (
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: nextStatusColor }}>
+                            • Próxima cuota (#{nextPending.installmentNumber}): {formatShortDateEs(nextPending.dueDate)} — {nextStatusLabel}
+                          </Text>
+                        )}
+                        {lastInst && (
+                          <Text style={{ fontSize: 10.5, fontWeight: '600', color: '#64748B' }}>
+                            • Última cuota (#{lastInst.installmentNumber}): {formatShortDateEs(lastInst.dueDate)}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()}
+                </View>
+
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                   {Array.from({ length: installmentCount }, (_, i) => i + 1).map((num) => {
                     const isPaid = paidInstallmentNums.includes(num);
+                    const previewInst = migrationPreview?.installments[num - 1];
                     return (
                       <TouchableOpacity
                         key={num}
                         onPress={() => togglePaidInstallment(num)}
                         style={{
-                          minWidth: 42,
-                          height: 32,
+                          minWidth: 46,
+                          height: previewInst ? 38 : 32,
                           borderRadius: 7,
                           borderWidth: 1,
                           borderColor: isPaid ? '#10B981' : '#CBD5E1',
                           backgroundColor: isPaid ? '#DCFCE7' : '#FFFFFF',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          paddingHorizontal: 6,
+                          paddingHorizontal: 5,
                         }}
                       >
                         <Text
                           style={{
                             fontSize: 11,
                             fontWeight: '800',
-                            color: isPaid ? '#065F46' : '#64748B',
+                            color: isPaid ? '#065F46' : '#334155',
                           }}
                         >
                           {num}
                         </Text>
+                        {previewInst && (
+                          <Text
+                            style={{
+                              fontSize: 9,
+                              fontWeight: '700',
+                              color: isPaid ? '#047857' : '#64748B',
+                            }}
+                          >
+                            {formatTinyDayMonth(previewInst.dueDate)}
+                          </Text>
+                        )}
                       </TouchableOpacity>
                     );
                   })}
@@ -1133,7 +1505,11 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                         : `Valor Cuota (${installmentCount} cuotas ${currentFreqConfig.unitLabel}):`}
                     </Text>
                     <Text style={styles.calcDateUnderAmount}>
-                      {isFixedDate ? `Vence: ${fixedDueDateStr}` : `1ª cuota: ${firstDueDateStr} • Cobro ${currentFreqConfig.label.toLowerCase()}`}
+                      {isFixedDate
+                        ? `Vence: ${fixedDueDateStr}`
+                        : isMigration && migrationPreview
+                          ? `Día de pago: ${formatShortDateEs(migrationNextDueDateStr)} • Cobro ${currentFreqConfig.label.toLowerCase()}`
+                          : `1ª cuota: ${firstDueDateStr} • Cobro ${currentFreqConfig.label.toLowerCase()}`}
                     </Text>
                   </View>
                   <Text style={[styles.calcVal, { color: COLORS.textPrimary, fontSize: 16 }]}>
@@ -1248,13 +1624,19 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         <View style={styles.calendarModalBackdrop}>
           <View style={styles.calendarModalCard}>
             <View style={styles.calendarModalHeader}>
-              <View>
-                <Text style={styles.calendarModalTitle}>Fecha Fija de Pago</Text>
-                <Text style={styles.calendarModalSubtitle}>Selecciona el día acordado para el cobro</Text>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <Text style={styles.calendarModalTitle}>
+                  {calendarTarget === 'MIGRATION_PAYDAY' ? 'Día de pago' : 'Fecha Fija de Pago'}
+                </Text>
+                <Text style={styles.calendarModalSubtitle}>
+                  {calendarTarget === 'MIGRATION_PAYDAY'
+                    ? 'Elige la fecha de la próxima cuota (puede ser anterior si está en mora)'
+                    : 'Selecciona el día acordado para el cobro'}
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setCalendarModalVisible(false)}
-                style={styles.calendarCloseBtn}
+                style={[styles.calendarCloseBtn, { flexShrink: 0 }]}
               >
                 <X size={18} color="#64748B" />
               </TouchableOpacity>
@@ -1318,7 +1700,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                   const mStr = String(calendarMonth + 1).padStart(2, '0');
                   const dStr = String(day).padStart(2, '0');
                   const cellDate = `${calendarYear}-${mStr}-${dStr}`;
-                  const isSelected = fixedDueDateStr === cellDate;
+                  const isSelected = activeCalendarDate === cellDate;
                   const isToday = todayStr === cellDate;
                   cells.push(
                     <TouchableOpacity
@@ -1329,7 +1711,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
                         isToday && !isSelected && styles.calendarDayCellToday,
                       ]}
                       onPress={() => {
-                        setFixedDueDateStr(cellDate);
+                        setActiveCalendarDate(cellDate);
                       }}
                     >
                       <Text
@@ -1350,41 +1732,52 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
 
             {/* Atajos Rápidos */}
             <View style={styles.calendarQuickRow}>
-              {[
-                { label: '+7 días', days: 7 },
-                { label: '+15 días', days: 15 },
-                { label: '+20 días', days: 20 },
-                { label: '+30 días', days: 30 },
-              ].map((item) => (
-                <TouchableOpacity
-                  key={item.days}
-                  style={[
-                    styles.calendarQuickPill,
-                    fixedDueDateStr === addDaysToDate(todayStr, item.days) && styles.calendarQuickPillActive,
-                  ]}
-                  onPress={() => {
-                    const target = addDaysToDate(todayStr, item.days);
-                    setFixedDueDateStr(target);
-                    const [y, m] = target.split('-');
-                    setCalendarYear(parseInt(y, 10));
-                    setCalendarMonth(parseInt(m, 10) - 1);
-                  }}
-                >
-                  <Text
+              {(calendarTarget === 'MIGRATION_PAYDAY'
+                ? [
+                    { label: '-7 días', days: -7 },
+                    { label: 'Hoy', days: 0 },
+                    { label: 'Mañana', days: 1 },
+                    { label: '+7 días', days: 7 },
+                  ]
+                : [
+                    { label: '+7 días', days: 7 },
+                    { label: '+15 días', days: 15 },
+                    { label: '+20 días', days: 20 },
+                    { label: '+30 días', days: 30 },
+                  ]
+              ).map((item) => {
+                const target = addDaysToDate(todayStr, item.days);
+                return (
+                  <TouchableOpacity
+                    key={item.label}
                     style={[
-                      styles.calendarQuickPillText,
-                      fixedDueDateStr === addDaysToDate(todayStr, item.days) && styles.calendarQuickPillTextActive,
+                      styles.calendarQuickPill,
+                      activeCalendarDate === target && styles.calendarQuickPillActive,
                     ]}
+                    onPress={() => {
+                      setActiveCalendarDate(target);
+                      const [y, m] = target.split('-');
+                      setCalendarYear(parseInt(y, 10));
+                      setCalendarMonth(parseInt(m, 10) - 1);
+                    }}
                   >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.calendarQuickPillText,
+                        activeCalendarDate === target && styles.calendarQuickPillTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             <View style={styles.calendarFooterRow}>
               <Text style={styles.calendarFooterPreview}>
-                Fecha fija: <Text style={{ fontWeight: '800', color: COLORS.primary }}>{fixedDueDateStr}</Text>
+                {calendarTarget === 'MIGRATION_PAYDAY' ? 'Día de pago: ' : 'Fecha fija: '}
+                <Text style={{ fontWeight: '800', color: COLORS.primary }}>{activeCalendarDate}</Text>
               </Text>
               <TouchableOpacity
                 style={styles.calendarConfirmBtn}
@@ -1544,6 +1937,7 @@ const styles = StyleSheet.create({
   },
   formRow: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
     gap: 8,
     marginBottom: 8,
   },
@@ -1557,6 +1951,8 @@ const styles = StyleSheet.create({
   textField: {
     fontFamily: FONT_FAMILY,
     height: 38,
+    width: '100%',
+    minWidth: 0,
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     borderWidth: 1,
@@ -1700,8 +2096,43 @@ const styles = StyleSheet.create({
   },
   installmentsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     paddingRight: 8,
+  },
+  customCountPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 8,
+    paddingRight: 11,
+    minHeight: 38,
+    borderRadius: 9999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    gap: 5,
+  },
+  customCountPillActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: '#EFF6FF',
+  },
+  customCountInput: {
+    width: 40,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+    textAlign: 'center',
+    fontFamily: FONT_FAMILY,
+    fontSize: 13,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+  },
+  customCountUnit: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: COLORS.primary,
   },
   cntPill: {
     paddingHorizontal: 14,
@@ -1904,6 +2335,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 16,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 10,

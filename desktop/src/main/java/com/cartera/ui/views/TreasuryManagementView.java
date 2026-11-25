@@ -22,6 +22,7 @@ public class TreasuryManagementView extends BorderPane {
     private final Button btnCash;
     private final Button btnSettlements;
     private final Label subTitle;
+    private String activeSection = "cash";
 
     public TreasuryManagementView(CashManagementView cashManagementView,
                                   SettlementManagementView settlementManagementView) {
@@ -65,34 +66,41 @@ public class TreasuryManagementView extends BorderPane {
         topBar.getChildren().addAll(titleBox, spacer, segmentBar);
         setTop(topBar);
 
-        showSection("cash");
+        // Montar vista inicial sin disparar escrituras/consultas antes de login
+        setCenter(cashManagementView);
     }
 
     public void showSection(String section) {
         if ("settlements".equalsIgnoreCase(section)) {
+            activeSection = "settlements";
             btnCash.getStyleClass().remove("segment-btn-active");
             if (!btnSettlements.getStyleClass().contains("segment-btn-active")) {
                 btnSettlements.getStyleClass().add("segment-btn-active");
             }
             subTitle.setText("Liquidaciones de cobradores, entregas de dinero y balances por ruta");
-            settlementManagementView.refresh();
             setCenter(settlementManagementView);
+            try {
+                settlementManagementView.refresh();
+            } catch (Exception ex) {
+                subTitle.setText("Error cargando liquidación: " + (ex.getMessage() != null ? ex.getMessage() : "verifica rutas/cobradores"));
+            }
         } else {
+            activeSection = "cash";
             btnSettlements.getStyleClass().remove("segment-btn-active");
             if (!btnCash.getStyleClass().contains("segment-btn-active")) {
                 btnCash.getStyleClass().add("segment-btn-active");
             }
-            subTitle.setText("Control de efectivo, ingresos por cobros y saldo disponible");
-            cashManagementView.refresh();
+            subTitle.setText("Control de efectivo, papelería disponible, ingresos por cobros y saldo operativo");
             setCenter(cashManagementView);
+            try {
+                cashManagementView.refresh();
+            } catch (Exception ex) {
+                subTitle.setText("Error cargando caja: " + (ex.getMessage() != null ? ex.getMessage() : "intenta nuevamente"));
+            }
         }
     }
 
     public void refresh() {
-        if (getCenter() == settlementManagementView) {
-            settlementManagementView.refresh();
-        } else {
-            cashManagementView.refresh();
-        }
+        showSection(activeSection);
     }
 }

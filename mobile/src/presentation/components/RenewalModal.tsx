@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Customer, Loan, Installment, LoanFrequency } from '../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatCOP, DEFAULT_BUSINESS_CONFIG } from '../../core/config/business-rules';
+import { formatCOP, DEFAULT_BUSINESS_CONFIG, addDays as addDaysToDate } from '../../core/config/business-rules';
 import {
   calculateRenewalDisbursement,
   calculateLoanSummary,
@@ -22,7 +22,7 @@ import {
 } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
-import { RefreshCw, X, AlertCircle, Lock, Percent, Calendar, DollarSign } from 'lucide-react-native';
+import { RefreshCw, X, AlertCircle, Lock, Percent, Calendar, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react-native';
 
 interface RenewalModalProps {
   visible: boolean;
@@ -50,6 +50,22 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   const [interestPercentStr, setInterestPercentStr] = useState('20');
   const [frequency, setFrequency] = useState<LoanFrequency>('DAILY');
   const [installmentCountStr, setInstallmentCountStr] = useState('30');
+  const [fixedDueDateStr, setFixedDueDateStr] = useState<string>(() => addDaysToDate(todayStr, 7));
+  const [calendarModalVisible, setCalendarModalVisible] = useState(false);
+  const [calendarYear, setCalendarYear] = useState<number>(() => {
+    try {
+      return parseInt(todayStr.split('-')[0], 10) || new Date().getFullYear();
+    } catch {
+      return new Date().getFullYear();
+    }
+  });
+  const [calendarMonth, setCalendarMonth] = useState<number>(() => {
+    try {
+      return parseInt(todayStr.split('-')[1], 10) - 1 || new Date().getMonth();
+    } catch {
+      return new Date().getMonth();
+    }
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Inicializar valores al abrir el modal o cambiar el crédito
@@ -60,20 +76,35 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
       setInterestPercentStr(String(defaultRate));
 
       const initialFreq: LoanFrequency =
-        loan.frequency === 'WEEKLY' || loan.frequency === 'BIWEEKLY'
+        loan.frequency === 'WEEKLY' ||
+        loan.frequency === 'BIWEEKLY' ||
+        loan.frequency === 'MONTHLY' ||
+        loan.frequency === 'FIXED_DATE'
           ? loan.frequency
           : 'DAILY';
       setFrequency(initialFreq);
 
-      if (initialFreq === 'WEEKLY') {
-        setInstallmentCountStr(String(loan.installmentCount || 4));
-      } else if (initialFreq === 'BIWEEKLY') {
-        setInstallmentCountStr(String(loan.installmentCount || 2));
+      if (initialFreq === 'FIXED_DATE') {
+        setInstallmentCountStr('1');
+        setFixedDueDateStr(
+          loan.fixedDueDate && loan.fixedDueDate > todayStr
+            ? loan.fixedDueDate
+            : addDaysToDate(todayStr, 7)
+        );
       } else {
-        setInstallmentCountStr(String(loan.installmentCount || 30));
+        setFixedDueDateStr(addDaysToDate(todayStr, 7));
+        if (initialFreq === 'WEEKLY') {
+          setInstallmentCountStr(String(loan.installmentCount || 4));
+        } else if (initialFreq === 'BIWEEKLY') {
+          setInstallmentCountStr(String(loan.installmentCount || 2));
+        } else if (initialFreq === 'MONTHLY') {
+          setInstallmentCountStr(String(loan.installmentCount || 1));
+        } else {
+          setInstallmentCountStr(String(loan.installmentCount || 30));
+        }
       }
     }
-  }, [visible, loan]);
+  }, [visible, loan, todayStr]);
 
   if (!customer || !loan) return null;
 
@@ -92,10 +123,9 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
     0,
     (parseFloat(interestPercentStr.replace(',', '.')) || 0) / 100
   );
-  const effectiveInstallmentCount = Math.max(
-    1,
-    parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 1
-  );
+  const isFixedDate = frequency === 'FIXED_DATE';
+  const parsedInstallmentCount = parseInt(installmentCountStr.replace(/\D/g, ''), 10) || 0;
+  const effectiveInstallmentCount = isFixedDate ? 1 : parsedInstallmentCount;
 
   let calculationError: string | null = null;
   let renewalCalc = {
@@ -129,7 +159,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   }
 
   const newSummary =
-    newPrincipal > 0
+    newPrincipal > 0 && effectiveInstallmentCount > 0
       ? calculateLoanSummary(newPrincipal, effectiveInterestRate, effectiveInstallmentCount)
       : null;
 
@@ -173,6 +203,14 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
       defaultCount: 1,
       quickCounts: [1, 2, 3, 6],
     },
+    {
+      key: 'FIXED_DATE',
+      label: 'Fecha Fija',
+      unitLabel: 'pago único',
+      singularUnit: 'pago único',
+      defaultCount: 1,
+      quickCounts: [],
+    },
   ];
 
   const currentFreqConfig =
@@ -181,6 +219,18 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   const handleSelectFrequency = (selectedFreq: LoanFrequency, defaultCount: number) => {
     setFrequency(selectedFreq);
     setInstallmentCountStr(String(defaultCount));
+    if (selectedFreq === 'FIXED_DATE' && !fixedDueDateStr) {
+      setFixedDueDateStr(addDaysToDate(todayStr, 7));
+    }
+  };
+
+  const openFixedCalendar = () => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fixedDueDateStr)) {
+      const [y, m] = fixedDueDateStr.split('-');
+      setCalendarYear(parseInt(y, 10));
+      setCalendarMonth(parseInt(m, 10) - 1);
+    }
+    setCalendarModalVisible(true);
   };
 
   const quickPrincipals = [150000, 200000, 300000, 400000, 500000];
@@ -189,6 +239,14 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
   const handleConfirmRenewal = async () => {
     if (newPrincipal <= 0) {
       Alert.alert('Error', 'Ingrese un capital nuevo válido');
+      return;
+    }
+    if (effectiveInstallmentCount <= 0) {
+      Alert.alert('Plazo inválido', `Ingrese una cantidad de ${currentFreqConfig.unitLabel} mayor a 0.`);
+      return;
+    }
+    if (isFixedDate && !/^\d{4}-\d{2}-\d{2}$/.test(fixedDueDateStr.trim())) {
+      Alert.alert('Fecha inválida', 'Seleccione o ingrese una fecha fija de vencimiento válida (YYYY-MM-DD).');
       return;
     }
     if (calculationError || renewalCalc.actualCashDisbursed <= 0) {
@@ -207,6 +265,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
         interestRate: effectiveInterestRate,
         installmentCount: effectiveInstallmentCount,
         frequency,
+        fixedDueDate: isFixedDate ? fixedDueDateStr.trim() : undefined,
         collectorId: loan.collectorId,
         todayStr,
         paperworkFee: renewalCalc.paperworkDeducted,
@@ -214,7 +273,9 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
 
       Alert.alert(
         '¡Renovación Exitosa!',
-        `Nuevo Crédito: ${formatCOP(newPrincipal)}\nTotal de la Deuda: ${formatCOP(
+        `Nuevo Crédito: ${formatCOP(newPrincipal)}\n${
+          isFixedDate ? `Fecha Fija de Pago: ${fixedDueDateStr.trim()}\n` : ''
+        }Total de la Deuda: ${formatCOP(
           newSummary?.totalAgreed || newPrincipal
         )}\nEfectivo neto a entregar en mano: ${formatCOP(
           renewalCalc.actualCashDisbursed
@@ -252,13 +313,13 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
 
           {/* Header */}
           <View style={styles.header}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
               <Text style={styles.title}>Renovación de Crédito</Text>
               <Text style={styles.subtitle}>
                 {customer.fullName} • Liquida {loan.loanNumber}
               </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { flexShrink: 0 }]}>
               <X size={20} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -427,34 +488,116 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                 })}
               </ScrollView>
 
-              {/* Selector de Tiempo / Cuotas */}
-              <View style={styles.countSelectorContainer}>
-                <Text style={styles.countSelectorLabel}>
-                  Duración ({currentFreqConfig.unitLabel}):
-                </Text>
-                <View style={styles.quickCountsRow}>
-                  {currentFreqConfig.quickCounts.map((cnt) => (
+              {/* Selector de Tiempo / Cuotas o Fecha Fija */}
+              {isFixedDate ? (
+                <View style={styles.countSelectorContainer}>
+                  <Text style={styles.countSelectorLabel}>
+                    Fecha fija de pago único acordada:
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.fixedDateRow}
+                  >
+                    <View style={styles.fixedDateBadgeBox}>
+                      <Calendar size={13} color={COLORS.purple} style={{ marginRight: 4 }} />
+                      <TextInput
+                        style={styles.fixedDateInlineInput}
+                        value={fixedDueDateStr}
+                        onChangeText={setFixedDueDateStr}
+                        placeholder="YYYY-MM-DD"
+                        placeholderTextColor={COLORS.textMuted}
+                      />
+                    </View>
+
                     <TouchableOpacity
-                      key={cnt}
-                      style={[
-                        styles.countPill,
-                        effectiveInstallmentCount === cnt && styles.countPillActive,
-                      ]}
-                      onPress={() => setInstallmentCountStr(String(cnt))}
+                      style={styles.btnOpenCalendarPill}
+                      activeOpacity={0.8}
+                      onPress={openFixedCalendar}
                     >
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.countPillText,
-                          effectiveInstallmentCount === cnt && styles.countPillTextActive,
-                        ]}
-                      >
-                        {cnt} {currentFreqConfig.unitLabel}
-                      </Text>
+                      <Text style={styles.btnOpenCalendarPillText}>Calendario</Text>
                     </TouchableOpacity>
-                  ))}
+
+                    {[7, 15, 30].map((days) => {
+                      const target = addDaysToDate(todayStr, days);
+                      const active = fixedDueDateStr === target;
+                      return (
+                        <TouchableOpacity
+                          key={days}
+                          style={[
+                            styles.quickDaysPillInline,
+                            active && styles.quickDaysPillInlineActive,
+                          ]}
+                          onPress={() => setFixedDueDateStr(target)}
+                        >
+                          <Text
+                            style={[
+                              styles.quickDaysPillInlineText,
+                              active && { color: '#ffffff', fontWeight: '800' },
+                            ]}
+                          >
+                            +{days}d
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.countSelectorContainer}>
+                  <Text style={styles.countSelectorLabel}>
+                    Duración ({currentFreqConfig.unitLabel}):
+                  </Text>
+                  <View style={styles.quickCountsRow}>
+                    {/* Campo editable libre de primero (Diario / Semanal / Quincenal / Mensual) */}
+                    <View
+                      style={[
+                        styles.customCountPill,
+                        effectiveInstallmentCount > 0 &&
+                          !currentFreqConfig.quickCounts.includes(effectiveInstallmentCount) &&
+                          styles.customCountPillActive,
+                      ]}
+                    >
+                      <TextInput
+                        style={styles.customCountInput}
+                        keyboardType="number-pad"
+                        maxLength={3}
+                        value={installmentCountStr}
+                        onChangeText={(val) =>
+                          setInstallmentCountStr(val.replace(/\D/g, '').slice(0, 3))
+                        }
+                        placeholder="#"
+                        placeholderTextColor="#94A3B8"
+                        selectTextOnFocus
+                      />
+                      <Text style={styles.customCountUnit} numberOfLines={1}>
+                        {currentFreqConfig.unitLabel}
+                      </Text>
+                    </View>
+
+                    {currentFreqConfig.quickCounts.map((cnt) => (
+                      <TouchableOpacity
+                        key={cnt}
+                        style={[
+                          styles.countPill,
+                          effectiveInstallmentCount === cnt && styles.countPillActive,
+                        ]}
+                        onPress={() => setInstallmentCountStr(String(cnt))}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.countPillText,
+                            effectiveInstallmentCount === cnt && styles.countPillTextActive,
+                          ]}
+                        >
+                          {cnt} {currentFreqConfig.unitLabel}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
             </View>
 
             {/* ERROR O RESUMEN FINANCIERO COMPLETO */}
@@ -539,7 +682,9 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
 
                     <View style={styles.infoRow}>
                       <Text style={styles.infoLabel}>
-                        Valor a Cobrar ({newSummary.installmentCount} cuotas):
+                        {isFixedDate
+                          ? `Fecha Fija (Vence ${fixedDueDateStr}):`
+                          : `Valor a Cobrar (${newSummary.installmentCount} cuotas):`}
                       </Text>
                       <Text
                         style={[
@@ -547,7 +692,9 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
                           { fontWeight: '800', color: COLORS.primary },
                         ]}
                       >
-                        {formatCOP(newSummary.installmentAmount)} / {currentFreqConfig.singularUnit}
+                        {isFixedDate
+                          ? `${formatCOP(newSummary.totalAgreed)} (Pago único)`
+                          : `${formatCOP(newSummary.installmentAmount)} / ${currentFreqConfig.singularUnit}`}
                       </Text>
                     </View>
                   </>
@@ -572,6 +719,161 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Modal de Calendario Interactivo para Renovación a Fecha Fija */}
+      <Modal
+        visible={calendarModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCalendarModalVisible(false)}
+      >
+        <View style={styles.calendarModalBackdrop}>
+          <View style={styles.calendarModalCard}>
+            <View style={styles.calendarModalHeader}>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <Text style={styles.calendarModalTitle}>Fecha Fija de Pago</Text>
+                <Text style={styles.calendarModalSubtitle}>Selecciona el día acordado para el pago único</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setCalendarModalVisible(false)}
+                style={[styles.calendarCloseBtn, { flexShrink: 0 }]}
+              >
+                <X size={18} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.calendarMonthRow}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (calendarMonth === 0) {
+                    setCalendarMonth(11);
+                    setCalendarYear(calendarYear - 1);
+                  } else {
+                    setCalendarMonth(calendarMonth - 1);
+                  }
+                }}
+                style={styles.monthNavBtn}
+              >
+                <ChevronLeft size={18} color="#1E293B" />
+              </TouchableOpacity>
+
+              <Text style={styles.monthNameText}>
+                {[
+                  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+                ][calendarMonth]}{' '}{calendarYear}
+              </Text>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (calendarMonth === 11) {
+                    setCalendarMonth(0);
+                    setCalendarYear(calendarYear + 1);
+                  } else {
+                    setCalendarMonth(calendarMonth + 1);
+                  }
+                }}
+                style={styles.monthNavBtn}
+              >
+                <ChevronRight size={18} color="#1E293B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.calendarWeekdaysRow}>
+              {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá'].map((d, idx) => (
+                <Text key={idx} style={styles.calendarWeekdayText}>{d}</Text>
+              ))}
+            </View>
+
+            <View style={styles.calendarDaysGrid}>
+              {(() => {
+                const firstDayIndex = new Date(calendarYear, calendarMonth, 1).getDay();
+                const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+                const cells = [];
+                for (let i = 0; i < firstDayIndex; i++) {
+                  cells.push(<View key={`empty-${i}`} style={styles.calendarDayCellEmpty} />);
+                }
+                for (let day = 1; day <= daysInMonth; day++) {
+                  const mStr = String(calendarMonth + 1).padStart(2, '0');
+                  const dStr = String(day).padStart(2, '0');
+                  const cellDate = `${calendarYear}-${mStr}-${dStr}`;
+                  const isSelected = fixedDueDateStr === cellDate;
+                  const isToday = todayStr === cellDate;
+                  cells.push(
+                    <TouchableOpacity
+                      key={`day-${day}`}
+                      style={[
+                        styles.calendarDayCell,
+                        isSelected && styles.calendarDayCellSelected,
+                        isToday && !isSelected && styles.calendarDayCellToday,
+                      ]}
+                      onPress={() => setFixedDueDateStr(cellDate)}
+                    >
+                      <Text
+                        style={[
+                          styles.calendarDayText,
+                          isSelected && styles.calendarDayTextSelected,
+                          isToday && !isSelected && styles.calendarDayTextToday,
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
+                return cells;
+              })()}
+            </View>
+
+            <View style={styles.calendarQuickRow}>
+              {[
+                { label: '+7 días', days: 7 },
+                { label: '+15 días', days: 15 },
+                { label: '+20 días', days: 20 },
+                { label: '+30 días', days: 30 },
+              ].map((item) => {
+                const target = addDaysToDate(todayStr, item.days);
+                return (
+                  <TouchableOpacity
+                    key={item.days}
+                    style={[
+                      styles.calendarQuickPill,
+                      fixedDueDateStr === target && styles.calendarQuickPillActive,
+                    ]}
+                    onPress={() => {
+                      setFixedDueDateStr(target);
+                      const [y, m] = target.split('-');
+                      setCalendarYear(parseInt(y, 10));
+                      setCalendarMonth(parseInt(m, 10) - 1);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.calendarQuickPillText,
+                        fixedDueDateStr === target && styles.calendarQuickPillTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.calendarFooterRow}>
+              <Text style={styles.calendarFooterPreview}>
+                Fecha fija: <Text style={{ fontWeight: '800', color: COLORS.purple }}>{fixedDueDateStr}</Text>
+              </Text>
+              <TouchableOpacity
+                style={styles.calendarConfirmBtn}
+                onPress={() => setCalendarModalVisible(false)}
+              >
+                <Text style={styles.calendarConfirmBtnText}>Aceptar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
@@ -847,7 +1149,42 @@ const styles = StyleSheet.create({
   quickCountsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 6,
+  },
+  customCountPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 6,
+    paddingRight: 10,
+    minHeight: 34,
+    borderRadius: 9999,
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: '#94A3B8',
+    gap: 4,
+  },
+  customCountPillActive: {
+    backgroundColor: COLORS.surfaceLavender,
+    borderColor: COLORS.purple,
+  },
+  customCountInput: {
+    width: 38,
+    paddingVertical: 3,
+    paddingHorizontal: 4,
+    textAlign: 'center',
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+  },
+  customCountUnit: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.purple,
   },
   countPill: {
     paddingHorizontal: 14,
@@ -989,5 +1326,229 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '800',
+  },
+  fixedDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingRight: 8,
+  },
+  fixedDateBadgeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.purpleBorder,
+    paddingHorizontal: 8,
+    height: 36,
+  },
+  fixedDateInlineInput: {
+    width: 90,
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    paddingVertical: 0,
+  },
+  btnOpenCalendarPill: {
+    backgroundColor: COLORS.purple,
+    paddingHorizontal: 11,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnOpenCalendarPillText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  quickDaysPillInline: {
+    paddingHorizontal: 10,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: COLORS.inputBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickDaysPillInlineActive: {
+    backgroundColor: COLORS.purple,
+    borderColor: COLORS.purple,
+  },
+  quickDaysPillInlineText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  calendarModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  calendarModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#ffffff',
+    borderRadius: 22,
+    padding: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  calendarModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 14,
+  },
+  calendarModalTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  calendarModalSubtitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11.5,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  calendarCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarMonthRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  monthNavBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthNameText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  calendarWeekdaysRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  calendarWeekdayText: {
+    width: '14.28%',
+    textAlign: 'center',
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  calendarDaysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+  },
+  calendarDayCellEmpty: {
+    width: '14.28%',
+    height: 36,
+  },
+  calendarDayCell: {
+    width: '14.28%',
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  calendarDayCellSelected: {
+    backgroundColor: COLORS.purple,
+  },
+  calendarDayCellToday: {
+    backgroundColor: '#EDE9FE',
+  },
+  calendarDayText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  calendarDayTextSelected: {
+    color: '#ffffff',
+    fontWeight: '900',
+  },
+  calendarDayTextToday: {
+    color: COLORS.purple,
+    fontWeight: '900',
+  },
+  calendarQuickRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 14,
+  },
+  calendarQuickPill: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  calendarQuickPillActive: {
+    backgroundColor: COLORS.purple,
+    borderColor: COLORS.purple,
+  },
+  calendarQuickPillText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  calendarQuickPillTextActive: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
+  calendarFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  calendarFooterPreview: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  calendarConfirmBtn: {
+    backgroundColor: COLORS.purple,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 12,
+  },
+  calendarConfirmBtnText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

@@ -834,3 +834,56 @@
     -fx-font-size: 13px;
     -fx-font-weight: 600;
 }
+
+/* Clases utilitarias para vistas operativas y placeholders */
+.page {
+    -fx-background-color: #f8fafc;
+}
+
+.metric-title {
+    -fx-text-fill: #64748b;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.card-title {
+    -fx-text-fill: #0f172a;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+.highlight-box {
+    -fx-background-color: #eff6ff;
+    -fx-border-color: #bfdbfe;
+    -fx-border-width: 1;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-padding: 12 16;
+}
+
+.feedback-error {
+    -fx-text-fill: #dc2626;
+    -fx-background-color: #fef2f2;
+    -fx-border-color: #fecaca;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 8 12;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.empty-title {
+    -fx-text-fill: #334155;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-alignment: center;
+}
+
+.empty-hint {
+    -fx-text-fill: #94a3b8;
+    -fx-font-size: 12px;
+    -fx-alignment: center;
+    -fx-wrap-text: true;
+    -fx-text-alignment: center;
+}

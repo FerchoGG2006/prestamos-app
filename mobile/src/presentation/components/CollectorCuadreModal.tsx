@@ -21,6 +21,10 @@ import {
 } from '../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
+import {
+  calculateDailyCashReconciliation,
+  filterSessionDayPayments,
+} from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
 import {
@@ -46,7 +50,6 @@ interface CollectorCuadreModalProps {
   collectorId?: string;
   onClose: () => void;
   onSuccess: () => void;
-  onOpenRecaudo?: () => void;
 }
 
 export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
@@ -59,7 +62,6 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   collectorId,
   onClose,
   onSuccess,
-  onOpenRecaudo,
 }) => {
   const insets = useSafeAreaInsets();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,22 +75,34 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   const expensesToday = metrics?.expensesToday || 0;
   const disbursedToday = metrics?.disbursedToday || 0;
   const recaudoRetiradoToday = metrics?.recaudoRetiradoToday || 0;
+  const openingRouteBase = metrics?.openingRouteBase || 0;
+  const paperworkGeneratedToday = metrics?.paperworkGeneratedToday || 0;
 
   // REGLA FUNDAMENTAL DE NEGOCIO:
   // El arqueo físico de efectivo es INCAMBIABLE y AUTOMÁTICO.
   // El cobrador no puede alterar ni corregir este valor.
   // Todo cuadra matemáticamente con los movimientos reales de la jornada:
   // (+) Cobrado en Efectivo Hoy
+  // (+) Base de Inicio de Ruta (definida por oficina)
+  // (=) Cobrado Hoy + Base
   // (-) Gastos Operativos de Ruta
   // (-) Salidas / Préstamos Desembolsados en Efectivo en Calle
   // (-) Avances / Retiros entregados a Oficina
   // (=) Efectivo Físico Obligatorio a Rendir a la Oficina
-  const netCashExpected = Math.max(
-    0,
-    collectedCash - expensesToday - disbursedToday - recaudoRetiradoToday
-  );
+  const reconciliation = calculateDailyCashReconciliation({
+    collectedCash,
+    openingRouteBase,
+    expensesToday,
+    disbursedToday,
+    recaudoRetiradoToday,
+  });
+  const collectedPlusBase = reconciliation.collectedPlusBase;
+  const signedNetCashFlow = reconciliation.signedNetCashFlow;
+  const isDeficitCoveredByBase = reconciliation.isDeficitCoveredByBase;
+  const netCashExpected = reconciliation.cashToHandOver;
   const cashHandedOver = netCashExpected;
   const cashDifference = 0;
+  const sessionDayPayments = filterSessionDayPayments(payments, todayStr, session);
 
   useEffect(() => {
     if (visible) {
@@ -114,7 +128,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
     notes: 'Jornada activa de cobro',
   };
 
-  const verificationHash = `CUADRE-${todayStr.replace(/-/g, '')}-${(payments || []).length}P-${Math.round(
+  const verificationHash = `CUADRE-${todayStr.replace(/-/g, '')}-${sessionDayPayments.length}P-${Math.round(
     totalCollected / 1000
   )}K`;
 
@@ -150,6 +164,8 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
     const actualCol = st ? st.actualCollection : totalCollected;
     const cashCol = st ? st.collectedCash : collectedCash;
     const digCol = st ? st.collectedTransfers : collectedDigital;
+    const stOpeningBase = st?.openingRouteBase ?? openingRouteBase;
+    const stCollectedPlusBase = st?.collectedPlusBase ?? (cashCol + stOpeningBase);
     const salidas = st ? st.salidasCount : metrics?.salidasCount || 0;
     const netDisbursed = st ? st.actualCashDisbursedTotal : disbursedToday;
     const handedOver = st ? st.cashHandedOver : cashHandedOver;
@@ -174,10 +190,12 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
         : '',
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
       '',
-      '*1. COBRADO HOY*',
-      `• *Total Cobrado:* ${formatCOP(actualCol)}`,
-      `  - Efectivo en mano: ${formatCOP(cashCol)}`,
+      '*1. COBRADO HOY Y BASE DE INICIO*',
+      `• *Cobrado Hoy (Total):* ${formatCOP(actualCol)}`,
+      `  - Efectivo cobrado hoy: ${formatCOP(cashCol)}`,
       `  - Digital (Nequi / Bancos): ${formatCOP(digCol)}`,
+      `• *(+) Base de Inicio (Ruta):* ${formatCOP(stOpeningBase)}`,
+      `• *(=) Cobrado Hoy + Base:* ${formatCOP(stCollectedPlusBase)}`,
       `• *Clientes Visitados:* ${metrics.visitedCustomersCount} de ${metrics.expectedCustomersCount} (${metrics.progressPercentage}%)`,
       '',
       '*2. SALIDAS / PRÉSTAMOS ENTREGADOS*',
@@ -190,7 +208,10 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
         : '',
       '',
       '*4. RENDICIÓN DE EFECTIVO A OFICINA*',
-      `• Efectivo Neto Esperado: ${formatCOP(netCashExpected)}`,
+      isDeficitCoveredByBase
+        ? `• Balance Neto del Día (Cubierto por Base): ${formatCOP(signedNetCashFlow)}`
+        : '',
+      `• Efectivo Físico a Rendir: ${formatCOP(netCashExpected)}`,
       `• Efectivo Entregado Físicamente: ${formatCOP(handedOver)}`,
       `• Diferencia Arqueo: ${diff === 0 ? 'Exacto ($0)' : formatCOP(diff)}`,
     ];
@@ -369,6 +390,22 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                   </View>
 
                   <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>(+) Base de Inicio (Ruta):</Text>
+                    <Text style={[styles.receiptValueBold, { color: '#1D4ED8' }]}>
+                      {formatCOP(settledRecord.openingRouteBase || 0)}
+                    </Text>
+                  </View>
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>(=) Cobrado Hoy + Base:</Text>
+                    <Text style={[styles.receiptValueBold, { color: '#0F172A' }]}>
+                      {formatCOP(
+                        settledRecord.collectedPlusBase ??
+                          settledRecord.collectedCash + (settledRecord.openingRouteBase || 0)
+                      )}
+                    </Text>
+                  </View>
+
+                  <View style={styles.receiptRow}>
                     <Text style={styles.receiptLabel}>(-) Gastos Ruta Deducidos:</Text>
                     <Text style={[styles.receiptValueBold, { color: '#ea580c' }]}>
                       {formatCOP(expensesToday)}
@@ -481,7 +518,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                 {/* 1. Tarjetas Bento de Rendición de Ruta */}
                 <View style={styles.splitRow}>
                   <View style={styles.splitCard}>
-                    <Text style={styles.splitLabel}>COBRADO EFECTIVO</Text>
+                    <Text style={styles.splitLabel}>COBRADO HOY</Text>
                     <Text
                       style={[styles.splitValue, { color: COLORS.success }]}
                       numberOfLines={1}
@@ -489,29 +526,82 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                     >
                       {formatCOP(collectedCash)}
                     </Text>
-                    <Text style={styles.splitSub}>Cobrado hoy en mano</Text>
+                    <Text style={styles.splitSub}>Cobrado hoy en efectivo</Text>
                   </View>
 
                   <View
                     style={[
                       styles.splitCard,
-                      { backgroundColor: '#fff7ed', borderColor: '#fed7aa' },
+                      { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
                     ]}
                   >
-                    <Text style={[styles.splitLabel, { color: '#c2410c' }]}>
-                      (-) GASTOS RUTA
+                    <Text style={[styles.splitLabel, { color: '#1d4ed8' }]}>
+                      (+) BASE DE INICIO
                     </Text>
                     <Text
-                      style={[styles.splitValue, { color: '#ea580c' }]}
+                      style={[styles.splitValue, { color: '#1d4ed8' }]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
                     >
-                      {formatCOP(expensesToday)}
+                      {formatCOP(openingRouteBase)}
                     </Text>
-                    <Text style={[styles.splitSub, { color: '#9a3412' }]}>
-                      Gasolina, pinchazo, datos
+                    <Text style={[styles.splitSub, { color: '#1e40af' }]}>
+                      Efectivo base al iniciar el día
                     </Text>
                   </View>
+                </View>
+
+                {/* Subtotal destacado: Cobrado hoy + Base */}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: '#f0fdf4',
+                    borderWidth: 1,
+                    borderColor: '#86efac',
+                    borderRadius: 14,
+                    padding: 12,
+                    marginBottom: 10,
+                  }}
+                >
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={[styles.splitLabel, { color: '#166534', marginBottom: 2 }]}>
+                      (=) COBRADO HOY + BASE
+                    </Text>
+                    <Text style={[styles.splitSub, { color: '#15803d' }]}>
+                      {formatCOP(collectedCash)} cobrado + {formatCOP(openingRouteBase)} base
+                    </Text>
+                  </View>
+                  <Text
+                    style={[styles.splitValue, { color: '#15803d', fontSize: 19 }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {formatCOP(collectedPlusBase)}
+                  </Text>
+                </View>
+
+                {/* Gastos de ruta */}
+                <View
+                  style={[
+                    styles.splitCard,
+                    { backgroundColor: '#fff7ed', borderColor: '#fed7aa', marginBottom: 10 },
+                  ]}
+                >
+                  <Text style={[styles.splitLabel, { color: '#c2410c' }]}>
+                    (-) GASTOS RUTA
+                  </Text>
+                  <Text
+                    style={[styles.splitValue, { color: '#ea580c' }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {formatCOP(expensesToday)}
+                  </Text>
+                  <Text style={[styles.splitSub, { color: '#9a3412' }]}>
+                    Gasolina, pinchazo, datos
+                  </Text>
                 </View>
 
                 {/* Cobrado Digital Info */}
@@ -528,11 +618,15 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                   <View style={styles.disbursedCard}>
                     <Text style={styles.disbursedLabel}>(-) SALIDAS ENTREGADAS EN PRÉSTAMOS</Text>
                     <Text style={styles.disbursedValue}>{formatCOP(disbursedToday)}</Text>
-                    <Text style={styles.disbursedSub}>Dinero prestado en efectivo a clientes hoy</Text>
+                    <Text style={styles.disbursedSub}>
+                      {paperworkGeneratedToday > 0
+                        ? `Neto entregado a clientes (Papelería retenida en caja: ${formatCOP(paperworkGeneratedToday)})`
+                        : 'Dinero prestado en efectivo a clientes hoy'}
+                    </Text>
                   </View>
                 )}
 
-                {/* Avances / Retiros entregados a Oficina */}
+                {/* Avances / Retiros entregados a Oficina (solo lectura; registrados únicamente por el Administrador) */}
                 {recaudoRetiradoToday > 0 && (
                   <View style={styles.disbursedCard}>
                     <Text style={styles.disbursedLabel}>(-) AVANCES ENTREGADOS A OFICINA</Text>
@@ -541,46 +635,45 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                   </View>
                 )}
 
-                {onOpenRecaudo && (
-                  <TouchableOpacity
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: '#eff6ff',
-                      borderWidth: 1,
-                      borderColor: '#bfdbfe',
-                      borderRadius: 14,
-                      paddingVertical: 10,
-                      paddingHorizontal: 14,
-                      marginBottom: 10,
-                    }}
-                    onPress={() => {
-                      onClose();
-                      onOpenRecaudo();
-                    }}
+                {/* Total Neto a Rendir Físicamente / Balance Neto Real del Día */}
+                <View
+                  style={[
+                    styles.netCard,
+                    isDeficitCoveredByBase && {
+                      backgroundColor: '#fffbeb',
+                      borderColor: '#fcd34d',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.netLabel,
+                      isDeficitCoveredByBase && { color: '#b45309' },
+                    ]}
                   >
-                    <Landmark size={15} color="#1d4ed8" style={{ marginRight: 6 }} />
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: '#1d4ed8' }}>
-                      Registrar Avance / Retiro a Oficina
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* Total Neto a Rendir Físicamente */}
-                <View style={styles.netCard}>
-                  <Text style={styles.netLabel}>
-                    (=) EFECTIVO NETO A ENTREGAR A OFICINA
+                    {isDeficitCoveredByBase
+                      ? '(=) BALANCE NETO DEL DÍA (CUBIERTO POR BASE)'
+                      : '(=) EFECTIVO NETO A ENTREGAR A OFICINA'}
                   </Text>
                   <Text
-                    style={styles.netValue}
+                    style={[
+                      styles.netValue,
+                      isDeficitCoveredByBase && { color: '#b45309' },
+                    ]}
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    {formatCOP(netCashExpected)}
+                    {formatCOP(signedNetCashFlow)}
                   </Text>
-                  <Text style={styles.netSub}>
-                    Monto que debes entregar físicamente al patrón o cajero
+                  <Text
+                    style={[
+                      styles.netSub,
+                      isDeficitCoveredByBase && { color: '#92400e' },
+                    ]}
+                  >
+                    {isDeficitCoveredByBase
+                      ? `Hoy salió más en préstamos que Cobrado + Base (${formatCOP(collectedPlusBase)}) • Físico a entregar: ${formatCOP(netCashExpected)}`
+                      : 'Monto total que debes entregar físicamente al patrón o cajero'}
                   </Text>
                 </View>
 
@@ -593,7 +686,7 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                     </Text>
                   </View>
                   <Text style={styles.formulaHeaderSub}>
-                    Fórmula matemática incambiable. El cobrador no puede modificar este cálculo; todo cuadra estrictamente con lo cobrado, gastos y salidas registradas.
+                    Fórmula matemática incambiable. El cobrador no puede modificar este cálculo; todo cuadra estrictamente con lo cobrado, la base de inicio, gastos y salidas registradas.
                   </Text>
 
                   <View style={styles.formulaBreakdown}>
@@ -604,6 +697,27 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                       </View>
                       <Text style={[styles.formulaAmountText, { color: COLORS.success }]}>
                         +{formatCOP(collectedCash)}
+                      </Text>
+                    </View>
+
+                    <View style={styles.formulaRow}>
+                      <View style={styles.formulaConceptRow}>
+                        <Landmark size={14} color="#1d4ed8" style={{ marginRight: 6 }} />
+                        <Text style={styles.formulaConceptText}>(+) Base de Inicio (Ruta)</Text>
+                      </View>
+                      <Text style={[styles.formulaAmountText, { color: '#1d4ed8' }]}>
+                        +{formatCOP(openingRouteBase)}
+                      </Text>
+                    </View>
+
+                    <View style={[styles.formulaRow, { backgroundColor: '#f0fdf4', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8 }]}>
+                      <View style={styles.formulaConceptRow}>
+                        <Text style={[styles.formulaConceptText, { color: '#166534', fontWeight: '800' }]}>
+                          (=) Cobrado Hoy + Base
+                        </Text>
+                      </View>
+                      <Text style={[styles.formulaAmountText, { color: '#15803d', fontWeight: '800' }]}>
+                        {formatCOP(collectedPlusBase)}
                       </Text>
                     </View>
 
@@ -642,6 +756,19 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
                     )}
 
                     <View style={styles.formulaDivider} />
+
+                    {isDeficitCoveredByBase && (
+                      <View style={styles.formulaRow}>
+                        <View style={styles.formulaConceptRow}>
+                          <Text style={[styles.formulaConceptText, { color: '#b45309', fontWeight: '700' }]}>
+                            Balance Neto del Día (Cubierto por Base)
+                          </Text>
+                        </View>
+                        <Text style={[styles.formulaAmountText, { color: '#b45309' }]}>
+                          {formatCOP(signedNetCashFlow)}
+                        </Text>
+                      </View>
+                    )}
 
                     <View style={styles.formulaTotalRow}>
                       <View>
@@ -750,6 +877,8 @@ const styles = StyleSheet.create({
   },
   splitCard: {
     flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
     backgroundColor: COLORS.surfaceSoft,
     borderRadius: 16,
     padding: 12,
@@ -765,8 +894,9 @@ const styles = StyleSheet.create({
   },
   splitValue: {
     fontFamily: FONT_FAMILY,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '900',
+    fontVariant: ['tabular-nums'],
     color: COLORS.textPrimary,
   },
   splitSub: {

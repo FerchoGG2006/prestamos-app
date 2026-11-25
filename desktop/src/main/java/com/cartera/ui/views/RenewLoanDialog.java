@@ -49,6 +49,8 @@ public class RenewLoanDialog extends Stage {
     private final TextField txtInstallmentCount = new TextField("24");
     private final ComboBox<String> cmbFrequency = new ComboBox<>();
     private final DatePicker dpStartDate = new DatePicker(LocalDate.now());
+    private final Label lblStartDate = new Label("Fecha Inicio *");
+    private final HBox boxFixedDateQuick = new HBox(6);
 
     private final Label lblCurrentBalance = new Label("$ 0");
     private final Label lblPaperworkFee = new Label("$ 0");
@@ -101,6 +103,13 @@ public class RenewLoanDialog extends Stage {
         setResizable(false);
 
         calculateCurrentBalance();
+        // Sugerir capital nuevo por encima del saldo pendiente actual para no abrir en estado de error
+        BigDecimal suggestedPrincipal = currentLoan.getPrincipal() != null ? currentLoan.getPrincipal() : new BigDecimal("400000");
+        BigDecimal minimumCover = currentBalance.add(new BigDecimal("100000"));
+        if (suggestedPrincipal.compareTo(minimumCover) < 0) {
+            suggestedPrincipal = minimumCover;
+        }
+        txtNewPrincipal.setText(suggestedPrincipal.setScale(0, java.math.RoundingMode.CEILING).toPlainString());
         buildUI();
         recalculateNet();
     }
@@ -185,22 +194,39 @@ public class RenewLoanDialog extends Stage {
         txtInterestPercent.setId("renewal-total-rate");
         txtInstallmentCount.getStyleClass().add("search-field");
         txtInstallmentCount.setId("renewal-installments");
-        cmbFrequency.getItems().addAll("DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
-        cmbFrequency.setValue(currentLoan.getFrequency());
+        cmbFrequency.getItems().addAll("DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL", "FECHA FIJA");
+        String freq = currentLoan.getFrequency() != null ? currentLoan.getFrequency().trim().toUpperCase() : "DIARIO";
+        if ("FECHA_FIJA".equals(freq) || "FIXED_DATE".equals(freq)) freq = "FECHA FIJA";
+        if (!cmbFrequency.getItems().contains(freq)) freq = "DIARIO";
+        cmbFrequency.setValue(freq);
         cmbFrequency.getStyleClass().add("search-field");
         dpStartDate.getStyleClass().add("search-field");
 
         txtNewPrincipal.textProperty().addListener((obs, old, val) -> recalculateNet());
         txtInterestPercent.textProperty().addListener((obs, old, val) -> recalculateNet());
         txtInstallmentCount.textProperty().addListener((obs, old, val) -> recalculateNet());
-        cmbFrequency.valueProperty().addListener((obs, old, val) -> recalculateNet());
+        cmbFrequency.valueProperty().addListener((obs, old, val) -> {
+            applyFrequencyUi(val);
+            recalculateNet();
+        });
         dpStartDate.valueProperty().addListener((obs, old, val) -> recalculateNet());
 
         setupField(grid, "Nuevo Capital Solicitado ($) *", txtNewPrincipal, 0, 0);
         setupField(grid, "Interés TOTAL del plazo (%) *", txtInterestPercent, 1, 0);
         setupField(grid, "Modalidad *", cmbFrequency, 0, 1);
         setupField(grid, "Cuotas *", txtInstallmentCount, 1, 1);
-        setupField(grid, "Fecha Inicio *", dpStartDate, 0, 2);
+
+        lblStartDate.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
+        for (int days : new int[]{7, 15, 30}) {
+            Button btnDays = new Button("+" + days + "d");
+            btnDays.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #334155; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 3 8; -fx-background-radius: 6; -fx-cursor: hand;");
+            btnDays.setOnAction(e -> dpStartDate.setValue(LocalDate.now().plusDays(days)));
+            boxFixedDateQuick.getChildren().add(btnDays);
+        }
+        VBox boxStartDate = new VBox(4, lblStartDate, dpStartDate, boxFixedDateQuick);
+        grid.add(boxStartDate, 0, 2);
+
+        applyFrequencyUi(cmbFrequency.getValue());
 
         VBox boxTotal = new VBox(4, new Label("Nuevo Total Pactado") {{ setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;"); }}, lblNewTotal);
         lblNewTotal.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 15px; -fx-font-weight: bold;");
@@ -218,9 +244,9 @@ public class RenewLoanDialog extends Stage {
         projection.addRow(1, new Label("Base operativa"), lblCashBefore, lblCashAfter);
         projection.addRow(2, new Label("Cartera en calle"), lblDebtBefore, lblDebtAfter);
         projection.addRow(3, new Label("Administrativo"), lblAdminBefore, lblAdminAfter);
-        Label paperworkHelp = new Label("La Base descuenta el neto entregado más la papelería. El saldo anterior se compensa: no se registra como cobro.");
+        Label paperworkHelp = new Label("La Base operativa descuenta el neto entregado más la papelería (si está activa). La papelería permanece separada en caja y no suma al Administrativo.");
         paperworkHelp.setWrapText(true);
-        Label ledgerHelp = new Label("Base según movimientos registrados. El libro actual agrupa efectivo y fondos digitales; no equivale a un arqueo físico.");
+        Label ledgerHelp = new Label("Base operativa según movimientos físicos registrados; fondos digitales (Nequi/Transferencia) se llevan por separado.");
         ledgerHelp.setWrapText(true);
         lblCashWarning.setWrapText(true);
         lblCashWarning.setStyle("-fx-text-fill: #b45309;");
@@ -255,6 +281,34 @@ public class RenewLoanDialog extends Stage {
         var scene = new Scene(scroll, 770, height);
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
         setScene(scene);
+    }
+
+    private void applyFrequencyUi(String freq) {
+        boolean isFixed = "FECHA FIJA".equalsIgnoreCase(freq) || "FECHA_FIJA".equalsIgnoreCase(freq) || "FIXED_DATE".equalsIgnoreCase(freq);
+        if (isFixed) {
+            txtInstallmentCount.setText("1");
+            txtInstallmentCount.setDisable(true);
+            lblStartDate.setText("Fecha Fija de Pago Único *");
+            boxFixedDateQuick.setVisible(true);
+            boxFixedDateQuick.setManaged(true);
+            if (dpStartDate.getValue() == null || dpStartDate.getValue().equals(LocalDate.now())) {
+                dpStartDate.setValue(LocalDate.now().plusDays(7));
+            }
+        } else {
+            txtInstallmentCount.setDisable(false);
+            if ("1".equals(txtInstallmentCount.getText().trim())) {
+                String defaultCount = switch (freq != null ? freq.trim().toUpperCase() : "DIARIO") {
+                    case "SEMANAL" -> "4";
+                    case "QUINCENAL" -> "2";
+                    case "MENSUAL" -> "1";
+                    default -> "30";
+                };
+                txtInstallmentCount.setText(defaultCount);
+            }
+            lblStartDate.setText("Fecha Inicio *");
+            boxFixedDateQuick.setVisible(false);
+            boxFixedDateQuick.setManaged(false);
+        }
     }
 
     private void setupField(GridPane grid, String label, javafx.scene.Node field, int col, int row) {

@@ -2,11 +2,14 @@ package com.cartera.ui.views;
 
 import com.cartera.customers.application.CreateCustomerUseCase;
 import com.cartera.customers.application.CreateCustomerUseCase.CreateCustomerCommand;
+import com.cartera.customers.application.CreateCustomerWithLoanUseCase;
 import com.cartera.domain.money.Money;
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.RouteEntity;
+import com.cartera.infrastructure.persistence.entity.SystemSettingEntity;
 import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
+import com.cartera.infrastructure.security.UserSession;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CreateLoanUseCase;
 import com.cartera.loans.application.CreateLoanUseCase.CreateLoanCommand;
@@ -51,6 +54,11 @@ public class CustomerDialog extends Stage {
     private final SystemSettingRepository settingRepository;
     private final RouteRepository routeRepository;
     private final Consumer<CustomerEntity> onSuccess;
+    private CreateCustomerWithLoanUseCase createCustomerWithLoanUseCase;
+
+    public void setCreateCustomerWithLoanUseCase(CreateCustomerWithLoanUseCase createCustomerWithLoanUseCase) {
+        this.createCustomerWithLoanUseCase = createCustomerWithLoanUseCase;
+    }
 
     // Campos de Cliente
     private final TextField txtFullName = new TextField();
@@ -59,7 +67,7 @@ public class CustomerDialog extends Stage {
     private final TextField txtAltPhone = new TextField();
     private final TextField txtAddress = new TextField();
     private final TextField txtNeighborhood = new TextField();
-    private final TextField txtCity = new TextField("Barranquilla");
+    private final TextField txtCity = new TextField("");
     private final TextField txtBusiness = new TextField();
     private final TextField txtOccupation = new TextField();
     private final TextField txtNotes = new TextField();
@@ -124,9 +132,13 @@ public class CustomerDialog extends Stage {
 
         if (settingRepository != null) {
             settingRepository.findById("default_interest_percent")
-                    .map(s -> s.getSettingValue())
+                    .map(SystemSettingEntity::getSettingValue)
                     .filter(v -> v != null && !v.isBlank())
                     .ifPresent(txtInterestPercent::setText);
+            settingRepository.findById("company_city")
+                    .map(SystemSettingEntity::getSettingValue)
+                    .filter(v -> v != null && !v.isBlank())
+                    .ifPresent(txtCity::setText);
         }
 
         initModality(Modality.WINDOW_MODAL);
@@ -142,12 +154,19 @@ public class CustomerDialog extends Stage {
     private void loadRoutes() {
         cmbRoute.getItems().clear();
         String activeFilter = UserSessionContext.getSelectedRouteId();
+        var sessionOpt = UserSessionContext.getSession();
+        boolean isCollector = sessionOpt.map(UserSession::isCollector).orElse(false);
+        String collectorUserId = sessionOpt.map(UserSession::userId).orElse(null);
         RouteOption defaultOpt = null;
 
         if (routeRepository != null) {
             List<RouteEntity> routes = routeRepository.findAll();
             for (RouteEntity r : routes) {
                 if (r.getActive() != null && r.getActive() == 0) continue;
+                if (isCollector && collectorUserId != null
+                        && !collectorUserId.equalsIgnoreCase(r.getCollectorId())) {
+                    continue;
+                }
                 RouteOption opt = new RouteOption(r.getId(), r.getName(), r.getCollectorId());
                 cmbRoute.getItems().add(opt);
                 if (activeFilter != null && activeFilter.equalsIgnoreCase(r.getId())) {
@@ -155,14 +174,11 @@ public class CustomerDialog extends Stage {
                 }
             }
         }
-        if (cmbRoute.getItems().isEmpty()) {
-            defaultOpt = new RouteOption("ruta-principal", "Ruta Principal", "admin");
-            cmbRoute.getItems().add(defaultOpt);
-        }
         if (defaultOpt == null && !cmbRoute.getItems().isEmpty()) {
             defaultOpt = cmbRoute.getItems().get(0);
         }
         cmbRoute.setValue(defaultOpt);
+        cmbRoute.setDisable(isCollector && cmbRoute.getItems().size() <= 1);
     }
 
     private void buildUI() {
@@ -202,22 +218,27 @@ public class CustomerDialog extends Stage {
         routeBox.getChildren().addAll(lblRoute, cmbRoute);
         grid.add(routeBox, 1, 0, 1, 1);
 
-        setupField(grid, "Cédula / Documento (solo números) *", txtDoc, 0, 1, 1);
-        txtDoc.setTextFormatter(new TextFormatter<>(change -> change.getControlNewText().matches("\\d*") ? change : null));
+        setupField(grid, "Cédula / Documento *", txtDoc, 0, 1, 1);
         setupField(grid, "Teléfono para Llamadas *", txtPhone, 1, 1, 1);
-        setupField(grid, "Dirección Principal *", txtAddress, 0, 2, 1);
+        setupField(grid, "Dirección Principal", txtAddress, 0, 2, 1);
         setupField(grid, "Barrio", txtNeighborhood, 1, 2, 1);
-        setupField(grid, "Teléfono de WhatsApp *", txtAltPhone, 0, 3, 1);
+        setupField(grid, "Teléfono de WhatsApp (opcional)", txtAltPhone, 0, 3, 1);
         setupField(grid, "Ciudad", txtCity, 1, 3, 1);
         setupField(grid, "Nombre de Negocio / Local", txtBusiness, 0, 4, 1);
         setupField(grid, "Ocupación / Actividad", txtOccupation, 1, 4, 1);
         setupField(grid, "Notas / Referencias adicionales", txtNotes, 0, 5, 2);
 
         // SECCIÓN 2: PRÉSTAMO INMEDIATO
+        boolean collectorNewLoansAllowed = !UserSessionContext.getSession().map(UserSession::isCollector).orElse(false)
+                || settingRepository == null
+                || settingRepository.findById("route_allow_new_loans")
+                        .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
+                        .orElse(true);
+        boolean canDisburseNow = createLoanUseCase != null && collectorNewLoansAllowed;
         chkDisburseNow.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px; -fx-cursor: hand;");
-        chkDisburseNow.setSelected(createLoanUseCase != null);
-        chkDisburseNow.setVisible(createLoanUseCase != null);
-        chkDisburseNow.setManaged(createLoanUseCase != null);
+        chkDisburseNow.setSelected(canDisburseNow);
+        chkDisburseNow.setVisible(canDisburseNow);
+        chkDisburseNow.setManaged(canDisburseNow);
         chkDisburseNow.setOnAction(e -> {
             boolean active = chkDisburseNow.isSelected();
             boxLoanSection.setVisible(active);
@@ -226,6 +247,11 @@ public class CustomerDialog extends Stage {
         });
 
         buildLoanSection();
+        boxLoanSection.setVisible(canDisburseNow);
+        boxLoanSection.setManaged(canDisburseNow);
+        if (!canDisburseNow) {
+            btnSave.setText("Guardar Solo Cliente");
+        }
 
         // Feedback
         lblFeedback.setWrapText(true);
@@ -271,7 +297,7 @@ public class CustomerDialog extends Stage {
         loanGrid.setVgap(10);
 
         setupField(loanGrid, "Capital a Prestar ($) *", txtPrincipal, 0, 0, 1);
-        cmbFrequency.getItems().setAll("DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
+        cmbFrequency.getItems().setAll("FECHA FIJA", "DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
         cmbFrequency.setValue("DIARIO");
         cmbFrequency.setMaxWidth(Double.MAX_VALUE);
         cmbFrequency.getStyleClass().add("search-field");
@@ -282,6 +308,20 @@ public class CustomerDialog extends Stage {
 
         setupField(loanGrid, "Número de Cuotas *", txtInstallmentCount, 0, 1, 1);
         setupField(loanGrid, "Tasa Interés (%) *", txtInterestPercent, 1, 1, 1);
+
+        cmbFrequency.valueProperty().addListener((obs, old, val) -> {
+            boolean isFixed = "FECHA FIJA".equalsIgnoreCase(val);
+            if (isFixed) {
+                txtInstallmentCount.setText("1");
+                txtInstallmentCount.setDisable(true);
+            } else {
+                txtInstallmentCount.setDisable(false);
+                if ("1".equals(txtInstallmentCount.getText().trim())) {
+                    txtInstallmentCount.setText("30");
+                }
+            }
+            recalculateLoanPreview();
+        });
 
         dpStartDate.setMaxWidth(Double.MAX_VALUE);
         dpStartDate.getStyleClass().add("search-field");
@@ -355,9 +395,8 @@ public class CustomerDialog extends Stage {
             if (principal.compareTo(BigDecimal.ZERO) <= 0 || count <= 0) return;
 
             BigDecimal rateDecimal = interestPercent.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-            BigDecimal interest = principal.multiply(rateDecimal);
-            BigDecimal total = principal.add(interest);
-            BigDecimal cuota = total.divide(BigDecimal.valueOf(count), 0, RoundingMode.HALF_UP);
+            BigDecimal total = new Money(principal.add(principal.multiply(rateDecimal))).amount();
+            BigDecimal cuota = total.divide(BigDecimal.valueOf(count), 0, RoundingMode.DOWN);
 
             boolean isPaperworkEnabled = settingRepository == null || settingRepository.findById("paperwork_enabled")
                     .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
@@ -439,18 +478,19 @@ public class CustomerDialog extends Stage {
                     return;
                 }
                 if (settingRepository != null) {
-                    BigDecimal maxAllowed = settingRepository.findById("max_new_loan_amount")
-                            .map(s -> CurrencyInputUtil.parseAmount(s.getSettingValue()))
-                            .orElse(BigDecimal.ZERO);
-                    if (maxAllowed.compareTo(BigDecimal.ZERO) > 0 && principal.compareTo(maxAllowed) > 0) {
-                        showError("El capital solicitado supera el tope máximo permitido (" + CURRENCY.format(maxAllowed) + ").");
-                        return;
-                    }
+                    try {
+                        BigDecimal maxAllowed = settingRepository.findById("max_new_loan_amount")
+                                .map(s -> CurrencyInputUtil.parseAmount(s.getSettingValue()))
+                                .orElse(BigDecimal.ZERO);
+                        if (maxAllowed.compareTo(BigDecimal.ZERO) > 0 && principal.compareTo(maxAllowed) > 0) {
+                            showError("El capital solicitado supera el tope máximo permitido (" + CURRENCY.format(maxAllowed) + ").");
+                            return;
+                        }
+                    } catch (Exception ignored) {}
                 }
 
                 rateDecimal = interestPercent.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-                BigDecimal interest = principal.multiply(rateDecimal);
-                totalAgreed = principal.add(interest);
+                totalAgreed = new Money(principal.add(principal.multiply(rateDecimal))).amount();
             } catch (Exception ex) {
                 showError("Verifique los valores numéricos del préstamo.");
                 return;
@@ -465,12 +505,12 @@ public class CustomerDialog extends Stage {
 
         try {
             String authorId = UserSessionContext.getSession()
-                    .map(com.cartera.infrastructure.security.UserSession::userId)
-                    .orElse("sistema");
+                    .map(UserSession::userId)
+                    .orElseThrow(() -> new IllegalStateException("Inicie sesión para registrar un cliente."));
 
             RouteOption selectedRoute = cmbRoute.getValue();
             if (selectedRoute == null) {
-                showError("Debe seleccionar una ruta para registrar al cliente.");
+                showError("No hay una ruta activa seleccionada. Configure una ruta primero.");
                 btnSave.setDisable(false);
                 return;
             }
@@ -495,26 +535,31 @@ public class CustomerDialog extends Stage {
                     authorId
             );
 
-            // 1. Guardar cliente
-            CustomerEntity customer = createCustomerUseCase.execute(cmd);
-
-            // 2. Si se solicitó préstamo inmediato, originarlo y desembolsar
-            if (willDisburse) {
+            CustomerEntity customer;
+            if (willDisburse && createCustomerWithLoanUseCase != null) {
                 BigDecimal cartulina = computeConfiguredPaperwork(principal);
-                var loanCmd = new CreateLoanCommand(
-                        customer.getId(),
-                        routeId,
-                        collectorId,
-                        principal,
-                        rateDecimal,
-                        totalAgreed,
-                        count,
-                        frequency,
-                        startDate,
-                        authorId,
-                        cartulina
-                );
-                createLoanUseCase.execute(loanCmd);
+                customer = createCustomerWithLoanUseCase.execute(
+                        cmd, principal, rateDecimal, totalAgreed, count, frequency, startDate, cartulina
+                ).customer();
+            } else {
+                customer = createCustomerUseCase.execute(cmd);
+                if (willDisburse) {
+                    BigDecimal cartulina = computeConfiguredPaperwork(principal);
+                    var loanCmd = new CreateLoanCommand(
+                            customer.getId(),
+                            routeId,
+                            collectorId,
+                            principal,
+                            rateDecimal,
+                            totalAgreed,
+                            count,
+                            frequency,
+                            startDate,
+                            authorId,
+                            cartulina
+                    );
+                    createLoanUseCase.execute(loanCmd);
+                }
             }
 
             if (onSuccess != null) {

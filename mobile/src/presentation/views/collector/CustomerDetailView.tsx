@@ -616,7 +616,23 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
         <View style={styles.bentoRow}>
           <View style={styles.bentoBox}>
             <Text style={styles.bentoLabel}>SALDO PENDIENTE</Text>
-            <Text style={styles.bentoAmountDark} numberOfLines={1} adjustsFontSizeToFit>
+            <Text
+              style={[
+                styles.bentoAmountDark,
+                {
+                  fontSize:
+                    currentRemainingBalance >= 100_000_000
+                      ? 14.5
+                      : currentRemainingBalance >= 10_000_000
+                        ? 16
+                        : currentRemainingBalance >= 1_000_000
+                          ? 17.5
+                          : 19,
+                },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               {formatCOP(currentRemainingBalance)}
             </Text>
             <Text style={styles.bentoSub}>
@@ -629,7 +645,20 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
               TOTAL ABONADO HISTÓRICO
             </Text>
             <Text
-              style={[styles.bentoAmountDark, { color: COLORS.textPrimary }]}
+              style={[
+                styles.bentoAmountDark,
+                {
+                  color: COLORS.textPrimary,
+                  fontSize:
+                    totalPaid >= 100_000_000
+                      ? 14.5
+                      : totalPaid >= 10_000_000
+                        ? 16
+                        : totalPaid >= 1_000_000
+                          ? 17.5
+                          : 19,
+                },
+              ]}
               numberOfLines={1}
               adjustsFontSizeToFit
             >
@@ -1647,6 +1676,7 @@ const styles = StyleSheet.create({
   },
   bentoBox: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: COLORS.bgSecondary,
     borderRadius: 20,
     padding: 14,

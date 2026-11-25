@@ -1,5 +1,6 @@
 package com.cartera.ui.views;
 
+import com.cartera.infrastructure.persistence.entity.RouteEntity;
 import com.cartera.infrastructure.persistence.repository.*;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CreateLoanUseCase;
@@ -7,6 +8,8 @@ import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.sync.application.MobileSyncProcessorService;
 import com.cartera.sync.application.MobileSyncProcessorService.SyncImportResult;
 import com.cartera.sync.infrastructure.LanSyncServerService;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -17,21 +20,19 @@ import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.util.StringConverter;
 
 import java.io.File;
-import java.net.Inet4Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.LocalDate;
-import java.util.Enumeration;
+import java.util.List;
 
 /**
  * Diálogo de Sincronización Bidireccional con Ruta Móvil:
- * 1. Sincronización directa por Red Local Wi-Fi / LAN (HTTP REST en puerto 8765, sin QR).
- * 2. Exportación de paquete de ruta a archivo .JSON para el móvil.
- * 3. Importación manual de archivo .JSON o texto pegado.
+ * 1. Sincronización directa por Red Local Wi-Fi / LAN mediante enlace temporal autorizado por ruta.
+ * 2. Exportación de paquete de una ruta concreta a archivo .JSON para el móvil.
+ * 3. Importación manual de archivo .JSON o texto pegado (en segundo plano).
  */
 public class ImportMobileSyncDialog extends Stage {
 
@@ -39,9 +40,13 @@ public class ImportMobileSyncDialog extends Stage {
     private final LanSyncServerService lanSyncServerService;
     private final Runnable onFinished;
 
+    private final ComboBox<RouteEntity> cmbRoute = new ComboBox<>();
     private final TextArea txtJson = new TextArea();
-    private final Label lblStatus = new Label("Listo para sincronizar con el celular.");
-    private final ProgressBar progressBar = new ProgressBar(0);
+    private final Label lblStatus = new Label("Seleccione una ruta para generar un enlace temporal o exportar su paquete.");
+    private final ProgressBar progressBar = new ProgressBar(ProgressBar.INDETERMINATE_PROGRESS);
+    private Button btnExportRoute;
+    private Button btnPickFile;
+    private Button btnProcess;
 
     public ImportMobileSyncDialog(Stage ownerStage,
                                   RecordPaymentUseCase paymentUseCase,
@@ -63,10 +68,36 @@ public class ImportMobileSyncDialog extends Stage {
         initModality(Modality.WINDOW_MODAL);
         initOwner(ownerStage);
         setTitle("Sincronización con el Celular del Cobrador");
-        setWidth(680);
-        setHeight(610);
+        setWidth(720);
+        setHeight(650);
 
+        loadRoutes();
         buildUI();
+    }
+
+    private void loadRoutes() {
+        List<RouteEntity> available = List.of();
+        if (lanSyncServerService != null) {
+            try {
+                available = lanSyncServerService.pairingRoutes();
+            } catch (Exception ignored) {}
+        }
+        cmbRoute.setItems(FXCollections.observableArrayList(available));
+        cmbRoute.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(RouteEntity r) {
+                return r == null ? "" : r.getName() + " [" + r.getId() + "]";
+            }
+            @Override
+            public RouteEntity fromString(String s) { return null; }
+        });
+
+        String activeGlobal = UserSessionContext.getSelectedRouteId();
+        RouteEntity matched = available.stream()
+                .filter(r -> activeGlobal != null && activeGlobal.equalsIgnoreCase(r.getId()))
+                .findFirst()
+                .orElse(available.isEmpty() ? null : available.get(0));
+        cmbRoute.setValue(matched);
     }
 
     private void buildUI() {
@@ -78,31 +109,40 @@ public class ImportMobileSyncDialog extends Stage {
         VBox header = new VBox(4);
         Label title = new Label("Sincronización con el Celular del Cobrador");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
-        Label sub = new Label("Transfiere la ruta del día al cobrador y recibe cobros, nuevos clientes y gastos registrados en calle.");
+        Label sub = new Label("Habilite un enlace Wi-Fi temporal por ruta o intercambie paquetes JSON de cobros de forma segura.");
         sub.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         header.getChildren().addAll(title, sub);
 
-        // 1. Banner Informativo de Conexión Wi-Fi
+        // Selector de ruta obligatorio
+        HBox routeRow = new HBox(10);
+        routeRow.setAlignment(Pos.CENTER_LEFT);
+        Label lblRoute = new Label("Ruta a sincronizar:");
+        lblRoute.setStyle("-fx-text-fill: #334155; -fx-font-weight: bold; -fx-font-size: 12px;");
+        cmbRoute.setPrefWidth(300);
+        cmbRoute.getStyleClass().add("search-field");
+        routeRow.getChildren().addAll(lblRoute, cmbRoute);
+
+        // 1. Banner Informativo de Conexión Wi-Fi (Pairing-First)
         VBox lanCard = buildLanBannerCard();
 
         // 2. Barra de Exportación e Importación de Datos
         HBox fileBar = new HBox(10);
         fileBar.setAlignment(Pos.CENTER_LEFT);
 
-        Button btnExportRoute = new Button("Enviar Ruta al Celular");
+        btnExportRoute = new Button("Exportar Ruta (.json)");
         btnExportRoute.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-background-radius: 8; -fx-font-weight: bold; -fx-padding: 8 14; -fx-cursor: hand;");
         btnExportRoute.setOnAction(e -> exportRouteToFile());
 
-        Button btnPickFile = new Button("Cargar Archivo de Cobros...");
+        btnPickFile = new Button("Cargar Archivo de Cobros...");
         btnPickFile.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #1e293b; -fx-border-color: #cbd5e1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-padding: 8 14; -fx-cursor: hand;");
         btnPickFile.setOnAction(e -> pickJsonFile());
 
-        Label lblOr = new Label("o pega los datos recibidos:");
+        Label lblOr = new Label("o pega el JSON recibido del cobrador:");
         lblOr.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         fileBar.getChildren().addAll(btnExportRoute, btnPickFile, lblOr);
 
-        // TextArea
-        txtJson.setPromptText("Pega aquí los datos de cobros si los enviaste por WhatsApp...");
+        // TextArea (solo para pegar/importar paquete del cobrador)
+        txtJson.setPromptText("Pega aquí el paquete JSON de cobros enviado desde el celular...");
         txtJson.setWrapText(true);
         txtJson.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-size: 11px;");
         VBox.setVgrow(txtJson, Priority.ALWAYS);
@@ -110,6 +150,8 @@ public class ImportMobileSyncDialog extends Stage {
         // Status & Progress
         progressBar.setMaxWidth(Double.MAX_VALUE);
         progressBar.setVisible(false);
+        progressBar.setManaged(false);
+        lblStatus.setWrapText(true);
         lblStatus.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
         // Botones inferiores
@@ -120,13 +162,13 @@ public class ImportMobileSyncDialog extends Stage {
         btnCancel.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-padding: 8 16; -fx-background-radius: 8; -fx-cursor: hand;");
         btnCancel.setOnAction(e -> close());
 
-        Button btnProcess = new Button("Guardar Cobros en el Sistema");
+        btnProcess = new Button("Guardar Cobros en el Sistema");
         btnProcess.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 8; -fx-cursor: hand;");
         btnProcess.setOnAction(e -> processImport());
 
         actions.getChildren().addAll(btnCancel, btnProcess);
 
-        root.getChildren().addAll(header, lanCard, fileBar, txtJson, progressBar, lblStatus, actions);
+        root.getChildren().addAll(header, routeRow, lanCard, fileBar, txtJson, progressBar, lblStatus, actions);
         Scene scene = new Scene(root);
         try {
             var cssUrl = getClass().getResource("/ui/theme.css");
@@ -138,81 +180,150 @@ public class ImportMobileSyncDialog extends Stage {
     }
 
     private VBox buildLanBannerCard() {
-        VBox card = new VBox(6);
+        VBox card = new VBox(8);
         card.setPadding(new Insets(12, 16, 12, 16));
         card.setStyle("-fx-background-color: #eff6ff; -fx-border-color: #bfdbfe; -fx-border-radius: 10; -fx-background-radius: 10;");
 
-        String ip = lanSyncServerService != null ? lanSyncServerService.getLocalIpAddress() : detectFallbackIp();
-        int port = lanSyncServerService != null ? lanSyncServerService.getPort() : LanSyncServerService.DEFAULT_PORT;
-        String[] connectionCode = {"http://"+ip+":"+port};
+        boolean running = lanSyncServerService != null && lanSyncServerService.isRunning();
+        String baseEndpoint = lanSyncServerService != null ? lanSyncServerService.getServerEndpointDisplay() : "No disponible";
+        final String[] pairingUrl = { null };
 
         HBox topRow = new HBox(10);
         topRow.setAlignment(Pos.CENTER_LEFT);
 
-        Label badge = new Label("CONEXIÓN DIRECTA WI-FI");
-        badge.setStyle("-fx-background-color: #1d4ed8; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-background-radius: 10;");
+        Label badge = new Label(running ? "SERVIDOR WI-FI ACTIVO" : "SERVIDOR DETENIDO");
+        badge.setStyle(running
+                ? "-fx-background-color: #15803d; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-background-radius: 10;"
+                : "-fx-background-color: #dc2626; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-background-radius: 10;");
 
-        Label urlLabel = new Label("Servidor: " + connectionCode[0]);
-        urlLabel.setStyle("-fx-text-fill: #1e3a8a; -fx-font-size: 13px; -fx-font-weight: bold;");
+        Label lblBase = new Label(running ? ("Red local: " + baseEndpoint) : "El servidor Wi-Fi local no está activo.");
+        lblBase.setStyle("-fx-text-fill: #1e3a8a; -fx-font-size: 12px; -fx-font-weight: bold;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button btnCopyUrl = new Button("Copiar Código");
-        btnCopyUrl.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #1d4ed8; -fx-border-color: #93c5fd; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-cursor: hand;");
+        TextField txtPairingLink = new TextField();
+        txtPairingLink.setEditable(false);
+        txtPairingLink.setPromptText("Pulse 'Habilitar ruta (30 min)' para generar el enlace autorizado...");
+        txtPairingLink.setStyle("-fx-font-family: 'Consolas', monospace; -fx-font-size: 11px;");
+        HBox.setHgrow(txtPairingLink, Priority.ALWAYS);
+
+        Button btnCopyUrl = new Button("Copiar Enlace");
+        btnCopyUrl.setDisable(true);
+        btnCopyUrl.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #1d4ed8; -fx-border-color: #93c5fd; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 10; -fx-cursor: hand;");
         btnCopyUrl.setOnAction(e -> {
+            if (pairingUrl[0] == null || pairingUrl[0].isBlank()) return;
             ClipboardContent content = new ClipboardContent();
-            content.putString(connectionCode[0]);
+            content.putString(pairingUrl[0]);
             Clipboard.getSystemClipboard().setContent(content);
-            lblStatus.setText("Dirección copiada: " + connectionCode[0]);
+            lblStatus.setText("Enlace autorizado copiado al portapapeles.");
             lblStatus.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold;");
         });
 
-        Button btnPair=new Button("Habilitar ruta (30 min)");btnPair.setOnAction(e->{try{
-            if(lanSyncServerService==null)throw new IllegalStateException("Servidor no disponible.");
-            var choices=lanSyncServerService.pairingRoutes();if(choices.isEmpty())throw new IllegalStateException("No hay rutas activas.");
-            java.util.Map<String,String> ids=new java.util.LinkedHashMap<>();for(var route:choices)ids.put(route.getName()+" ["+route.getId()+"]",route.getId());
-            ChoiceDialog<String> choose=new ChoiceDialog<>(ids.keySet().iterator().next(),ids.keySet());choose.initOwner(this);choose.setHeaderText("Seleccione la ruta autorizada para este enlace temporal");
-            choose.showAndWait().ifPresent(value->{connectionCode[0]=lanSyncServerService.createPairingLink(ids.get(value));urlLabel.setText("Ruta habilitada (30 min)");lblStatus.setText("Enlace habilitado. Copie la dirección solo al dispositivo de esa ruta.");});
-        }catch(Exception ex){lblStatus.setText(ex.getMessage());}});
-        topRow.getChildren().addAll(badge, urlLabel, spacer, btnPair, btnCopyUrl);
+        Button btnPair = new Button("Habilitar ruta (30 min)");
+        btnPair.getStyleClass().add("btn-primary");
+        btnPair.setDisable(!running);
+        btnPair.setOnAction(e -> {
+            try {
+                if (lanSyncServerService == null || !lanSyncServerService.isRunning()) {
+                    throw new IllegalStateException("El servidor LAN no está activo.");
+                }
+                RouteEntity selected = cmbRoute.getValue();
+                if (selected == null) {
+                    throw new IllegalArgumentException("Seleccione una ruta activa antes de habilitar el enlace.");
+                }
+                pairingUrl[0] = lanSyncServerService.createPairingLink(selected.getId());
+                txtPairingLink.setText(pairingUrl[0]);
+                btnCopyUrl.setDisable(false);
+                lblStatus.setText("Enlace temporal habilitado por 30 min para [" + selected.getName() + "]. Copie este enlace en el celular de esa ruta.");
+                lblStatus.setStyle("-fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold;");
+            } catch (Exception ex) {
+                lblStatus.setText("Error: " + ex.getMessage());
+                lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
+            }
+        });
+
+        Button btnRevoke = new Button("Revocar enlaces");
+        btnRevoke.setStyle("-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 10; -fx-cursor: hand;");
+        btnRevoke.setDisable(!running);
+        btnRevoke.setOnAction(e -> {
+            try {
+                if (lanSyncServerService != null) {
+                    lanSyncServerService.revokePairings();
+                }
+                pairingUrl[0] = null;
+                txtPairingLink.clear();
+                btnCopyUrl.setDisable(true);
+                lblStatus.setText("Todos los enlaces temporales Wi-Fi fueron revocados.");
+                lblStatus.setStyle("-fx-text-fill: #b45309; -fx-font-size: 11px; -fx-font-weight: bold;");
+            } catch (Exception ex) {
+                lblStatus.setText("Error: " + ex.getMessage());
+                lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
+            }
+        });
+
+        topRow.getChildren().addAll(badge, lblBase, spacer, btnPair, btnRevoke);
+
+        HBox linkRow = new HBox(8, txtPairingLink, btnCopyUrl);
+        linkRow.setAlignment(Pos.CENTER_LEFT);
 
         Label instructions = new Label(
-                "Pruebe primero la conectividad. Habilitar una ruta genera un enlace temporal para copiar al servidor de oficina del dispositivo. No descargue datos de prueba en una app con clientes reales."
+                "Por seguridad, la app móvil solo puede sincronizar usando un enlace temporal (/enlace/...) habilitado para su ruta específica."
         );
         instructions.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px;");
         instructions.setWrapText(true);
 
-        card.getChildren().addAll(topRow, instructions);
+        card.getChildren().addAll(topRow, linkRow, instructions);
         return card;
     }
 
-    private void exportRouteToFile() {
-        try {
-            String activeRoute = UserSessionContext.getSelectedRouteId();
-            String routeForFile = (activeRoute == null || "ALL".equalsIgnoreCase(activeRoute)) ? "todas_rutas" : activeRoute;
-            String jsonPackage = syncProcessorService.exportRoutePackage(activeRoute, LocalDate.now());
-
-            txtJson.setText(jsonPackage);
-
-            FileChooser chooser = new FileChooser();
-            chooser.setTitle("Guardar Archivo de Ruta para Móvil");
-            chooser.setInitialFileName("ruta_" + routeForFile + "_" + LocalDate.now() + ".json");
-            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivo de Ruta (*.json)", "*.json"));
-
-            File dest = chooser.showSaveDialog(this);
-            if (dest != null) {
-                Files.writeString(dest.toPath(), jsonPackage, StandardCharsets.UTF_8);
-                lblStatus.setText("Archivo de ruta guardado exitosamente: " + dest.getName());
-                lblStatus.setStyle("-fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold;");
-            } else {
-                lblStatus.setText("Datos de ruta listos en pantalla (puedes copiarlos o guardarlos).");
-                lblStatus.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 11px; -fx-font-weight: bold;");
-            }
-        } catch (Exception ex) {
-            lblStatus.setText("Error al guardar archivo de ruta: " + ex.getMessage());
-            lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
+    private void setBusy(boolean busy, String message) {
+        progressBar.setVisible(busy);
+        progressBar.setManaged(busy);
+        if (btnExportRoute != null) btnExportRoute.setDisable(busy);
+        if (btnPickFile != null) btnPickFile.setDisable(busy);
+        if (btnProcess != null) btnProcess.setDisable(busy);
+        if (message != null) {
+            lblStatus.setText(message);
+            lblStatus.setStyle("-fx-text-fill: #2563eb; -fx-font-size: 11px; -fx-font-weight: bold;");
         }
+    }
+
+    private void exportRouteToFile() {
+        RouteEntity selected = cmbRoute.getValue();
+        if (selected == null) {
+            lblStatus.setText("Seleccione una ruta específica antes de exportar el archivo JSON.");
+            lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Guardar Archivo de Ruta para Móvil");
+        chooser.setInitialFileName("ruta_" + selected.getId() + "_" + LocalDate.now() + ".json");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivo de Ruta (*.json)", "*.json"));
+
+        File dest = chooser.showSaveDialog(this);
+        if (dest == null) return;
+
+        setBusy(true, "Generando paquete de la ruta " + selected.getName() + "...");
+        Thread t = new Thread(() -> {
+            try {
+                String jsonPackage = syncProcessorService.exportRoutePackage(selected.getId(), LocalDate.now());
+                Files.writeString(dest.toPath(), jsonPackage, StandardCharsets.UTF_8);
+                Platform.runLater(() -> {
+                    setBusy(false, null);
+                    lblStatus.setText("Archivo de ruta guardado exitosamente: " + dest.getName());
+                    lblStatus.setStyle("-fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold;");
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    setBusy(false, null);
+                    lblStatus.setText("Error al exportar ruta: " + ex.getMessage());
+                    lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
+                });
+            }
+        }, "cartera-export-route-json");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void pickJsonFile() {
@@ -220,17 +331,28 @@ public class ImportMobileSyncDialog extends Stage {
         chooser.setTitle("Seleccionar Archivo de Cobros");
         chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Archivo de Cobros (*.json)", "*.json"));
         File file = chooser.showOpenDialog(this);
-        if (file != null) {
+        if (file == null) return;
+
+        setBusy(true, "Leyendo archivo " + file.getName() + "...");
+        Thread t = new Thread(() -> {
             try {
-                String content = Files.readString(file.toPath());
-                txtJson.setText(content);
-                lblStatus.setText("Archivo cargado: " + file.getName());
-                lblStatus.setStyle("-fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold;");
+                String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+                Platform.runLater(() -> {
+                    setBusy(false, null);
+                    txtJson.setText(content);
+                    lblStatus.setText("Archivo cargado: " + file.getName() + ". Pulse 'Guardar Cobros en el Sistema' para aplicarlo.");
+                    lblStatus.setStyle("-fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold;");
+                });
             } catch (Exception ex) {
-                lblStatus.setText("Error al leer archivo: " + ex.getMessage());
-                lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
+                Platform.runLater(() -> {
+                    setBusy(false, null);
+                    lblStatus.setText("Error al leer archivo: " + ex.getMessage());
+                    lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
+                });
             }
-        }
+        }, "cartera-read-sync-json");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void processImport() {
@@ -241,43 +363,33 @@ public class ImportMobileSyncDialog extends Stage {
             return;
         }
 
-        try {
-            SyncImportResult res = syncProcessorService.importPackage(jsonText);
+        setBusy(true, "Validando e importando paquete de cobros...");
+        Thread t = new Thread(() -> {
+            try {
+                SyncImportResult res = syncProcessorService.importPackage(jsonText);
+                Platform.runLater(() -> {
+                    setBusy(false, null);
+                    Alert alert = new Alert(res.paymentsFailed() > 0 ? Alert.AlertType.WARNING : Alert.AlertType.INFORMATION);
+                    alert.initOwner(this);
+                    alert.setTitle("Resultado de Sincronización");
+                    alert.setHeaderText(res.paymentsFailed() > 0
+                            ? "Paquete importado con observaciones"
+                            : "Paquete de ruta importado correctamente");
+                    alert.setContentText(res.summaryText());
+                    alert.showAndWait();
 
-            Alert alert = new Alert(res.paymentsFailed() > 0 ? Alert.AlertType.WARNING : Alert.AlertType.INFORMATION);
-            alert.initOwner(this);
-            alert.setTitle("Resultado de Sincronización");
-            alert.setHeaderText(res.paymentsFailed() > 0
-                    ? "Paquete importado con observaciones"
-                    : "Paquete de ruta importado correctamente");
-            alert.setContentText(res.summaryText());
-            alert.showAndWait();
-
-            if (onFinished != null) onFinished.run();
-            close();
-        } catch (Exception e) {
-            lblStatus.setText("Error al procesar los datos de cobro: " + e.getMessage());
-            lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
-        }
-    }
-
-    private static String detectFallbackIp() {
-        try {
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            while (interfaces.hasMoreElements()) {
-                NetworkInterface iface = interfaces.nextElement();
-                if (iface.isLoopback() || !iface.isUp() || iface.isVirtual()) continue;
-                Enumeration<InetAddress> addresses = iface.getInetAddresses();
-                while (addresses.hasMoreElements()) {
-                    InetAddress addr = addresses.nextElement();
-                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
-                        return addr.getHostAddress();
-                    }
-                }
+                    if (onFinished != null) onFinished.run();
+                    close();
+                });
+            } catch (Exception e) {
+                Platform.runLater(() -> {
+                    setBusy(false, null);
+                    lblStatus.setText("Error al procesar los datos de cobro: " + e.getMessage());
+                    lblStatus.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 11px;");
+                });
             }
-            return InetAddress.getLocalHost().getHostAddress();
-        } catch (Exception e) {
-            return "127.0.0.1";
-        }
+        }, "cartera-import-sync-json");
+        t.setDaemon(true);
+        t.start();
     }
 }

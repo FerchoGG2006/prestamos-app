@@ -1,6 +1,8 @@
 package com.cartera.ui.views;
 
+import com.cartera.customers.application.AttachmentService;
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
+import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.entity.RouteEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
@@ -8,19 +10,28 @@ import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
+import com.cartera.infrastructure.security.UserSession;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CancelLoanUseCase;
 import com.cartera.ui.util.UiLabels;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
+import javafx.collections.transformation.SortedList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -42,13 +53,40 @@ public class LoansView extends VBox {
     private final RouteRepository routeRepository;
     private final javafx.stage.Stage ownerStage;
     private final Runnable onLoanCreatedCallback;
+    private AttachmentService attachmentService;
+
     private final ObservableList<LoanEntity> loansList = FXCollections.observableArrayList();
+    private FilteredList<LoanEntity> filteredLoans;
+    private TextField searchField;
+    private ComboBox<String> cmbStatusFilter;
+    private Button btnMigrate;
     private Map<String, String> customerNames = Map.of();
     private Map<String, String> routeNames = Map.of();
 
     private final Label lblFooterCount = new Label();
     private final Label lblFooterPrincipal = new Label();
     private final Label lblFooterTotalAgreed = new Label();
+
+    private com.cartera.customers.application.CreateCustomerWithLoanUseCase createCustomerWithLoanUseCase;
+    private java.util.function.Consumer<String> onOpenCustomer360;
+
+    public void setAttachmentService(AttachmentService attachmentService) {
+        this.attachmentService = attachmentService;
+    }
+
+    public void setCreateCustomerWithLoanUseCase(com.cartera.customers.application.CreateCustomerWithLoanUseCase useCase) {
+        this.createCustomerWithLoanUseCase = useCase;
+    }
+
+    public void setOnOpenCustomer360(java.util.function.Consumer<String> onOpenCustomer360) {
+        this.onOpenCustomer360 = onOpenCustomer360;
+    }
+
+    public void clearFilters() {
+        if (searchField != null) searchField.clear();
+        if (cmbStatusFilter != null) cmbStatusFilter.setValue("TODOS");
+        applyFilters();
+    }
 
     public LoansView(LoanRepository loanRepository,
                      CustomerRepository customerRepository,
@@ -109,8 +147,8 @@ public class LoansView extends VBox {
         setStyle("-fx-background-color: #f8fafc;");
 
         buildHeader();
+        buildFilterBar();
         buildTableCard();
-        refresh();
     }
 
     private void buildHeader() {
@@ -129,14 +167,18 @@ public class LoansView extends VBox {
         btnNewLoan.getStyleClass().add("btn-primary");
         btnNewLoan.setOnAction(e -> {
             if (createLoanUseCase != null) {
-                new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, l -> {
+                var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, l -> {
                     refresh();
                     if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
-                }).showAndWait();
+                });
+                dlg.setAttachmentService(attachmentService);
+                dlg.setInstallmentRepository(installmentRepository);
+                dlg.setCreateCustomerWithLoanUseCase(createCustomerWithLoanUseCase);
+                dlg.showAndWait();
             }
         });
 
-        Button btnMigrate = new Button("Cargar Cartulina Anterior");
+        btnMigrate = new Button("Cargar Cartulina Anterior");
         btnMigrate.setStyle("-fx-background-color: #fef3c7; -fx-text-fill: #92400e; -fx-font-weight: 800; -fx-font-size: 12px; -fx-border-color: #fde68a; -fx-border-radius: 8; -fx-background-radius: 8; -fx-cursor: hand; -fx-padding: 7 14;");
         btnMigrate.setOnAction(e -> {
             if (createLoanUseCase != null) {
@@ -144,6 +186,9 @@ public class LoansView extends VBox {
                     refresh();
                     if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
                 });
+                dlg.setAttachmentService(attachmentService);
+                dlg.setInstallmentRepository(installmentRepository);
+                dlg.setCreateCustomerWithLoanUseCase(createCustomerWithLoanUseCase);
                 dlg.setMigrationMode(true);
                 dlg.showAndWait();
             }
@@ -157,6 +202,56 @@ public class LoansView extends VBox {
         getChildren().add(top);
     }
 
+    private void buildFilterBar() {
+        HBox filterBar = new HBox(10);
+        filterBar.setAlignment(Pos.CENTER_LEFT);
+
+        searchField = new TextField();
+        searchField.setPromptText("Buscar por cliente, código de contrato o ruta...");
+        searchField.getStyleClass().add("search-field");
+        searchField.setPrefWidth(320);
+        searchField.textProperty().addListener((obs, old, val) -> applyFilters());
+
+        Label lblSt = new Label("Estado:");
+        lblSt.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
+
+        cmbStatusFilter = new ComboBox<>();
+        cmbStatusFilter.getItems().addAll("TODOS", "ACTIVO", "FINALIZADO", "RENOVADO", "ANULADO");
+        cmbStatusFilter.setValue("TODOS");
+        cmbStatusFilter.getStyleClass().add("search-field");
+        cmbStatusFilter.setPrefWidth(150);
+        cmbStatusFilter.valueProperty().addListener((obs, old, val) -> applyFilters());
+
+        filterBar.getChildren().addAll(searchField, lblSt, cmbStatusFilter);
+        getChildren().add(filterBar);
+    }
+
+    private void applyFilters() {
+        if (filteredLoans == null) return;
+        String q = searchField != null && searchField.getText() != null
+                ? searchField.getText().toLowerCase(Locale.ROOT).trim() : "";
+        String statusFilter = cmbStatusFilter != null ? cmbStatusFilter.getValue() : "TODOS";
+
+        filteredLoans.setPredicate(l -> {
+            if (statusFilter != null && !"TODOS".equalsIgnoreCase(statusFilter)) {
+                String st = l.getStatus() != null ? l.getStatus().toUpperCase(Locale.ROOT) : "";
+                if ("FINALIZADO".equalsIgnoreCase(statusFilter)) {
+                    if (!("FINALIZADO".equals(st) || "COMPLETADO".equals(st) || "PAGADO".equals(st) || "PAID".equals(st))) {
+                        return false;
+                    }
+                } else if (!statusFilter.equalsIgnoreCase(st)) {
+                    return false;
+                }
+            }
+            if (q.isBlank()) return true;
+            String custName = customerNames.getOrDefault(l.getCustomerId(), "").toLowerCase(Locale.ROOT);
+            String rName = routeNames.getOrDefault(l.getRouteId(), l.getRouteId() != null ? l.getRouteId() : "").toLowerCase(Locale.ROOT);
+            String id = l.getId() != null ? l.getId().toLowerCase(Locale.ROOT) : "";
+            return custName.contains(q) || rName.contains(q) || id.contains(q);
+        });
+        updateFooterTotals();
+    }
+
     @SuppressWarnings("unchecked")
     private void buildTableCard() {
         VBox tableCard = new VBox();
@@ -164,6 +259,15 @@ public class LoansView extends VBox {
         VBox.setVgrow(tableCard, Priority.ALWAYS);
 
         TableView<LoanEntity> table = new TableView<>();
+        table.setRowFactory(tv -> {
+            TableRow<LoanEntity> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && !row.isEmpty() && onOpenCustomer360 != null) {
+                    onOpenCustomer360.accept(row.getItem().getCustomerId());
+                }
+            });
+            return row;
+        });
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         table.setPlaceholder(UiLabels.emptyState("Sin créditos otorgados", "Los contratos de crédito vigentes y cancelados aparecerán en este listado."));
         VBox.setVgrow(table, Priority.ALWAYS);
@@ -195,7 +299,7 @@ public class LoansView extends VBox {
                     Label lblName = new Label(name);
                     lblName.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px;");
 
-                    String rName = routeNames.getOrDefault(l.getRouteId(), "Ruta Principal");
+                    String rName = routeNames.getOrDefault(l.getRouteId(), l.getRouteId() != null ? l.getRouteId() : "Sin Ruta");
                     String contractCode = l.getId() != null ? "N° " + (l.getId().length() > 8 ? l.getId().substring(0, 8).toUpperCase() : l.getId().toUpperCase()) : "Contrato";
                     Label lblId = new Label(contractCode + " • " + rName);
                     lblId.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
@@ -208,6 +312,7 @@ public class LoansView extends VBox {
             }
         });
         colCustomer.setPrefWidth(240);
+        colCustomer.setComparator(Comparator.comparing(l -> customerNames.getOrDefault(l.getCustomerId(), ""), String.CASE_INSENSITIVE_ORDER));
 
         // 2. Capital Inicial
         TableColumn<LoanEntity, LoanEntity> colPrincipal = new TableColumn<>("CAPITAL INICIAL");
@@ -232,7 +337,8 @@ public class LoansView extends VBox {
                 }
             }
         });
-        colPrincipal.setPrefWidth(140);
+        colPrincipal.setPrefWidth(135);
+        colPrincipal.setComparator(Comparator.comparing(l -> l.getPrincipal() != null ? l.getPrincipal() : BigDecimal.ZERO));
 
         // 3. Total Pactado
         TableColumn<LoanEntity, LoanEntity> colTotal = new TableColumn<>("TOTAL PACTADO");
@@ -257,7 +363,8 @@ public class LoansView extends VBox {
                 }
             }
         });
-        colTotal.setPrefWidth(150);
+        colTotal.setPrefWidth(145);
+        colTotal.setComparator(Comparator.comparing(l -> l.getTotalAgreed() != null ? l.getTotalAgreed() : BigDecimal.ZERO));
 
         // 4. Plazo y Cuotas
         TableColumn<LoanEntity, LoanEntity> colTerms = new TableColumn<>("PLAZO Y CUOTAS");
@@ -323,7 +430,8 @@ public class LoansView extends VBox {
                     Label badge = new Label();
                     badge.setAlignment(Pos.CENTER);
                     String base = "-fx-padding: 4 12; -fx-background-radius: 20; -fx-font-weight: bold; -fx-font-size: 11px;";
-                    if ("FINALIZADO".equalsIgnoreCase(text) || "PAGADO".equalsIgnoreCase(text)) {
+                    if ("FINALIZADO".equalsIgnoreCase(text) || "COMPLETADO".equalsIgnoreCase(text)
+                            || "PAGADO".equalsIgnoreCase(text) || "PAID".equalsIgnoreCase(text)) {
                         badge.setText("FINALIZADO");
                         badge.setStyle(base + "-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 20;");
                     } else if ("RENOVADO".equalsIgnoreCase(text)) {
@@ -341,9 +449,9 @@ public class LoansView extends VBox {
                 }
             }
         });
-        colStatus.setPrefWidth(130);
+        colStatus.setPrefWidth(125);
 
-        // 7. Acciones (Renovar y Anular Crédito solo para ADMIN/SUPERVISOR)
+        // 7. Acciones (Ver Cuotas siempre + Renovar y Anular Crédito para activos)
         TableColumn<LoanEntity, LoanEntity> colAction = new TableColumn<>("ACCIONES");
         colAction.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
         colAction.setCellFactory(col -> new TableCell<>() {
@@ -354,12 +462,19 @@ public class LoansView extends VBox {
                     setGraphic(null);
                     setText(null);
                 } else {
-                    if ("ACTIVO".equalsIgnoreCase(l.getStatus())) {
-                        HBox box = new HBox(6);
-                        box.setAlignment(Pos.CENTER_LEFT);
+                    HBox box = new HBox(6);
+                    box.setAlignment(Pos.CENTER_LEFT);
 
+                    if (installmentRepository != null) {
+                        Button btnPlan = new Button("Ver Cuotas");
+                        btnPlan.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-text-fill: #334155; -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-padding: 4 8; -fx-background-radius: 6; -fx-cursor: hand;");
+                        btnPlan.setOnAction(e -> showLoanInstallmentsModal(l));
+                        box.getChildren().add(btnPlan);
+                    }
+
+                    if ("ACTIVO".equalsIgnoreCase(l.getStatus())) {
                         Button btnRenew = new Button("Renovar");
-                        btnRenew.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
+                        btnRenew.setStyle("-fx-background-color: #ffffff; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-text-fill: #334155; -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-padding: 4 8; -fx-background-radius: 6; -fx-cursor: hand;");
                         btnRenew.setOnAction(e -> {
                             if (renewLoanUseCase != null) {
                                 String name = customerNames.getOrDefault(l.getCustomerId(), "Cliente #" + l.getCustomerId());
@@ -374,23 +489,23 @@ public class LoansView extends VBox {
                         // Solo ADMIN y SUPERVISOR ven el botón de Anular Crédito
                         if (cancelLoanUseCase != null && UserSessionContext.canCurrentUserReverseOrCancel()) {
                             Button btnCancelLoan = new Button("Anular");
-                            btnCancelLoan.setStyle("-fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-text-fill: #dc2626; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
+                            btnCancelLoan.setStyle("-fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-text-fill: #dc2626; -fx-font-size: 10.5px; -fx-font-weight: bold; -fx-padding: 4 8; -fx-background-radius: 6; -fx-cursor: hand;");
                             btnCancelLoan.setOnAction(e -> promptAndCancelLoan(l));
                             box.getChildren().add(btnCancelLoan);
                         }
-
-                        setGraphic(box);
-                    } else {
-                        setGraphic(null);
                     }
+                    setGraphic(box);
                     setText(null);
                 }
             }
         });
-        colAction.setPrefWidth(170);
+        colAction.setPrefWidth(220);
 
         table.getColumns().addAll(colCustomer, colPrincipal, colTotal, colTerms, colDate, colStatus, colAction);
-        table.setItems(loansList);
+        filteredLoans = new FilteredList<>(loansList, p -> true);
+        SortedList<LoanEntity> sortedLoans = new SortedList<>(filteredLoans);
+        sortedLoans.comparatorProperty().bind(table.comparatorProperty());
+        table.setItems(sortedLoans);
 
         // Footer Summary Bar
         HBox footer = new HBox(28);
@@ -410,9 +525,100 @@ public class LoansView extends VBox {
         getChildren().add(tableCard);
     }
 
+    @SuppressWarnings("unchecked")
+    private void showLoanInstallmentsModal(LoanEntity loan) {
+        if (installmentRepository == null) return;
+        Stage modal = new Stage();
+        modal.initModality(Modality.WINDOW_MODAL);
+        if (ownerStage != null) modal.initOwner(ownerStage);
+        String custName = customerNames.getOrDefault(loan.getCustomerId(), loan.getCustomerId());
+        String shortId = loan.getId().length() > 8 ? loan.getId().substring(0, 8).toUpperCase() : loan.getId();
+        modal.setTitle("Plan de Cuotas — Crédito #" + shortId + " (" + custName + ")");
+
+        TableView<InstallmentEntity> tbl = new TableView<>();
+        tbl.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        tbl.setPlaceholder(UiLabels.emptyState("Sin cuotas registradas", "Este contrato no tiene cuotas."));
+        VBox.setVgrow(tbl, Priority.ALWAYS);
+
+        TableColumn<InstallmentEntity, Integer> cNum = new TableColumn<>("#");
+        cNum.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getInstallmentNumber()));
+        cNum.setPrefWidth(55);
+
+        TableColumn<InstallmentEntity, String> cDate = new TableColumn<>("VENCIMIENTO");
+        cDate.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getDueDate()));
+        cDate.setPrefWidth(100);
+
+        TableColumn<InstallmentEntity, BigDecimal> cVal = new TableColumn<>("VALOR");
+        cVal.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getAmount()));
+        cVal.setCellFactory(c -> new TableCell<>() {
+            @Override protected void updateItem(BigDecimal v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null ? null : CURRENCY.format(v));
+            }
+        });
+
+        TableColumn<InstallmentEntity, BigDecimal> cPaid = new TableColumn<>("ABONADO");
+        cPaid.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getPaidAmount() != null ? d.getValue().getPaidAmount() : BigDecimal.ZERO));
+        cPaid.setCellFactory(c -> new TableCell<>() {
+            @Override protected void updateItem(BigDecimal v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null ? null : CURRENCY.format(v));
+            }
+        });
+
+        TableColumn<InstallmentEntity, BigDecimal> cPend = new TableColumn<>("PENDIENTE");
+        cPend.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getPendingAmount()));
+        cPend.setCellFactory(c -> new TableCell<>() {
+            @Override protected void updateItem(BigDecimal v, boolean empty) {
+                super.updateItem(v, empty);
+                setText(empty || v == null ? null : CURRENCY.format(v));
+            }
+        });
+
+        String todayStr = LocalDate.now().toString();
+        TableColumn<InstallmentEntity, String> cSt = new TableColumn<>("ESTADO");
+        cSt.setCellValueFactory(d -> {
+            InstallmentEntity i = d.getValue();
+            String st = i.getStatus() != null ? i.getStatus().toUpperCase() : "PENDIENTE";
+            if (!"PAGADA".equals(st) && !"ADELANTADA".equals(st) && !"ANULADA".equals(st)
+                    && i.getPendingAmount().compareTo(BigDecimal.ZERO) > 0
+                    && i.getDueDate() != null && i.getDueDate().compareTo(todayStr) < 0) {
+                return new SimpleObjectProperty<>("VENCIDA");
+            }
+            return new SimpleObjectProperty<>(st);
+        });
+
+        tbl.getColumns().addAll(cNum, cDate, cVal, cPaid, cPend, cSt);
+        tbl.setItems(FXCollections.observableArrayList(installmentRepository.findByLoanIdOrderByInstallmentNumberAsc(loan.getId())));
+
+        Button btnClose = new Button("Cerrar");
+        btnClose.getStyleClass().add("btn-secondary");
+        btnClose.setOnAction(e -> modal.close());
+        HBox bot = new HBox(btnClose);
+        bot.setAlignment(Pos.CENTER_RIGHT);
+
+        Label header = new Label(custName + " · Prestado: " + CURRENCY.format(loan.getPrincipal()) + " · Pactado: " + CURRENCY.format(loan.getTotalAgreed()) + " (" + loan.getStatus() + ")");
+        header.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px;");
+
+        VBox root = new VBox(12, header, tbl, bot);
+        root.setPadding(new Insets(18));
+        root.setPrefSize(640, 420);
+        Scene scene = new Scene(root);
+        var css = getClass().getResource("/ui/theme.css");
+        if (css != null) scene.getStylesheets().add(css.toExternalForm());
+        modal.setScene(scene);
+        modal.showAndWait();
+    }
+
+    private void showAlert(Alert.AlertType type, String msg) {
+        Alert alert = new Alert(type, msg);
+        if (ownerStage != null) alert.initOwner(ownerStage);
+        alert.showAndWait();
+    }
+
     private void promptAndCancelLoan(LoanEntity loan) {
         if (!UserSessionContext.canCurrentUserReverseOrCancel()) {
-            new Alert(Alert.AlertType.ERROR, "Operación restringida exclusivamente a Administradores y Supervisores.").showAndWait();
+            showAlert(Alert.AlertType.ERROR, "Operación restringida exclusivamente a Administradores y Supervisores.");
             return;
         }
         String customerName = customerNames.getOrDefault(loan.getCustomerId(), "Cliente #" + loan.getCustomerId());
@@ -426,21 +632,46 @@ public class LoansView extends VBox {
         if (result.isPresent()) {
             String reason = result.get().trim();
             if (reason.isEmpty()) {
-                new Alert(Alert.AlertType.WARNING, "Debe especificar un motivo de auditoría válido.").showAndWait();
+                showAlert(Alert.AlertType.WARNING, "Debe especificar un motivo de auditoría válido.");
                 return;
             }
             try {
                 cancelLoanUseCase.execute(loan.getId(), reason);
                 refresh();
                 if (onLoanCreatedCallback != null) onLoanCreatedCallback.run();
-                new Alert(Alert.AlertType.INFORMATION, "Crédito anulado y desembolso reintegrado a caja exitosamente.").showAndWait();
+                showAlert(Alert.AlertType.INFORMATION, "Crédito anulado y desembolso reintegrado a caja exitosamente.");
             } catch (Exception ex) {
-                new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait();
+                showAlert(Alert.AlertType.ERROR, ex.getMessage());
             }
         }
     }
 
+    private void updateFooterTotals() {
+        List<LoanEntity> visible = filteredLoans != null ? filteredLoans : loansList;
+        // Evitar doble conteo de renovados y anulados en los totales colocados vigentes
+        List<LoanEntity> nonCancelledNonRenewed = visible.stream()
+                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()) && !"RENOVADO".equalsIgnoreCase(l.getStatus()))
+                .toList();
+        long activeCount = visible.stream().filter(l -> "ACTIVO".equalsIgnoreCase(l.getStatus())).count();
+        BigDecimal sumPrincipal = nonCancelledNonRenewed.stream()
+                .map(LoanEntity::getPrincipal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sumTotalAgreed = nonCancelledNonRenewed.stream()
+                .map(LoanEntity::getTotalAgreed)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        lblFooterCount.setText("Mostrando: " + visible.size() + " contratos (" + activeCount + " activos)");
+        lblFooterPrincipal.setText("Capital vigente/finalizado: " + CURRENCY.format(sumPrincipal));
+        lblFooterTotalAgreed.setText("Total pactado (sin renov./anul.): " + CURRENCY.format(sumTotalAgreed));
+    }
+
     public void refresh() {
+        boolean isCollector = UserSessionContext.getSession().map(UserSession::isCollector).orElse(false);
+        if (btnMigrate != null) {
+            btnMigrate.setVisible(!isCollector);
+            btnMigrate.setManaged(!isCollector);
+        }
+
         customerNames = customerRepository.findAll().stream()
                 .collect(Collectors.toMap(CustomerEntity::getId, CustomerEntity::getFullName, (a, b) -> a));
         if (routeRepository != null) {
@@ -452,22 +683,13 @@ public class LoansView extends VBox {
         boolean filterRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute);
 
         var loans = loanRepository.findAll().stream()
-                .filter(l -> !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId()))
+                .filter(l -> {
+                    if ("NONE".equalsIgnoreCase(selectedRoute)) return false;
+                    return !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId());
+                })
                 .toList();
         loansList.setAll(loans);
-
-        BigDecimal sumPrincipal = loans.stream()
-                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()))
-                .map(LoanEntity::getPrincipal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal sumTotalAgreed = loans.stream()
-                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()))
-                .map(LoanEntity::getTotalAgreed)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        lblFooterCount.setText("Total contratos: " + loans.size());
-        lblFooterPrincipal.setText("Capital total prestado: " + CURRENCY.format(sumPrincipal));
-        lblFooterTotalAgreed.setText("Cartera total pactada: " + CURRENCY.format(sumTotalAgreed));
+        applyFilters();
     }
 
     private static String getInitials(String fullName) {

@@ -1,13 +1,19 @@
 package com.cartera.ui.views;
 
+import com.cartera.customers.application.AttachmentService;
+import com.cartera.customers.application.CreateCustomerUseCase;
+import com.cartera.customers.application.CreateCustomerWithLoanUseCase;
 import com.cartera.domain.money.Money;
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
+import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.entity.RouteEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
+import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
+import com.cartera.infrastructure.security.UserSession;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CreateLoanUseCase;
 import com.cartera.loans.application.CreateLoanUseCase.CreateLoanCommand;
@@ -30,7 +36,9 @@ import javafx.util.StringConverter;
 import java.io.File;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.file.Path;
 import java.text.NumberFormat;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -55,6 +63,52 @@ public class CreateLoanDialog extends Stage {
     private final LoanRepository loanRepository;
     private final RouteRepository routeRepository;
     private final Consumer<LoanEntity> onSuccess;
+    private AttachmentService attachmentService;
+    private InstallmentRepository installmentRepository;
+    private CreateCustomerWithLoanUseCase createCustomerWithLoanUseCase;
+
+    public void setAttachmentService(AttachmentService attachmentService) {
+        this.attachmentService = attachmentService;
+    }
+
+    public void setInstallmentRepository(InstallmentRepository installmentRepository) {
+        this.installmentRepository = installmentRepository;
+    }
+
+    public void setCreateCustomerWithLoanUseCase(CreateCustomerWithLoanUseCase createCustomerWithLoanUseCase) {
+        this.createCustomerWithLoanUseCase = createCustomerWithLoanUseCase;
+        if (boxCustomerModeToggle != null) {
+            boolean enabled = createCustomerWithLoanUseCase != null;
+            boxCustomerModeToggle.setVisible(enabled);
+            boxCustomerModeToggle.setManaged(enabled);
+        }
+    }
+
+    public void preselectCustomer(String customerId) {
+        if (customerId == null || customerId.isBlank()) return;
+        for (CustomerEntity c : cmbCustomer.getItems()) {
+            if (customerId.equals(c.getId())) {
+                cmbCustomer.setValue(c);
+                rbExistingCustomer.setSelected(true);
+                break;
+            }
+        }
+    }
+
+    // Modo Cliente Existente vs Nuevo Cliente (en un solo flujo)
+    private final HBox boxCustomerModeToggle = new HBox(6);
+    private final ToggleButton rbExistingCustomer = new ToggleButton("Cliente Existente");
+    private final ToggleButton rbNewCustomer = new ToggleButton("+ Nuevo Cliente");
+    private final VBox boxExistingCustomer = new VBox(4);
+    private final VBox boxNewCustomer = new VBox(6);
+    private final TextField txtNewFullName = new TextField();
+    private final TextField txtNewDoc = new TextField();
+    private final TextField txtNewPhone = new TextField();
+    private final TextField txtNewAddress = new TextField();
+    private final TextField txtNewNeighborhood = new TextField();
+    private final TextField txtNewBusiness = new TextField();
+    private final ComboBox<RouteEntity> cmbNewCustomerRoute = new ComboBox<>();
+    private final Button btnSaveAndNext = new Button("Guardar y siguiente cartulina");
 
     // Alerta de Créditos Cruzados Multi-Ruta
     private final VBox crossRouteAlertBox = new VBox(4);
@@ -67,11 +121,17 @@ public class CreateLoanDialog extends Stage {
     private final TextField txtInstallmentCount = new TextField("30");
     private final ComboBox<String> cmbFrequency = new ComboBox<>();
     private final DatePicker dpStartDate = new DatePicker(LocalDate.now());
+    private final Label lblStartDate = new Label("Fecha Inicio Original / Cartulina *");
+    private final VBox boxDate = new VBox(3);
 
     // Switch de Crédito Anterior
     private final CheckBox chkMigration = new CheckBox("Crédito Anterior (Cartulina ya iniciada)");
     private final Set<Integer> paidInstallmentNumbers = new HashSet<>();
     private String cardPhotoPath = null;
+    private final DatePicker dpMigrationPayday = new DatePicker(LocalDate.now());
+    private final VBox boxMigrationPayday = new VBox(6);
+    private final HBox rowPaydayButtons = new HBox(5);
+    private final Label lblPaydayPreview = new Label();
 
     // Elementos de Encabezado dinámico
     private final Label lblHeaderIcon = new Label("NUEVO CRÉDITO");
@@ -176,12 +236,28 @@ public class CreateLoanDialog extends Stage {
         VBox leftForm = new VBox(10);
         leftForm.setPrefWidth(310);
 
-        // Interruptor destacado de Migración
+        // Interruptor destacado de Migración (Solo ADMIN / SUPERVISOR — Spec 009)
+        boolean isCollector = UserSessionContext.getSession().map(UserSession::isCollector).orElse(false);
         chkMigration.setStyle("-fx-text-fill: #92400e; -fx-font-weight: 800; -fx-font-size: 11.5px; -fx-cursor: hand; -fx-background-color: #fef3c7; -fx-padding: 8 10; -fx-background-radius: 8; -fx-border-color: #fde68a; -fx-border-radius: 8;");
         chkMigration.setMaxWidth(Double.MAX_VALUE);
+        chkMigration.setVisible(!isCollector);
+        chkMigration.setManaged(!isCollector);
         chkMigration.selectedProperty().addListener((obs, old, isMig) -> applyMigrationMode(isMig));
 
-        // Combo Cliente
+        // Selector de Modo: Cliente Existente vs + Nuevo Cliente
+        ToggleGroup custModeGroup = new ToggleGroup();
+        rbExistingCustomer.setToggleGroup(custModeGroup);
+        rbNewCustomer.setToggleGroup(custModeGroup);
+        rbExistingCustomer.setSelected(true);
+        rbExistingCustomer.setMaxWidth(Double.MAX_VALUE);
+        rbNewCustomer.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(rbExistingCustomer, Priority.ALWAYS);
+        HBox.setHgrow(rbNewCustomer, Priority.ALWAYS);
+        boxCustomerModeToggle.getChildren().setAll(rbExistingCustomer, rbNewCustomer);
+        boxCustomerModeToggle.setVisible(createCustomerWithLoanUseCase != null);
+        boxCustomerModeToggle.setManaged(createCustomerWithLoanUseCase != null);
+
+        // Bloque Cliente Existente
         Label lblCust = new Label("Seleccionar Cliente *");
         lblCust.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
         cmbCustomer.setMaxWidth(Double.MAX_VALUE);
@@ -193,6 +269,56 @@ public class CreateLoanDialog extends Stage {
 
         cmbCustomer.valueProperty().addListener((obs, old, customer) -> checkCrossRouteAlert(customer));
         loadCustomers();
+        boxExistingCustomer.getChildren().setAll(lblCust, cmbCustomer, crossRouteAlertBox);
+
+        // Bloque Nuevo Cliente compacto (cliente + crédito/cartulina en un solo paso)
+        boxNewCustomer.setStyle("-fx-background-color: #f8fafc; -fx-padding: 8 10; -fx-background-radius: 8; -fx-border-color: #cbd5e1; -fx-border-radius: 8;");
+        txtNewFullName.setPromptText("Nombre completo *");
+        txtNewDoc.setPromptText("Cédula / Documento *");
+        txtNewPhone.setPromptText("Teléfono / WhatsApp *");
+        txtNewAddress.setPromptText("Dirección");
+        txtNewNeighborhood.setPromptText("Barrio");
+        txtNewBusiness.setPromptText("Negocio (opcional)");
+        for (TextField tf : List.of(txtNewFullName, txtNewDoc, txtNewPhone, txtNewAddress, txtNewNeighborhood, txtNewBusiness)) {
+            tf.getStyleClass().add("search-field");
+            tf.setMaxWidth(Double.MAX_VALUE);
+        }
+        cmbNewCustomerRoute.setMaxWidth(Double.MAX_VALUE);
+        cmbNewCustomerRoute.getStyleClass().add("search-field");
+        cmbNewCustomerRoute.setConverter(new StringConverter<>() {
+            @Override public String toString(RouteEntity r) { return r == null ? "" : r.getName() + " (" + r.getId() + ")"; }
+            @Override public RouteEntity fromString(String s) { return null; }
+        });
+        loadNewCustomerRoutes();
+
+        HBox rowDocPhone = new HBox(6, txtNewDoc, txtNewPhone);
+        HBox.setHgrow(txtNewDoc, Priority.ALWAYS);
+        HBox.setHgrow(txtNewPhone, Priority.ALWAYS);
+        HBox rowAddrNeigh = new HBox(6, txtNewAddress, txtNewNeighborhood);
+        HBox.setHgrow(txtNewAddress, Priority.ALWAYS);
+        HBox.setHgrow(txtNewNeighborhood, Priority.ALWAYS);
+        Label lblNewTitle = new Label("Datos del Nuevo Cliente *");
+        lblNewTitle.setStyle("-fx-text-fill: #0f766e; -fx-font-size: 11px; -fx-font-weight: bold;");
+        boxNewCustomer.getChildren().setAll(lblNewTitle, txtNewFullName, rowDocPhone, rowAddrNeigh, txtNewBusiness, cmbNewCustomerRoute);
+        boxNewCustomer.setVisible(false);
+        boxNewCustomer.setManaged(false);
+
+        Runnable syncCustomerModeStyle = () -> {
+            boolean isNew = rbNewCustomer.isSelected();
+            rbExistingCustomer.setStyle(!isNew
+                    ? "-fx-background-color: #0f172a; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 5 8; -fx-background-radius: 6; -fx-cursor: hand;"
+                    : "-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 5 8; -fx-background-radius: 6; -fx-cursor: hand;");
+            rbNewCustomer.setStyle(isNew
+                    ? "-fx-background-color: #0d9488; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 5 8; -fx-background-radius: 6; -fx-cursor: hand;"
+                    : "-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 5 8; -fx-background-radius: 6; -fx-cursor: hand;");
+            boxExistingCustomer.setVisible(!isNew);
+            boxExistingCustomer.setManaged(!isNew);
+            boxNewCustomer.setVisible(isNew);
+            boxNewCustomer.setManaged(isNew);
+        };
+        rbExistingCustomer.selectedProperty().addListener((o, ov, nv) -> { if (!nv && !rbNewCustomer.isSelected()) rbExistingCustomer.setSelected(true); syncCustomerModeStyle.run(); });
+        rbNewCustomer.selectedProperty().addListener((o, ov, nv) -> { if (!nv && !rbExistingCustomer.isSelected()) rbNewCustomer.setSelected(true); syncCustomerModeStyle.run(); });
+        syncCustomerModeStyle.run();
 
         // Capital
         VBox boxPrincipal = createFieldBox("Capital Prestado / Original ($) *", txtPrincipal);
@@ -210,30 +336,37 @@ public class CreateLoanDialog extends Stage {
         // Cuotas
         VBox boxCount = createFieldBox("Número Total de Cuotas *", txtInstallmentCount);
 
-        // Listener para Fecha Fija
+        // Listener para Fecha Fija y cambio de modalidad
         cmbFrequency.valueProperty().addListener((obs, old, val) -> {
-            boolean isFixed = "FECHA FIJA".equalsIgnoreCase(val);
+            boolean isFixed = CreateLoanUseCase.isFixedDateFrequency(val);
             if (isFixed) {
                 txtInstallmentCount.setText("1");
                 txtInstallmentCount.setDisable(true);
             } else {
                 txtInstallmentCount.setDisable(false);
                 if ("1".equals(txtInstallmentCount.getText().trim())) {
-                    txtInstallmentCount.setText("30");
+                    String def = switch (val != null ? val.toUpperCase() : "DIARIO") {
+                        case "SEMANAL" -> "4";
+                        case "QUINCENAL" -> "2";
+                        case "MENSUAL" -> "1";
+                        default -> "30";
+                    };
+                    txtInstallmentCount.setText(def);
                 }
             }
             paidInstallmentNumbers.clear();
+            updateDateBoxesVisibility();
+            rebuildPaydayButtons();
             recalculateAndSimulate();
         });
 
-        // Fecha Inicio
+        // Fecha Inicio (o Fecha Fija)
         dpStartDate.setMaxWidth(Double.MAX_VALUE);
         dpStartDate.getStyleClass().add("search-field");
-        VBox boxDate = new VBox(3, new Label("Fecha Inicio Original / Cartulina *") {{
-            setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
-        }}, dpStartDate);
+        lblStartDate.setStyle("-fx-text-fill: #334155; -fx-font-size: 11px; -fx-font-weight: bold;");
+        boxDate.getChildren().setAll(lblStartDate, dpStartDate);
 
-        leftForm.getChildren().addAll(chkMigration, lblCust, cmbCustomer, crossRouteAlertBox, boxPrincipal, boxInterest, boxFreq, boxCount, boxDate);
+        leftForm.getChildren().addAll(chkMigration, boxCustomerModeToggle, boxExistingCustomer, boxNewCustomer, boxPrincipal, boxInterest, boxFreq, boxCount, boxDate);
 
         // Eventos de recálculo dinámico en tiempo real
         txtPrincipal.textProperty().addListener((obs, old, val) -> recalculateAndSimulate());
@@ -242,7 +375,6 @@ public class CreateLoanDialog extends Stage {
             paidInstallmentNumbers.clear();
             recalculateAndSimulate();
         });
-        cmbFrequency.valueProperty().addListener((obs, old, val) -> recalculateAndSimulate());
         dpStartDate.valueProperty().addListener((obs, old, val) -> recalculateAndSimulate());
 
         // Columna Derecha: Tarjeta de Resumen y Plan / Cartulina Digital
@@ -309,14 +441,23 @@ public class CreateLoanDialog extends Stage {
         btnCancel.getStyleClass().add("btn-secondary");
         btnCancel.setOnAction(e -> close());
 
-        btnDisburse.getStyleClass().add("btn-primary");
-        btnDisburse.setOnAction(e -> disburseLoan());
+        btnSaveAndNext.setStyle("-fx-background-color: #0f766e; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12.5px; -fx-padding: 9 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnSaveAndNext.setVisible(false);
+        btnSaveAndNext.setManaged(false);
+        btnSaveAndNext.setOnAction(e -> disburseLoan(true));
 
-        actions.getChildren().addAll(spacer, btnCancel, btnDisburse);
+        btnDisburse.getStyleClass().add("btn-primary");
+        btnDisburse.setOnAction(e -> disburseLoan(false));
+
+        actions.getChildren().addAll(spacer, btnCancel, btnSaveAndNext, btnDisburse);
 
         root.getChildren().addAll(header, body, lblFeedback, actions);
 
-        var scene = new Scene(root);
+        ScrollPane outerScroll = new ScrollPane(root);
+        outerScroll.setFitToWidth(true);
+        outerScroll.setStyle("-fx-background-color: #ffffff; -fx-background: #ffffff; -fx-border-color: transparent;");
+
+        var scene = new Scene(outerScroll, 880, 660);
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
         setScene(scene);
     }
@@ -361,6 +502,29 @@ public class CreateLoanDialog extends Stage {
 
         quickRow.getChildren().addAll(lblQuick, txtQuickPaidCount, btnApplyQuick, btnAll, btnNone);
 
+        // Bloque "Día de pago" para anclar cuotas de cartulina migrada (Semanal: Lun-Sáb + Fecha; otras: Hoy/Mañana + Fecha)
+        boxMigrationPayday.setStyle("-fx-background-color: #f8fafc; -fx-border-color: #cbd5e1; -fx-border-radius: 8; -fx-background-radius: 8; -fx-padding: 8 10;");
+        HBox paydayHeader = new HBox(10);
+        paydayHeader.setAlignment(Pos.CENTER_LEFT);
+        Label lblPaydayTitle = new Label("Día de pago");
+        lblPaydayTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 11.5px; -fx-font-weight: 900;");
+        Region spPayday = new Region();
+        HBox.setHgrow(spPayday, Priority.ALWAYS);
+        dpMigrationPayday.setPrefWidth(135);
+        dpMigrationPayday.getStyleClass().add("search-field");
+        dpMigrationPayday.valueProperty().addListener((obs, old, val) -> {
+            rebuildPaydayButtons();
+            recalculateAndSimulate();
+        });
+        paydayHeader.getChildren().addAll(lblPaydayTitle, spPayday, dpMigrationPayday);
+
+        rowPaydayButtons.setAlignment(Pos.CENTER_LEFT);
+        lblPaydayPreview.setWrapText(true);
+        lblPaydayPreview.setStyle("-fx-text-fill: #0f766e; -fx-font-size: 10.5px; -fx-font-weight: bold;");
+
+        boxMigrationPayday.getChildren().addAll(paydayHeader, rowPaydayButtons, lblPaydayPreview);
+        rebuildPaydayButtons();
+
         // FlowPane interactivo con ScrollPane
         gridCartulina.setHgap(6);
         gridCartulina.setVgap(6);
@@ -369,7 +533,7 @@ public class CreateLoanDialog extends Stage {
         ScrollPane scrollGrid = new ScrollPane(gridCartulina);
         scrollGrid.setFitToWidth(true);
         scrollGrid.setStyle("-fx-background-color: transparent; -fx-background: #f8fafc; -fx-border-color: #e2e8f0; -fx-border-radius: 8;");
-        scrollGrid.setPrefHeight(180);
+        scrollGrid.setPrefHeight(165);
         VBox.setVgrow(scrollGrid, Priority.ALWAYS);
 
         // Indicador de foto
@@ -390,7 +554,63 @@ public class CreateLoanDialog extends Stage {
 
         cartSummaryBanner.getChildren().addAll(lblCartulinaSummary, lblSafeCashBadge);
 
-        boxCartulinaSection.getChildren().addAll(cartHeader, quickRow, scrollGrid, lblAttachedPhoto, cartSummaryBanner);
+        boxCartulinaSection.getChildren().addAll(cartHeader, quickRow, boxMigrationPayday, scrollGrid, lblAttachedPhoto, cartSummaryBanner);
+    }
+
+    private void updateDateBoxesVisibility() {
+        boolean isMig = chkMigration.isSelected();
+        boolean isFixed = CreateLoanUseCase.isFixedDateFrequency(cmbFrequency.getValue());
+        boolean showPaydayBlock = isMig && !isFixed;
+        boxMigrationPayday.setVisible(showPaydayBlock);
+        boxMigrationPayday.setManaged(showPaydayBlock);
+        boxDate.setVisible(!showPaydayBlock);
+        boxDate.setManaged(!showPaydayBlock);
+        lblStartDate.setText(isFixed ? "Fecha Fija de Pago Único *" : "Fecha Inicio Original / Cartulina *");
+    }
+
+    private void rebuildPaydayButtons() {
+        rowPaydayButtons.getChildren().clear();
+        String freq = cmbFrequency.getValue() != null ? cmbFrequency.getValue().trim().toUpperCase() : "DIARIO";
+        LocalDate selected = dpMigrationPayday.getValue() != null ? dpMigrationPayday.getValue() : LocalDate.now();
+        LocalDate today = LocalDate.now();
+
+        if ("SEMANAL".equals(freq)) {
+            DayOfWeek[] dows = {DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY, DayOfWeek.SATURDAY};
+            String[] labels = {"Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"};
+            for (int idx = 0; idx < dows.length; idx++) {
+                DayOfWeek dow = dows[idx];
+                boolean active = selected.getDayOfWeek() == dow;
+                Button btn = new Button(labels[idx]);
+                btn.setStyle(active
+                        ? "-fx-background-color: #0f766e; -fx-text-fill: white; -fx-font-weight: 900; -fx-font-size: 11px; -fx-padding: 4 9; -fx-background-radius: 6; -fx-cursor: hand;"
+                        : "-fx-background-color: #ffffff; -fx-text-fill: #334155; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 4 9; -fx-background-radius: 6; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-cursor: hand;");
+                btn.setOnAction(e -> dpMigrationPayday.setValue(CreateLoanUseCase.upcomingWeekday(LocalDate.now(), dow)));
+                rowPaydayButtons.getChildren().add(btn);
+            }
+        } else {
+            LocalDate tomorrow = today.plusDays(1);
+            if ("DIARIO".equals(freq) && tomorrow.getDayOfWeek() == DayOfWeek.SUNDAY) {
+                tomorrow = tomorrow.plusDays(1);
+            }
+            final LocalDate tmrFinal = tomorrow;
+            Button btnHoy = new Button("Hoy");
+            boolean hoyActive = selected.equals(today);
+            btnHoy.setStyle(hoyActive
+                    ? "-fx-background-color: #0f766e; -fx-text-fill: white; -fx-font-weight: 900; -fx-font-size: 11px; -fx-padding: 4 12; -fx-background-radius: 6; -fx-cursor: hand;"
+                    : "-fx-background-color: #ffffff; -fx-text-fill: #334155; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 4 12; -fx-background-radius: 6; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-cursor: hand;");
+            btnHoy.setOnAction(e -> dpMigrationPayday.setValue(today));
+
+            Button btnManana = new Button("Mañana");
+            boolean tmrActive = selected.equals(tmrFinal);
+            btnManana.setStyle(tmrActive
+                    ? "-fx-background-color: #0f766e; -fx-text-fill: white; -fx-font-weight: 900; -fx-font-size: 11px; -fx-padding: 4 12; -fx-background-radius: 6; -fx-cursor: hand;"
+                    : "-fx-background-color: #ffffff; -fx-text-fill: #334155; -fx-font-weight: bold; -fx-font-size: 11px; -fx-padding: 4 12; -fx-background-radius: 6; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-cursor: hand;");
+            btnManana.setOnAction(e -> dpMigrationPayday.setValue(tmrFinal));
+
+            Label hint = new Label("O elige fecha exacta arriba (incl. atrasadas)");
+            hint.setStyle("-fx-text-fill: #64748b; -fx-font-size: 10px;");
+            rowPaydayButtons.getChildren().addAll(btnHoy, btnManana, hint);
+        }
     }
 
     private void applyMigrationMode(boolean isMig) {
@@ -409,6 +629,8 @@ public class CreateLoanDialog extends Stage {
             planTable.setManaged(false);
             boxCartulinaSection.setVisible(true);
             boxCartulinaSection.setManaged(true);
+            btnSaveAndNext.setVisible(true);
+            btnSaveAndNext.setManaged(true);
         } else {
             lblHeaderIcon.setText("NUEVO CRÉDITO");
             lblHeaderIcon.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 6 12; -fx-background-radius: 8; -fx-border-color: #bfdbfe; -fx-border-radius: 8;");
@@ -424,7 +646,11 @@ public class CreateLoanDialog extends Stage {
             boxCartulinaSection.setManaged(false);
             planTable.setVisible(true);
             planTable.setManaged(true);
+            btnSaveAndNext.setVisible(false);
+            btnSaveAndNext.setManaged(false);
         }
+        updateDateBoxesVisibility();
+        rebuildPaydayButtons();
         recalculateAndSimulate();
     }
 
@@ -481,7 +707,26 @@ public class CreateLoanDialog extends Stage {
     }
 
     private void loadCustomers() {
-        List<CustomerEntity> list = customerRepository.findAll();
+        var sessionOpt = UserSessionContext.getSession();
+        boolean isCollector = sessionOpt.map(UserSession::isCollector).orElse(false);
+        String collectorId = sessionOpt.map(UserSession::userId).orElse(null);
+        String selectedRoute = UserSessionContext.getSelectedRouteId();
+
+        List<CustomerEntity> list = customerRepository.findAll().stream()
+                .filter(c -> !"INACTIVO".equalsIgnoreCase(c.getStatus()))
+                .filter(c -> {
+                    if (!isCollector) return true;
+                    boolean sameCollector = collectorId != null && collectorId.equalsIgnoreCase(c.getCollectorId());
+                    boolean sameRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute)
+                            && !"NONE".equalsIgnoreCase(selectedRoute)
+                            && selectedRoute.equalsIgnoreCase(c.getRouteId());
+                    return sameCollector || sameRoute;
+                })
+                .sorted(Comparator.comparing((CustomerEntity c) ->
+                        selectedRoute != null && selectedRoute.equalsIgnoreCase(c.getRouteId()) ? 0 : 1)
+                        .thenComparing(c -> c.getFullName() != null ? c.getFullName().toLowerCase(Locale.ROOT) : ""))
+                .toList();
+
         cmbCustomer.setItems(FXCollections.observableArrayList(list));
         if (!list.isEmpty()) {
             cmbCustomer.setValue(list.get(0));
@@ -564,7 +809,12 @@ public class CreateLoanDialog extends Stage {
             String lRoute = loan.getRouteId() != null ? loan.getRouteId() : "";
             if (!lRoute.isEmpty() && !currentRoute.isEmpty() && !lRoute.equalsIgnoreCase(currentRoute)) {
                 hasLoanInOtherRoute = true;
-                totalOtherDebt = totalOtherDebt.add(loan.getTotalAgreed());
+                BigDecimal loanBalance = installmentRepository != null
+                        ? installmentRepository.findByLoanId(loan.getId()).stream()
+                                .map(i -> i.getPendingAmount() != null ? i.getPendingAmount() : BigDecimal.ZERO)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                        : loan.getTotalAgreed();
+                totalOtherDebt = totalOtherDebt.add(loanBalance);
                 otherRouteName = routeNames.getOrDefault(lRoute, lRoute);
             }
         }
@@ -585,7 +835,8 @@ public class CreateLoanDialog extends Stage {
     }
 
     public void setMigrationMode(boolean enabled) {
-        chkMigration.setSelected(enabled);
+        boolean isCollector = UserSessionContext.getSession().map(UserSession::isCollector).orElse(false);
+        chkMigration.setSelected(!isCollector && enabled);
     }
 
     @SuppressWarnings("unchecked")
@@ -637,14 +888,21 @@ public class CreateLoanDialog extends Stage {
             LocalDate start = dpStartDate.getValue() != null ? dpStartDate.getValue() : LocalDate.now();
 
             if (principal.compareTo(BigDecimal.ZERO) <= 0 || count <= 0) {
+                btnDisburse.setDisable(true);
                 return;
             }
 
             BigDecimal rateDecimal = interestPercent.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-            BigDecimal interestAmount = principal.multiply(rateDecimal);
-            BigDecimal totalAgreed = principal.add(interestAmount);
+            BigDecimal totalAgreed = new Money(principal.add(principal.multiply(rateDecimal))).amount();
+            BigDecimal interestAmount = totalAgreed.subtract(principal);
 
-            List<InstallmentPlanItem> plan = createLoanUseCase.simulatePlan(totalAgreed, count, frequency, start);
+            boolean isMig = chkMigration.isSelected();
+            boolean isFixed = CreateLoanUseCase.isFixedDateFrequency(frequency);
+            LocalDate payday = dpMigrationPayday.getValue() != null ? dpMigrationPayday.getValue() : LocalDate.now();
+
+            List<InstallmentPlanItem> plan = (isMig && !isFixed)
+                    ? createLoanUseCase.simulateAnchoredMigrationPlan(totalAgreed, count, frequency, payday, paidInstallmentNumbers)
+                    : createLoanUseCase.simulatePlan(totalAgreed, count, frequency, start);
             planTable.setItems(FXCollections.observableArrayList(plan));
 
             lblSummaryTotal.setText(CURRENCY.format(totalAgreed));
@@ -653,16 +911,26 @@ public class CreateLoanDialog extends Stage {
             if (!plan.isEmpty()) {
                 singleCuota = plan.get(0).amount();
                 lblSummaryInstallment.setText(CURRENCY.format(singleCuota));
-                lblCuotaDateHint.setText("1ª cuota: " + plan.get(0).dueDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+                if (isMig && !isFixed) {
+                    InstallmentPlanItem nextPending = plan.stream()
+                            .filter(i -> !paidInstallmentNumbers.contains(i.installmentNumber()))
+                            .findFirst()
+                            .orElse(plan.get(plan.size() - 1));
+                    lblCuotaDateHint.setText("Próx. (#" + nextPending.installmentNumber() + "): "
+                            + nextPending.dueDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+                } else {
+                    lblCuotaDateHint.setText("1ª cuota: " + plan.get(0).dueDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+                }
             }
 
-            boolean isMig = chkMigration.isSelected();
-
             if (isMig) {
-                // Modo Migración: Mostramos Grilla de Cartulina y saldos
-                updateCartulinaGrid(count, singleCuota);
-                int paidCount = paidInstallmentNumbers.size();
-                BigDecimal totalPaid = singleCuota.multiply(BigDecimal.valueOf(paidCount));
+                // Modo Migración: Mostramos Grilla de Cartulina y saldos exactos del plan
+                updateCartulinaGrid(plan);
+                updatePaydayPreview(plan);
+                BigDecimal totalPaid = plan.stream()
+                        .filter(item -> paidInstallmentNumbers.contains(item.installmentNumber()))
+                        .map(InstallmentPlanItem::amount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
                 BigDecimal pendingBalance = totalAgreed.subtract(totalPaid).max(BigDecimal.ZERO);
 
                 lblSummaryCartulina.setText("Protegida ($0 hoy)");
@@ -695,18 +963,65 @@ public class CreateLoanDialog extends Stage {
         }
     }
 
-    private void updateCartulinaGrid(int totalCount, BigDecimal installmentAmount) {
+    private void updatePaydayPreview(List<InstallmentPlanItem> plan) {
+        if (plan == null || plan.isEmpty()) {
+            lblPaydayPreview.setText("");
+            return;
+        }
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        LocalDate today = LocalDate.now();
+        List<InstallmentPlanItem> paidList = plan.stream()
+                .filter(i -> paidInstallmentNumbers.contains(i.installmentNumber()))
+                .toList();
+        InstallmentPlanItem nextPending = plan.stream()
+                .filter(i -> !paidInstallmentNumbers.contains(i.installmentNumber()))
+                .findFirst()
+                .orElse(null);
+        InstallmentPlanItem lastItem = plan.get(plan.size() - 1);
+
+        StringBuilder sb = new StringBuilder();
+        if (!paidList.isEmpty()) {
+            String range = paidList.size() == 1
+                    ? paidList.get(0).dueDate().format(fmt)
+                    : paidList.get(0).dueDate().format(fmt) + " al " + paidList.get(paidList.size() - 1).dueDate().format(fmt);
+            sb.append("Pagadas (").append(paidList.size()).append("): ").append(range).append(" (paz y salvo)");
+        }
+        if (nextPending != null) {
+            if (!sb.isEmpty()) sb.append("  •  ");
+            String status = nextPending.dueDate().isBefore(today)
+                    ? "En mora"
+                    : nextPending.dueDate().isEqual(today)
+                    ? "Cobra hoy"
+                    : "Al día";
+            sb.append("Próxima (#").append(nextPending.installmentNumber()).append("): ")
+                    .append(nextPending.dueDate().format(fmt)).append(" — ").append(status);
+            String color = nextPending.dueDate().isBefore(today)
+                    ? "#dc2626"
+                    : nextPending.dueDate().isEqual(today)
+                    ? "#1d4ed8"
+                    : "#0f766e";
+            lblPaydayPreview.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 10.5px; -fx-font-weight: bold;");
+        } else {
+            lblPaydayPreview.setStyle("-fx-text-fill: #059669; -fx-font-size: 10.5px; -fx-font-weight: bold;");
+        }
+        sb.append("  •  Última (#").append(lastItem.installmentNumber()).append("): ").append(lastItem.dueDate().format(fmt));
+        lblPaydayPreview.setText(sb.toString());
+    }
+
+    private void updateCartulinaGrid(List<InstallmentPlanItem> plan) {
         gridCartulina.getChildren().clear();
-        for (int i = 1; i <= totalCount; i++) {
-            final int instNum = i;
+        int totalCount = plan.size();
+        DateTimeFormatter tinyFmt = DateTimeFormatter.ofPattern("dd/MM");
+        DateTimeFormatter fullFmt = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        for (InstallmentPlanItem item : plan) {
+            final int instNum = item.installmentNumber();
             boolean isPaid = paidInstallmentNumbers.contains(instNum);
 
-            Button tile = new Button(String.valueOf(instNum));
-            if (isPaid) {
-                tile.setStyle("-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-font-weight: 900; -fx-font-size: 11px; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-background-radius: 6; -fx-min-width: 46px; -fx-min-height: 34px; -fx-cursor: hand;");
-            } else {
-                tile.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #64748b; -fx-font-weight: bold; -fx-font-size: 11px; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-min-width: 46px; -fx-min-height: 34px; -fx-cursor: hand;");
-            }
+            Button tile = new Button(instNum + "\n" + item.dueDate().format(tinyFmt));
+            tile.setStyle(isPaid
+                    ? "-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-font-weight: 900; -fx-font-size: 10px; -fx-text-alignment: center; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-background-radius: 6; -fx-min-width: 48px; -fx-min-height: 38px; -fx-cursor: hand;"
+                    : "-fx-background-color: #ffffff; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-font-size: 10px; -fx-text-alignment: center; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-min-width: 48px; -fx-min-height: 38px; -fx-cursor: hand;");
+            tile.setTooltip(new Tooltip("Cuota #" + instNum + " • " + item.dueDate().format(fullFmt) + " • " + CURRENCY.format(item.amount())));
 
             tile.setOnAction(e -> {
                 if (paidInstallmentNumbers.contains(instNum)) {
@@ -720,19 +1035,51 @@ public class CreateLoanDialog extends Stage {
             gridCartulina.getChildren().add(tile);
         }
 
-        int paidCount = paidInstallmentNumbers.size();
+        int paidCount = (int) plan.stream().filter(i -> paidInstallmentNumbers.contains(i.installmentNumber())).count();
         int pendingCount = Math.max(0, totalCount - paidCount);
-        BigDecimal paidTotal = installmentAmount.multiply(BigDecimal.valueOf(paidCount));
-        BigDecimal pendingTotal = installmentAmount.multiply(BigDecimal.valueOf(pendingCount));
+        BigDecimal paidTotal = plan.stream()
+                .filter(i -> paidInstallmentNumbers.contains(i.installmentNumber()))
+                .map(InstallmentPlanItem::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal pendingTotal = plan.stream()
+                .filter(i -> !paidInstallmentNumbers.contains(i.installmentNumber()))
+                .map(InstallmentPlanItem::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         lblCartulinaSummary.setText("Cobrado en papel: " + CURRENCY.format(paidTotal) + " (" + paidCount + "/" + totalCount + ")  •  Pendiente: " + CURRENCY.format(pendingTotal) + " (" + pendingCount + " cuotas)");
     }
 
-    private void disburseLoan() {
-        CustomerEntity customer = cmbCustomer.getValue();
-        if (customer == null) {
-            showError("Debes seleccionar un cliente de la lista.");
-            return;
+    private void loadNewCustomerRoutes() {
+        if (routeRepository == null) return;
+        List<RouteEntity> activeRoutes = routeRepository.findAll().stream()
+                .filter(r -> r.getActive() == null || r.getActive() == 1)
+                .toList();
+        cmbNewCustomerRoute.setItems(FXCollections.observableArrayList(activeRoutes));
+        String sel = UserSessionContext.getSelectedRouteId();
+        RouteEntity matched = activeRoutes.stream()
+                .filter(r -> sel != null && sel.equalsIgnoreCase(r.getId()))
+                .findFirst()
+                .orElse(activeRoutes.isEmpty() ? null : activeRoutes.get(0));
+        cmbNewCustomerRoute.setValue(matched);
+    }
+
+    private void disburseLoan(boolean keepOpenForNextCard) {
+        boolean creatingNewCustomer = rbNewCustomer.isSelected() && createCustomerWithLoanUseCase != null;
+        CustomerEntity customer = creatingNewCustomer ? null : cmbCustomer.getValue();
+        if (!creatingNewCustomer) {
+            if (customer == null) {
+                showError("Debes seleccionar un cliente de la lista.");
+                return;
+            }
+            if ("INACTIVO".equalsIgnoreCase(customer.getStatus())) {
+                showError("No se puede desembolsar a un cliente inactivo. Reactívelo primero.");
+                return;
+            }
+        } else {
+            if (txtNewFullName.getText().trim().isEmpty() || txtNewDoc.getText().trim().isEmpty() || txtNewPhone.getText().trim().isEmpty()) {
+                showError("Para cliente nuevo, ingresa Nombre completo, Cédula y Teléfono.");
+                return;
+            }
         }
 
         try {
@@ -751,74 +1098,192 @@ public class CreateLoanDialog extends Stage {
                 return;
             }
 
-            boolean isMigration = chkMigration.isSelected();
+            boolean isCollector = UserSessionContext.getSession().map(UserSession::isCollector).orElse(false);
+            boolean isMigration = !isCollector && chkMigration.isSelected();
 
             if (!isMigration && settingRepository != null) {
-                BigDecimal maxAllowed = settingRepository.findById("max_new_loan_amount")
-                        .map(s -> CurrencyInputUtil.parseAmount(s.getSettingValue()))
-                        .orElse(BigDecimal.ZERO);
-                if (maxAllowed.compareTo(BigDecimal.ZERO) > 0 && principal.compareTo(maxAllowed) > 0) {
-                    showError("El capital solicitado supera el tope máximo permitido (" + CURRENCY.format(maxAllowed) + ").");
-                    return;
-                }
+                try {
+                    BigDecimal maxAllowed = settingRepository.findById("max_new_loan_amount")
+                            .map(s -> CurrencyInputUtil.parseAmount(s.getSettingValue()))
+                            .orElse(BigDecimal.ZERO);
+                    if (maxAllowed.compareTo(BigDecimal.ZERO) > 0 && principal.compareTo(maxAllowed) > 0) {
+                        showError("El capital solicitado supera el tope máximo permitido (" + CURRENCY.format(maxAllowed) + ").");
+                        return;
+                    }
+                } catch (Exception ignored) {}
             }
 
             BigDecimal rateDecimal = interestPercent.divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-            BigDecimal interestAmount = principal.multiply(rateDecimal);
-            BigDecimal totalAgreed = principal.add(interestAmount);
+            BigDecimal totalAgreed = new Money(principal.add(principal.multiply(rateDecimal))).amount();
             BigDecimal cartulina = isMigration ? BigDecimal.ZERO : computeConfiguredPaperwork(principal);
 
             btnDisburse.setDisable(true);
+            btnSaveAndNext.setDisable(true);
             lblFeedback.setText(isMigration ? "Guardando crédito anterior..." : "Registrando crédito y desembolso...");
             lblFeedback.setStyle("-fx-text-fill: #1d4ed8; -fx-background-color: #eff6ff; -fx-padding: 8 12; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6;");
             lblFeedback.setVisible(true);
             lblFeedback.setManaged(true);
 
             String authorId = UserSessionContext.getSession()
-                    .map(com.cartera.infrastructure.security.UserSession::userId)
-                    .orElse("sistema");
+                    .map(UserSession::userId)
+                    .orElseThrow(() -> new IllegalStateException("Inicie sesión para registrar el crédito."));
 
-            String routeId = customer.getRouteId();
+            String routeId;
+            if (creatingNewCustomer) {
+                RouteEntity pickedRoute = cmbNewCustomerRoute.getValue();
+                routeId = pickedRoute != null ? pickedRoute.getId() : null;
+            } else {
+                routeId = customer.getRouteId();
+            }
             if (routeId == null || routeId.isBlank()) {
                 String activeRoute = UserSessionContext.getSelectedRouteId();
-                if (activeRoute != null && !"ALL".equalsIgnoreCase(activeRoute)) {
+                if (activeRoute != null && !"ALL".equalsIgnoreCase(activeRoute) && !"NONE".equalsIgnoreCase(activeRoute)) {
                     routeId = activeRoute;
                 } else if (routeRepository != null) {
                     routeId = routeRepository.findAll().stream()
                             .filter(r -> r.getActive() == null || r.getActive() == 1)
                             .map(RouteEntity::getId)
                             .findFirst()
-                            .orElse("ruta-principal");
-                } else {
-                    routeId = "ruta-principal";
+                            .orElse(null);
+                }
+            }
+            if (routeId == null || routeId.isBlank()) {
+                btnDisburse.setDisable(false);
+                btnSaveAndNext.setDisable(false);
+                showError("El cliente no tiene una ruta activa asignada. Configure una ruta antes de desembolsar.");
+                return;
+            }
+
+            // Resolver el cobrador real de la ruta/cliente (nunca sobreescribir con el ID del Admin)
+            String resolvedCollectorId = null;
+            if (routeRepository != null) {
+                resolvedCollectorId = routeRepository.findById(routeId)
+                        .map(RouteEntity::getCollectorId)
+                        .filter(id -> id != null && !id.isBlank())
+                        .orElse(null);
+            }
+            if (!creatingNewCustomer && (resolvedCollectorId == null || resolvedCollectorId.isBlank())
+                    && customer.getCollectorId() != null && !customer.getCollectorId().isBlank()) {
+                resolvedCollectorId = customer.getCollectorId();
+            }
+            if (resolvedCollectorId == null || resolvedCollectorId.isBlank()) {
+                resolvedCollectorId = authorId;
+            }
+
+            LocalDate migrationNextDueDate = (isMigration && !CreateLoanUseCase.isFixedDateFrequency(frequency))
+                    ? (dpMigrationPayday.getValue() != null ? dpMigrationPayday.getValue() : LocalDate.now())
+                    : null;
+            String migrationNotes = isMigration ? "Migración cartulina física. Cuotas pagadas: " + paidInstallmentNumbers.size() : null;
+
+            LoanEntity loan;
+            String targetCustomerId;
+            String savedCustomerLabel;
+            if (creatingNewCustomer) {
+                var custCmd = new CreateCustomerUseCase.CreateCustomerCommand(
+                        txtNewFullName.getText().trim(),
+                        txtNewDoc.getText().trim(),
+                        txtNewPhone.getText().trim(),
+                        txtNewPhone.getText().trim(),
+                        txtNewAddress.getText().trim(),
+                        txtNewNeighborhood.getText().trim(),
+                        "",
+                        "",
+                        txtNewBusiness.getText().trim(),
+                        "",
+                        routeId,
+                        resolvedCollectorId,
+                        authorId
+                );
+                var result = createCustomerWithLoanUseCase.execute(
+                        custCmd,
+                        principal,
+                        rateDecimal,
+                        totalAgreed,
+                        count,
+                        frequency,
+                        start,
+                        cartulina,
+                        isMigration,
+                        new HashSet<>(paidInstallmentNumbers),
+                        cardPhotoPath,
+                        migrationNotes,
+                        migrationNextDueDate
+                );
+                loan = result.loan();
+                targetCustomerId = result.customer().getId();
+                savedCustomerLabel = result.customer().getFullName();
+            } else {
+                var cmd = new CreateLoanCommand(
+                        customer.getId(),
+                        routeId,
+                        resolvedCollectorId,
+                        principal,
+                        rateDecimal,
+                        totalAgreed,
+                        count,
+                        frequency,
+                        start,
+                        authorId,
+                        cartulina,
+                        isMigration,
+                        new HashSet<>(paidInstallmentNumbers),
+                        cardPhotoPath,
+                        migrationNotes,
+                        migrationNextDueDate
+                );
+                loan = createLoanUseCase.execute(cmd);
+                targetCustomerId = customer.getId();
+                savedCustomerLabel = customer.getFullName();
+            }
+
+            if (isMigration && cardPhotoPath != null && !cardPhotoPath.isBlank() && attachmentService != null) {
+                try {
+                    attachmentService.attach(UUID.randomUUID().toString(), targetCustomerId, Path.of(cardPhotoPath));
+                } catch (Exception attachEx) {
+                    Alert warn = new Alert(Alert.AlertType.WARNING,
+                            "El crédito anterior se guardó correctamente, pero no se pudo archivar la foto de cartulina: " + attachEx.getMessage());
+                    warn.initOwner(this);
+                    warn.showAndWait();
                 }
             }
 
-            var cmd = new CreateLoanCommand(
-                    customer.getId(),
-                    routeId,
-                    authorId,
-                    principal,
-                    rateDecimal,
-                    totalAgreed,
-                    count,
-                    frequency,
-                    start,
-                    authorId,
-                    cartulina,
-                    isMigration,
-                    new HashSet<>(paidInstallmentNumbers),
-                    cardPhotoPath,
-                    isMigration ? "Migración cartulina física. Cuotas pagadas: " + paidInstallmentNumbers.size() : null
-            );
-
-            LoanEntity loan = createLoanUseCase.execute(cmd);
             if (onSuccess != null) {
                 onSuccess.accept(loan);
             }
-            close();
+
+            if (keepOpenForNextCard) {
+                // Reiniciar campos para ingresar la siguiente cartulina sin cerrar el diálogo
+                loadCustomers();
+                txtNewFullName.clear();
+                txtNewDoc.clear();
+                txtNewPhone.clear();
+                txtNewAddress.clear();
+                txtNewNeighborhood.clear();
+                txtNewBusiness.clear();
+                paidInstallmentNumbers.clear();
+                txtQuickPaidCount.clear();
+                cardPhotoPath = null;
+                lblAttachedPhoto.setText("Sin foto adjunta");
+                lblAttachedPhoto.setVisible(false);
+                lblAttachedPhoto.setManaged(false);
+                btnDisburse.setDisable(false);
+                btnSaveAndNext.setDisable(false);
+                recalculateAndSimulate();
+                lblFeedback.setText("✓ Cartulina de " + savedCustomerLabel + " guardada. Listo para la siguiente.");
+                lblFeedback.setStyle("-fx-text-fill: #047857; -fx-background-color: #ecfdf5; -fx-padding: 8 12; -fx-background-radius: 6; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-font-weight: bold;");
+                lblFeedback.setVisible(true);
+                lblFeedback.setManaged(true);
+                if (creatingNewCustomer) {
+                    txtNewFullName.requestFocus();
+                } else {
+                    cmbCustomer.requestFocus();
+                }
+            } else {
+                close();
+            }
         } catch (Exception ex) {
             btnDisburse.setDisable(false);
+            btnSaveAndNext.setDisable(false);
             showError(ex.getMessage());
         }
     }

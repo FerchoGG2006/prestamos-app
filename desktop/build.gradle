@@ -13,11 +13,19 @@ version = '0.1.0-SNAPSHOT'
 if (providers.gradleProperty('isolatedBuildDir').isPresent()) {
     layout.buildDirectory.set(file(providers.gradleProperty('isolatedBuildDir').get()))
 }
-def releaseDir = file(providers.gradleProperty('distributionDir').getOrElse("${rootDir}/dist/releases/1.1.1"))
+def releaseDir = file(providers.gradleProperty('distributionDir').getOrElse("${rootDir}/dist/releases/1.2.0"))
+def desktopShellVersion = '1.2.0'
+def otaBucketPublicBase = 'https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates'
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+sourceSets {
+    launcher {
+        java.srcDir 'src/launcher/java'
     }
 }
 
@@ -40,7 +48,20 @@ dependencies {
     implementation 'org.xerial:sqlite-jdbc:3.49.1.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
 
+    testImplementation sourceSets.launcher.output
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.register('launcherJar', Jar) {
+    dependsOn 'compileLauncherJava'
+    group = 'distribution'
+    description = 'Builds lightweight ~10 KB pure-JDK KrediaLauncher JAR for OTA updates'
+    from sourceSets.launcher.output
+    archiveFileName = 'kredia-launcher.jar'
+    destinationDirectory = layout.buildDirectory.dir('launcher-input')
+    manifest {
+        attributes('Main-Class': 'com.cartera.launcher.KrediaLauncher')
+    }
 }
 
 application {
@@ -89,9 +110,65 @@ tasks.register('officeJourneyQa', JavaExec) {
     jvmArgs '-Dfile.encoding=UTF-8', '-Duser.timezone=America/Bogota'
 }
 
+tasks.register('buildOtaPatch') {
+    dependsOn 'jar'
+    group = 'distribution'
+    description = 'Builds lightweight ~1.6 MB OTA patch JAR + latest.json manifest in ~5 seconds (no jpackage/Inno)'
+
+    doLast {
+        def appVerFile = file("${projectDir}/src/main/java/com/cartera/infrastructure/version/AppVersion.java")
+        def appVerText = appVerFile.getText('UTF-8')
+        def verMatcher = (appVerText =~ /CURRENT\s*=\s*"([^"]+)"/)
+        def shellMatcher = (appVerText =~ /SHELL_VERSION\s*=\s*"([^"]+)"/)
+        def appVer = providers.gradleProperty('otaVersion').getOrElse(verMatcher.find() ? verMatcher.group(1) : desktopShellVersion)
+        def minShell = providers.gradleProperty('minShellVersion').getOrElse(shellMatcher.find() ? shellMatcher.group(1) : desktopShellVersion)
+        def notes = providers.gradleProperty('releaseNotes').getOrElse("Actualización rápida Kredia Desktop v${appVer}")
+
+        def otaDir = file("${rootDir}/dist/ota")
+        otaDir.mkdirs()
+
+        def sourceJar = tasks.named('jar').get().archiveFile.get().asFile
+        def targetJarName = "kredia-app-${appVer}.jar"
+        def targetJar = new File(otaDir, targetJarName)
+        sourceJar.withInputStream { input -> targetJar.withOutputStream { output -> output << input } }
+
+        def md = java.security.MessageDigest.getInstance('SHA-256')
+        targetJar.withInputStream { input ->
+            byte[] buf = new byte[8192]
+            int read
+            while ((read = input.read(buf)) > 0) {
+                md.update(buf, 0, read)
+            }
+        }
+        def sha256 = md.digest().collect { String.format('%02x', it) }.join('')
+        def sizeBytes = targetJar.length()
+        def today = java.time.LocalDate.now().toString()
+        def escapedNotes = notes.replace('\\', '\\\\').replace('"', '\\"')
+
+        def manifestJson = """{
+  "latest_version": "${appVer}",
+  "min_version": "${minShell}",
+  "min_shell_version": "${minShell}",
+  "release_date": "${today}",
+  "core_jar_url": "${otaBucketPublicBase}/${targetJarName}",
+  "core_jar_sha256": "${sha256}",
+  "core_jar_size_bytes": ${sizeBytes},
+  "installer_url": "${otaBucketPublicBase}/Instalador-SistemaCartera-v${minShell}.exe",
+  "download_url": "${otaBucketPublicBase}/Instalador-SistemaCartera-v${minShell}.exe",
+  "release_notes": "${escapedNotes}"
+}
+"""
+        new File(otaDir, 'latest.json').setText(manifestJson, 'UTF-8')
+        println "OTA patch listo en: ${otaDir.absolutePath}"
+        println "  JAR   : ${targetJarName} (${Math.round(sizeBytes / 1024.0)} KB)"
+        println "  SHA256: ${sha256}"
+        println "  JSON  : latest.json (v${appVer}, min_shell=${minShell})"
+    }
+}
+
 tasks.register('packageWindows') {
-    dependsOn 'installDist', 'test'
-    description = 'Generates standalone Windows application image using jpackage'
+    dependsOn 'installDist', 'launcherJar', 'test'
+    description = 'Generates standalone Windows base shell image (v1.2.0) with KrediaLauncher + separated app/core and app/libs for 1.6 MB OTA updates'
     group = 'distribution'
 
     doLast {
@@ -102,22 +179,47 @@ tasks.register('packageWindows') {
         }
         distDir.mkdirs()
 
+        def launcherInputDir = layout.buildDirectory.dir('launcher-input').get().asFile
         exec {
             commandLine 'jpackage',
                     '--type', 'app-image',
                     '--name', 'SistemaCartera',
-                    '--input', new File(tasks.named('installDist').get().destinationDir, 'lib').absolutePath,
-                    '--main-jar', tasks.named('jar').get().archiveFileName.get(),
-                    '--main-class', 'com.cartera.ui.CarteraMain',
+                    '--input', launcherInputDir.absolutePath,
+                    '--main-jar', 'kredia-launcher.jar',
+                    '--main-class', 'com.cartera.launcher.KrediaLauncher',
                     '--icon', "${projectDir}/src/main/resources/ui/app.ico",
                     '--dest', releaseDir.absolutePath,
                     '--vendor', 'Cartera Software',
-                    '--app-version', '1.1.1',
+                    '--app-version', desktopShellVersion,
                     '--add-modules', 'java.se,jdk.unsupported,jdk.crypto.ec,jdk.httpserver',
+                    '--jlink-options', '--strip-debug --no-man-pages --no-header-files',
                     '--java-options', '-Dfile.encoding=UTF-8',
                     '--java-options', '-Duser.timezone=America/Bogota',
                     '--java-options', '-Duser.language=es',
-                    '--java-options', '-Duser.country=CO'
+                    '--java-options', '-Duser.country=CO',
+                    '--java-options', "-Dkredia.shell.version=${desktopShellVersion}"
+        }
+
+        def appJarName = tasks.named('jar').get().archiveFileName.get()
+        def installLibDir = new File(tasks.named('installDist').get().destinationDir, 'lib')
+
+        // 1. Copiar núcleo de la aplicación (~1.6 MB) en app/core/kredia-app.jar
+        def coreDir = new File(appDir, 'app/core')
+        coreDir.mkdirs()
+        copy {
+            from tasks.named('jar').get().archiveFile.get().asFile
+            into coreDir
+            rename { 'kredia-app.jar' }
+        }
+
+        // 2. Copiar librerías de terceros estáticas en app/libs/ (excluyendo el JAR propio de la app)
+        def libsDir = new File(appDir, 'app/libs')
+        libsDir.mkdirs()
+        copy {
+            from(installLibDir) {
+                exclude appJarName
+            }
+            into libsDir
         }
 
         copy {
@@ -132,7 +234,7 @@ tasks.register('packageZip', Zip) {
     description = 'Zips the standalone Windows package into a downloadable archive'
     group = 'distribution'
 
-    archiveFileName = 'SistemaCartera-v1.1.1-Windows-x64.zip'
+    archiveFileName = "SistemaCartera-v${desktopShellVersion}-Windows-x64.zip"
     destinationDirectory = releaseDir
 
     from(new File(releaseDir,"SistemaCartera")) {

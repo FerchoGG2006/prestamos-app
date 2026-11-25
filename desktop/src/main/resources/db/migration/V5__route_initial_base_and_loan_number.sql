@@ -1,0 +1,2 @@
+ALTER TABLE route ADD COLUMN initial_cash_base NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE loan ADD COLUMN loan_number TEXT;

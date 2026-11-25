@@ -112,11 +112,79 @@ class SupabaseSyncService {
   }
 
   /**
+   * Fusiona mapas de base de inicio diaria por ruta/fecha usando marca de tiempo más reciente (LWW)
+   * para evitar que un cobrador sobrescriba la base definida por el Administrador.
+   */
+  private mergeOpeningBaseSettings(
+    remoteSettings: any,
+    localConfig: OfficeCompanyConfig
+  ): {
+    dailyOpeningBaseByRouteDate: Record<string, number>;
+    dailyOpeningBaseMeta: Record<string, { amount: number; updatedAt: string }>;
+  } {
+    const remoteMap: Record<string, number> =
+      remoteSettings && typeof remoteSettings.dailyOpeningBaseByRouteDate === 'object'
+        ? remoteSettings.dailyOpeningBaseByRouteDate
+        : {};
+    const remoteMeta: Record<string, { amount: number; updatedAt: string }> =
+      remoteSettings && typeof remoteSettings.dailyOpeningBaseMeta === 'object'
+        ? remoteSettings.dailyOpeningBaseMeta
+        : {};
+    const localMap = localConfig.dailyOpeningBaseByRouteDate || {};
+    const localMeta = localConfig.dailyOpeningBaseMeta || {};
+
+    const mergedMap: Record<string, number> = {};
+    const mergedMeta: Record<string, { amount: number; updatedAt: string }> = {};
+    const allKeys = new Set([
+      ...Object.keys(remoteMap),
+      ...Object.keys(remoteMeta),
+      ...Object.keys(localMap),
+      ...Object.keys(localMeta),
+    ]);
+
+    for (const key of allKeys) {
+      const rEntry = remoteMeta[key];
+      const lEntry = localMeta[key];
+      if (rEntry && lEntry) {
+        if (lEntry.updatedAt >= rEntry.updatedAt) {
+          mergedMeta[key] = lEntry;
+          mergedMap[key] = Math.max(0, Number(lEntry.amount) || 0);
+        } else {
+          mergedMeta[key] = rEntry;
+          mergedMap[key] = Math.max(0, Number(rEntry.amount) || 0);
+        }
+      } else if (lEntry) {
+        mergedMeta[key] = lEntry;
+        mergedMap[key] = Math.max(0, Number(lEntry.amount) || 0);
+      } else if (rEntry) {
+        mergedMeta[key] = rEntry;
+        mergedMap[key] = Math.max(0, Number(rEntry.amount) || 0);
+      } else if (typeof localMap[key] === 'number') {
+        mergedMap[key] = Math.max(0, Number(localMap[key]) || 0);
+      } else if (typeof remoteMap[key] === 'number') {
+        mergedMap[key] = Math.max(0, Number(remoteMap[key]) || 0);
+      }
+    }
+
+    return {
+      dailyOpeningBaseByRouteDate: mergedMap,
+      dailyOpeningBaseMeta: mergedMeta,
+    };
+  }
+
+  /**
    * Sube o actualiza la oficina en la nube (Multi-Tenant)
    */
   public async upsertOffice(officeId: string, config: OfficeCompanyConfig): Promise<boolean> {
     if (!this.client) return false;
     try {
+      const { data: existingOffice } = await this.client
+        .from('offices')
+        .select('settings')
+        .eq('id', officeId)
+        .maybeSingle();
+      const mergedOpening = this.mergeOpeningBaseSettings(existingOffice?.settings, config);
+
       const { error } = await this.client.from('offices').upsert({
         id: officeId,
         company_name: config.companyName || 'Mi Oficina',
@@ -126,12 +194,17 @@ class SupabaseSyncService {
         support_phone: config.supportPhone || '',
         recovery_pin: config.recoveryPin || '',
         settings: {
+          ...(existingOffice?.settings && typeof existingOffice.settings === 'object'
+            ? existingOffice.settings
+            : {}),
           defaultInterestRate: config.defaultInterestRate,
           defaultInstallmentsCount: config.defaultInstallmentsCount,
           defaultFrequency: config.defaultFrequency,
           paperworkFeeEnabled: config.paperworkFeeEnabled,
           paperworkRate: config.paperworkRate,
           routeInitialCashBase: config.routeInitialCashBase,
+          dailyOpeningBaseByRouteDate: mergedOpening.dailyOpeningBaseByRouteDate,
+          dailyOpeningBaseMeta: mergedOpening.dailyOpeningBaseMeta,
         },
         updated_at: new Date().toISOString(),
       });
@@ -188,7 +261,8 @@ class SupabaseSyncService {
   }
 
   /**
-   * Sube todos los clientes, créditos, cuotas, cobros, renovaciones, liquidaciones y movimientos de caja
+   * Sube todos los clientes, créditos, cuotas, cobros, renovaciones, liquidaciones y movimientos de caja.
+   * Retorna resultado explícito { ok, error } para que el motor NUNCA pise datos locales si el PUSH falló.
    */
   public async pushFullPortfolio(
     officeId: string,
@@ -201,9 +275,11 @@ class SupabaseSyncService {
       settlements?: DailySettlement[];
       cashMovements: CashMovement[];
     }
-  ): Promise<boolean> {
-    if (!this.client) return false;
+  ): Promise<{ ok: boolean; error?: string }> {
+    if (!this.client) return { ok: false, error: 'Cliente Supabase no inicializado.' };
     try {
+      const chunkSize = 200;
+
       if (data.customers.length > 0) {
         const custRows = data.customers.map((c) => ({
           id: c.id,
@@ -225,12 +301,16 @@ class SupabaseSyncService {
           references: c.references || [],
           updated_at: new Date().toISOString(),
         }));
-        const { error } = await this.client.from('customers').upsert(custRows);
-        if (error) throw error;
+        for (let i = 0; i < custRows.length; i += chunkSize) {
+          const { error } = await this.client.from('customers').upsert(custRows.slice(i, i + chunkSize));
+          if (error) throw error;
+        }
       }
 
       if (data.loans.length > 0) {
-        const loanRows = data.loans.map((l) => ({
+        // Primero créditos base (sin previousLoanId), luego renovaciones
+        const sortedLoans = [...data.loans].sort((a, b) => (a.previousLoanId ? 1 : 0) - (b.previousLoanId ? 1 : 0));
+        const loanRows = sortedLoans.map((l) => ({
           id: l.id,
           office_id: officeId,
           route_id: l.routeId || null,
@@ -252,12 +332,13 @@ class SupabaseSyncService {
           notes: l.notes || '',
           updated_at: new Date().toISOString(),
         }));
-        const { error } = await this.client.from('loans').upsert(loanRows);
-        if (error) throw error;
+        for (let i = 0; i < loanRows.length; i += chunkSize) {
+          const { error } = await this.client.from('loans').upsert(loanRows.slice(i, i + chunkSize));
+          if (error) throw error;
+        }
       }
 
       if (data.installments.length > 0) {
-        const chunkSize = 200;
         for (let i = 0; i < data.installments.length; i += chunkSize) {
           const chunk = data.installments.slice(i, i + chunkSize).map((inst) => ({
             id: inst.id,
@@ -296,8 +377,25 @@ class SupabaseSyncService {
           local_created_at: p.createdAt,
           created_at: toBogotaTimestamptz(p.createdAt),
         }));
-        const { error } = await this.client.from('payments').upsert(payRows);
-        if (error) throw error;
+        for (let i = 0; i < payRows.length; i += chunkSize) {
+          const chunk = payRows.slice(i, i + chunkSize);
+          const { error } = await this.client.from('payments').upsert(chunk);
+          if (error) {
+            const msg = String(error.message || error.code || '');
+            if (msg.includes('23505') || msg.includes('idempotency') || msg.includes('409')) {
+              for (const row of chunk) {
+                const { error: rowErr } = await this.client
+                  .from('payments')
+                  .upsert(row, { onConflict: 'id', ignoreDuplicates: true });
+                if (rowErr) {
+                  console.warn('[SupabaseSyncService] Pago omitido por idempotencia:', row.id, rowErr.message);
+                }
+              }
+            } else {
+              throw error;
+            }
+          }
+        }
       }
 
       if (data.renewals && data.renewals.length > 0) {
@@ -315,8 +413,10 @@ class SupabaseSyncService {
           local_created_at: r.createdAt,
           created_at: toBogotaTimestamptz(r.createdAt),
         }));
-        const { error } = await this.client.from('renewals').upsert(renRows);
-        if (error) throw error;
+        for (let i = 0; i < renRows.length; i += chunkSize) {
+          const { error } = await this.client.from('renewals').upsert(renRows.slice(i, i + chunkSize));
+          if (error) throw error;
+        }
       }
 
       if (data.settlements && data.settlements.length > 0) {
@@ -331,8 +431,10 @@ class SupabaseSyncService {
           payload: s,
           settled_at: s.settledAt || new Date().toISOString(),
         }));
-        const { error } = await this.client.from('daily_settlements').upsert(setRows);
-        if (error) throw error;
+        for (let i = 0; i < setRows.length; i += chunkSize) {
+          const { error } = await this.client.from('daily_settlements').upsert(setRows.slice(i, i + chunkSize));
+          if (error) throw error;
+        }
       }
 
       if (data.cashMovements.length > 0) {
@@ -350,8 +452,10 @@ class SupabaseSyncService {
           local_created_at: cm.createdAt,
           created_at: toBogotaTimestamptz(cm.createdAt),
         }));
-        const { error } = await this.client.from('cash_movements').upsert(cmRows);
-        if (error) throw error;
+        for (let i = 0; i < cmRows.length; i += chunkSize) {
+          const { error } = await this.client.from('cash_movements').upsert(cmRows.slice(i, i + chunkSize));
+          if (error) throw error;
+        }
       }
 
       // Libro Mayor Financiero Inmutable (Append-Only): insertar hechos financieros sin mutar ni duplicar
@@ -360,10 +464,11 @@ class SupabaseSyncService {
         await this.appendFinancialEventsBatch(ledgerEvents);
       }
 
-      return true;
-    } catch (err) {
-      console.warn('[SupabaseSyncService] pushFullPortfolio error:', err);
-      return false;
+      return { ok: true };
+    } catch (err: any) {
+      const errMsg = err?.message || String(err || 'Error desconocido al subir cartera');
+      console.warn('[SupabaseSyncService] pushFullPortfolio error:', errMsg);
+      return { ok: false, error: errMsg };
     }
   }
 
@@ -556,7 +661,31 @@ class SupabaseSyncService {
   }
 
   /**
-   * Descarga la cartera completa de una oficina desde la nube
+   * Descarga paginada (>1.000 registros) de una tabla operativa filtrada por office_id.
+   */
+  private async fetchAllOfficeRows(table: string, officeId: string): Promise<any[]> {
+    if (!this.client) return [];
+    const pageSize = 1000;
+    const allRows: any[] = [];
+    let offset = 0;
+    while (true) {
+      const { data, error } = await this.client
+        .from(table)
+        .select('*')
+        .eq('office_id', officeId)
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      allRows.push(...data);
+      if (data.length < pageSize) break;
+      offset += pageSize;
+    }
+    return allRows;
+  }
+
+  /**
+   * Descarga la cartera completa de una oficina desde la nube (con paginación completa >1.000 filas)
    */
   public async pullFullPortfolio(officeId: string): Promise<{
     office?: any;
@@ -573,28 +702,30 @@ class SupabaseSyncService {
     if (!this.client) return null;
     try {
       const [
-        { data: officeData },
-        { data: usersData },
-        { data: routesData },
-        { data: custData },
-        { data: loansData },
-        { data: instData },
-        { data: payData },
-        { data: renData },
-        { data: setData },
-        { data: cmData },
+        officeRes,
+        usersData,
+        routesData,
+        custData,
+        loansData,
+        instData,
+        payData,
+        renData,
+        setData,
+        cmData,
       ] = await Promise.all([
         this.client.from('offices').select('*').eq('id', officeId).maybeSingle(),
-        this.client.from('users').select('*').eq('office_id', officeId),
-        this.client.from('routes').select('*').eq('office_id', officeId),
-        this.client.from('customers').select('*').eq('office_id', officeId),
-        this.client.from('loans').select('*').eq('office_id', officeId),
-        this.client.from('installments').select('*').eq('office_id', officeId),
-        this.client.from('payments').select('*').eq('office_id', officeId),
-        this.client.from('renewals').select('*').eq('office_id', officeId),
-        this.client.from('daily_settlements').select('*').eq('office_id', officeId),
-        this.client.from('cash_movements').select('*').eq('office_id', officeId),
+        this.fetchAllOfficeRows('users', officeId),
+        this.fetchAllOfficeRows('routes', officeId),
+        this.fetchAllOfficeRows('customers', officeId),
+        this.fetchAllOfficeRows('loans', officeId),
+        this.fetchAllOfficeRows('installments', officeId),
+        this.fetchAllOfficeRows('payments', officeId),
+        this.fetchAllOfficeRows('renewals', officeId),
+        this.fetchAllOfficeRows('daily_settlements', officeId),
+        this.fetchAllOfficeRows('cash_movements', officeId),
       ]);
+      if (officeRes.error) throw officeRes.error;
+      const officeData = officeRes.data;
 
       return {
         office: officeData,
@@ -731,15 +862,19 @@ class SupabaseSyncService {
   }
 
   /**
-   * Verifica el estado comercial de la licencia de una oficina
+   * Verifica el estado comercial de la licencia de una oficina.
+   * Bajo RLS estricto, si el token x-kredia-session expiró o falta, `offices` retorna null sin error:
+   * en ese caso reporta `sessionInvalid: true` en lugar de suspender falsamente la oficina.
    */
   public async checkOfficeLicense(officeId: string): Promise<{
     active: boolean;
     status: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
     expiresAt: string | null;
+    sessionInvalid?: boolean;
+    networkError?: boolean;
   }> {
     if (!this.client || !officeId) {
-      return { active: false, status: 'SUSPENDED', expiresAt: null };
+      return { active: false, status: 'ACTIVE', expiresAt: null, sessionInvalid: true };
     }
     try {
       const { data, error } = await this.client
@@ -748,8 +883,11 @@ class SupabaseSyncService {
         .eq('id', officeId)
         .maybeSingle();
 
-      if (error || !data) {
-        return { active: false, status: 'SUSPENDED', expiresAt: null };
+      if (error) {
+        return { active: false, status: 'ACTIVE', expiresAt: null, networkError: true };
+      }
+      if (!data) {
+        return { active: false, status: 'ACTIVE', expiresAt: null, sessionInvalid: true };
       }
 
       const expiresAt = data.license_expires_at || null;
@@ -763,7 +901,67 @@ class SupabaseSyncService {
         expiresAt,
       };
     } catch {
-      return { active: true, status: 'ACTIVE', expiresAt: null };
+      return { active: false, status: 'ACTIVE', expiresAt: null, networkError: true };
+    }
+  }
+
+  /**
+   * Renueva únicamente el token criptográfico de sesión RLS (x-kredia-session) vía RPC,
+   * SIN descargar ni sobrescribir la cartera local (diseñado para rescate seguro de cambios locales).
+   */
+  public async reauthenticateCloudSession(
+    username: string,
+    password: string
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    sessionToken?: string;
+    officeId?: string;
+    activationCode?: string;
+    companyName?: string;
+    licenseStatus?: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED';
+    licensePlan?: 'LIFETIME' | 'MONTHLY' | 'ANNUAL';
+    licenseExpiresAt?: string | null;
+    authenticatedUserId?: string;
+  }> {
+    if (!this.client) {
+      return { ok: false, error: 'Servicio en la nube no configurado.' };
+    }
+    const cleanUser = username.trim().toLowerCase();
+    if (!cleanUser || !password) {
+      return { ok: false, error: 'Ingresa tu usuario y contraseña.' };
+    }
+    try {
+      const { data: authData, error: rpcErr } = await this.client.rpc('authenticate_kredia_user', {
+        p_username: cleanUser,
+        p_password: password,
+      });
+      if (rpcErr) throw rpcErr;
+      if (!authData || !authData.ok || !authData.session_token || !authData.office || !authData.user) {
+        return {
+          ok: false,
+          error: authData?.error || 'Credenciales incorrectas o licencia inactiva.',
+        };
+      }
+      const sessionToken = String(authData.session_token);
+      this.setSessionToken(sessionToken);
+      const officeRow = authData.office;
+      return {
+        ok: true,
+        sessionToken,
+        officeId: officeRow.id,
+        activationCode: officeRow.activation_code || '',
+        companyName: officeRow.company_name || 'Mi Oficina',
+        licenseStatus: (officeRow.license_status || 'ACTIVE') as 'ACTIVE' | 'SUSPENDED' | 'EXPIRED',
+        licensePlan: (officeRow.license_plan || 'LIFETIME') as 'LIFETIME' | 'MONTHLY' | 'ANNUAL',
+        licenseExpiresAt: officeRow.license_expires_at || null,
+        authenticatedUserId: authData.user.id,
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        error: err?.message || 'Error de conexión al renovar sesión en la nube.',
+      };
     }
   }
 

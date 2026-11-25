@@ -1,16 +1,21 @@
 package com.cartera.infrastructure.backup;
 
 import com.cartera.customers.application.AttachmentService;
+import com.cartera.infrastructure.licensing.OfficeLicensingService;
 import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.security.FinancialAccess;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -27,13 +32,19 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class OfficeRecoveryService {
 
-    private static final int MAX_SUPPORTED_SCHEMA_VERSION = 4;
+    private static final Logger log = LoggerFactory.getLogger(OfficeRecoveryService.class);
+    private static final int MAX_SUPPORTED_SCHEMA_VERSION = 20;
     private static final long MAX_UNCOMPRESSED_BYTES = 512L * 1024 * 1024;
     private static final int MAX_ZIP_ENTRIES = 10_000;
 
     private final DatabaseBackupService backups;
     private final FinancialAccess access;
     private final AuditLogRepository audit;
+    private volatile String lastRecoveryWarning;
+
+    public String getLastRecoveryWarning() {
+        return lastRecoveryWarning;
+    }
 
     public OfficeRecoveryService(
             DatabaseBackupService backups,
@@ -109,8 +120,8 @@ public class OfficeRecoveryService {
 
     public Path exportOffice(Path target) {
         var actor = access.manager();
-        if (Files.exists(target)) {
-            throw new IllegalArgumentException("El archivo destino ya existe.");
+        if (Files.isDirectory(target)) {
+            throw new IllegalArgumentException("El destino debe ser un archivo .zip, no una carpeta.");
         }
         Path partial = target.resolveSibling(target.getFileName() + ".partial-" + UUID.randomUUID());
         try {
@@ -136,7 +147,7 @@ public class OfficeRecoveryService {
                     }
                 }
             }
-            Files.move(partial, target);
+            Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING);
             audit.save(new AuditLogEntity(
                     UUID.randomUUID().toString(),
                     actor.userId(),
@@ -182,9 +193,11 @@ public class OfficeRecoveryService {
         }
         Path normalizedParent = destinationParent.toAbsolutePath().normalize();
         Path stage = normalizedParent.resolve("Oficina-recuperada-" + UUID.randomUUID());
+        lastRecoveryWarning = null;
         try {
             Files.createDirectory(stage);
-            if (source.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".db")) {
+            boolean isStandaloneDb = source.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".db");
+            if (isStandaloneDb) {
                 inspect(source);
                 Files.copy(source, stage.resolve("cartera.db"));
             } else {
@@ -223,23 +236,41 @@ public class OfficeRecoveryService {
                     }
                 }
             }
-            inspect(stage.resolve("cartera.db"));
-            try (var connection = readOnly(stage.resolve("cartera.db"));
+            Path recoveredDb = stage.resolve("cartera.db");
+            inspect(recoveredDb);
+            try (var connection = readOnly(recoveredDb);
                  var statement = connection.createStatement()) {
                 if (tableExists(statement, "customer_attachment")) {
                     Path attachmentsDir = stage.resolve("attachments");
+                    int missingAttachments = 0;
                     try (var rows = statement.executeQuery("SELECT stored_name, sha256 FROM customer_attachment")) {
                         while (rows.next()) {
                             Path attachment = attachmentsDir.resolve(rows.getString(1)).normalize();
-                            if (!attachment.startsWith(attachmentsDir)
-                                    || !Files.isRegularFile(attachment)
-                                    || !rows.getString(2).equals(AttachmentService.hash(attachment))) {
-                                throw new IllegalArgumentException("El paquete no recupera todos sus adjuntos.");
+                            boolean valid = attachment.startsWith(attachmentsDir)
+                                    && Files.isRegularFile(attachment)
+                                    && rows.getString(2).equals(AttachmentService.hash(attachment));
+                            if (!valid) {
+                                if (isStandaloneDb) {
+                                    missingAttachments++;
+                                } else {
+                                    throw new IllegalArgumentException("El paquete no recupera todos sus adjuntos.");
+                                }
                             }
                         }
                     }
+                    if (missingAttachments > 0) {
+                        lastRecoveryWarning = "Aviso: Este respaldo solo contiene la base de datos (.db) y no incluye "
+                                + missingAttachments + " archivo(s) adjunto(s). Use un paquete .zip para restaurar también fotos y PDFs.";
+                        log.warn("Recuperación desde .db completada sin {} adjunto(s) físico(s)", missingAttachments);
+                    }
                 }
             }
+
+            // Marcar la oficina recuperada en modo solo-lectura de sincronización nube para evitar
+            // sobreescribir Supabase con un respaldo histórico al abrirla con --office-dir.
+            markRecoveryReadOnly(recoveredDb);
+            inspect(recoveredDb);
+
             audit.save(new AuditLogEntity(
                     UUID.randomUUID().toString(),
                     actor.userId(),
@@ -265,6 +296,17 @@ public class OfficeRecoveryService {
                 ex.addSuppressed(cleanup);
             }
             throw new IllegalStateException("No se publicó ninguna oficina recuperada: " + ex.getMessage(), ex);
+        }
+    }
+
+    private static void markRecoveryReadOnly(Path recoveredDb) throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + recoveredDb.toAbsolutePath());
+             PreparedStatement ps = connection.prepareStatement(
+                     "INSERT OR REPLACE INTO system_setting (setting_key, setting_value, updated_at) VALUES (?, ?, ?)")) {
+            ps.setString(1, OfficeLicensingService.KEY_RECOVERY_READ_ONLY);
+            ps.setString(2, "true");
+            ps.setString(3, LocalDateTime.now().toString());
+            ps.executeUpdate();
         }
     }
 }

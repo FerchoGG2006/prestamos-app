@@ -13,6 +13,7 @@ import {
   PaymentBreakdownItem,
   PaymentMethod,
   LoanFrequency,
+  CollectionSession,
 } from './types';
 import {
   DEFAULT_BUSINESS_CONFIG,
@@ -221,6 +222,155 @@ export function generateInstallments(
   return installments;
 }
 
+const formatIsoDate = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const addMonthsClamped = (dateStr: string, monthsDelta: number): string => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const totalMonths = y * 12 + (m - 1) + monthsDelta;
+  const targetYear = Math.floor(totalMonths / 12);
+  const targetMonthZero = ((totalMonths % 12) + 12) % 12;
+  const maxDay = new Date(targetYear, targetMonthZero + 1, 0).getDate();
+  const clampedDay = Math.min(d, maxDay);
+  return `${targetYear}-${String(targetMonthZero + 1).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
+};
+
+/**
+ * Retorna la próxima ocurrencia (>= todayStr) del día de semana solicitado.
+ * targetDayOfWeek: 1 = Lunes, 2 = Martes, 3 = Miércoles, 4 = Jueves, 5 = Viernes, 6 = Sábado.
+ */
+export function getUpcomingWeekdayDate(todayStr: string, targetDayOfWeek: number): string {
+  const base = new Date(todayStr + 'T00:00:00');
+  const currentDow = base.getDay(); // 0=Dom..6=Sáb
+  const diff = (targetDayOfWeek - currentDow + 7) % 7;
+  base.setDate(base.getDate() + diff);
+  return formatIsoDate(base);
+}
+
+/**
+ * Avanza o retrocede una fecha exactamente un periodo según la modalidad.
+ */
+export function stepScheduleDate(
+  dateStr: string,
+  frequency: LoanFrequency,
+  direction: 1 | -1,
+  excludeSundays: boolean = true
+): string {
+  if (frequency === 'MONTHLY') {
+    return addMonthsClamped(dateStr, direction);
+  }
+  const cursor = new Date(dateStr + 'T00:00:00');
+  if (frequency === 'WEEKLY') {
+    cursor.setDate(cursor.getDate() + 7 * direction);
+    return formatIsoDate(cursor);
+  }
+  if (frequency === 'BIWEEKLY') {
+    cursor.setDate(cursor.getDate() + 15 * direction);
+    return formatIsoDate(cursor);
+  }
+  // DAILY
+  cursor.setDate(cursor.getDate() + direction);
+  if (excludeSundays && cursor.getDay() === 0) {
+    cursor.setDate(cursor.getDate() + direction);
+  }
+  return formatIsoDate(cursor);
+}
+
+/**
+ * Genera el plan de cuotas para una migración de cartulina física anclada al "Día de pago"
+ * de la próxima cuota pendiente (anchorNum). Las cuotas ya pagadas se proyectan hacia atrás
+ * como PAGADA (paz y salvo) y las cuotas futuras hacia adelante como PENDIENTE.
+ */
+export function generateAnchoredMigrationSchedule(params: {
+  loanId: string;
+  summary: LoanCalculationSummary;
+  frequency: LoanFrequency;
+  nextDueDateStr: string;
+  paidInstallmentNumbers: number[];
+  config?: LoanBusinessConfig;
+}): {
+  startDate: string;
+  endDate: string;
+  anchorInstallmentNumber: number;
+  installments: Installment[];
+} {
+  const {
+    loanId,
+    summary,
+    frequency,
+    nextDueDateStr,
+    paidInstallmentNumbers,
+    config = DEFAULT_BUSINESS_CONFIG.loan,
+  } = params;
+  const excludeSundays = config.excludeSundays ?? true;
+  const count = summary.installmentCount;
+  const paidSet = new Set<number>(paidInstallmentNumbers);
+
+  let anchorNum = count;
+  for (let i = 1; i <= count; i++) {
+    if (!paidSet.has(i)) {
+      anchorNum = i;
+      break;
+    }
+  }
+
+  const dueDates: string[] = new Array(count);
+  dueDates[anchorNum - 1] = nextDueDateStr;
+
+  if (frequency === 'MONTHLY') {
+    for (let i = 1; i <= count; i++) {
+      if (i === anchorNum) continue;
+      dueDates[i - 1] = addMonthsClamped(nextDueDateStr, i - anchorNum);
+    }
+  } else {
+    let backCursor = nextDueDateStr;
+    for (let i = anchorNum - 1; i >= 1; i--) {
+      backCursor = stepScheduleDate(backCursor, frequency, -1, excludeSundays);
+      dueDates[i - 1] = backCursor;
+    }
+    let fwdCursor = nextDueDateStr;
+    for (let i = anchorNum + 1; i <= count; i++) {
+      fwdCursor = stepScheduleDate(fwdCursor, frequency, 1, excludeSundays);
+      dueDates[i - 1] = fwdCursor;
+    }
+  }
+
+  const startDate =
+    frequency === 'MONTHLY'
+      ? addMonthsClamped(nextDueDateStr, -anchorNum)
+      : stepScheduleDate(dueDates[0], frequency, -1, excludeSundays);
+
+  const accumulatedPrevious = summary.installmentAmount * (count - 1);
+  const installments: Installment[] = dueDates.map((dueDate, idx) => {
+    const num = idx + 1;
+    const expectedAmount =
+      num === count ? summary.totalAgreed - accumulatedPrevious : summary.installmentAmount;
+    const isPaid = paidSet.has(num);
+    return {
+      id: `${loanId}-cuota-${num}`,
+      loanId,
+      installmentNumber: num,
+      dueDate,
+      expectedAmount,
+      paidAmount: isPaid ? expectedAmount : 0,
+      pendingAmount: isPaid ? 0 : expectedAmount,
+      status: isPaid ? 'PAGADA' : 'PENDIENTE',
+      ...(isPaid ? { lastPaymentDate: dueDate } : {}),
+    };
+  });
+
+  return {
+    startDate,
+    endDate: dueDates[dueDates.length - 1] || nextDueDateStr,
+    anchorInstallmentNumber: anchorNum,
+    installments,
+  };
+}
+
 /**
  * Aplica un pago entregado por el cliente sobre las cuotas del crédito.
  * 
@@ -403,6 +553,70 @@ export function calculateDelinquencyMetrics(
     overdueAmount,
     surchargeAmount,
   };
+}
+
+/**
+ * Resultado del cuadre diario de efectivo (Opción B: balance neto real con signo + base de inicio).
+ * - collectedPlusBase = collectedCash + openingRouteBase
+ * - signedNetCashFlow conserva el signo real (ej. ($175.000 + $50.000) - $95.000 - $10.000 = $120.000)
+ *   para que cada cobro nuevo se refleje de inmediato en el flujo del día sin congelarse en $0.
+ * - cashToHandOver representa el efectivo físico esperado a entregar a oficina (mínimo $0).
+ * - coveredByBaseDeficit indica cuánto del desembolso/gasto del día fue cubierto por la oficina.
+ */
+export interface DailyCashReconciliation {
+  openingRouteBase: number;
+  collectedPlusBase: number;
+  signedNetCashFlow: number;
+  cashToHandOver: number;
+  coveredByBaseDeficit: number;
+  isDeficitCoveredByBase: boolean;
+}
+
+export function calculateDailyCashReconciliation(params: {
+  collectedCash: number;
+  openingRouteBase?: number;
+  expensesToday: number;
+  disbursedToday: number;
+  recaudoRetiradoToday?: number;
+}): DailyCashReconciliation {
+  const collected = Math.round(params.collectedCash || 0);
+  const openingBase = Math.max(0, Math.round(params.openingRouteBase || 0));
+  const expenses = Math.round(params.expensesToday || 0);
+  const disbursed = Math.round(params.disbursedToday || 0);
+  const recaudoRetirado = Math.round(params.recaudoRetiradoToday || 0);
+
+  const collectedPlusBase = collected + openingBase;
+  const signedNetCashFlow = collectedPlusBase - expenses - disbursed - recaudoRetirado;
+  const cashToHandOver = Math.max(0, signedNetCashFlow);
+  const coveredByBaseDeficit = signedNetCashFlow < 0 ? Math.abs(signedNetCashFlow) : 0;
+
+  return {
+    openingRouteBase: openingBase,
+    collectedPlusBase,
+    signedNetCashFlow,
+    cashToHandOver,
+    coveredByBaseDeficit,
+    isDeficitCoveredByBase: signedNetCashFlow < 0,
+  };
+}
+
+/**
+ * Filtra exclusivamente los pagos completados correspondientes a la jornada activa (`todayStr`).
+ * Mantiene paridad exacta con el cálculo diario de `localStore.getDailyRouteMetrics`.
+ */
+export function filterSessionDayPayments(
+  payments: Payment[],
+  todayStr: string,
+  session?: Pick<CollectionSession, 'id' | 'date'> | null
+): Payment[] {
+  const sessionId = session?.id;
+  const isCurrentSessionDate = Boolean(sessionId && session?.date === todayStr);
+  return (payments || []).filter(
+    (p) =>
+      p.status === 'COMPLETED' &&
+      (Boolean(p.createdAt?.startsWith(todayStr)) ||
+        (isCurrentSessionDate && p.sessionId === sessionId))
+  );
 }
 
 /**

@@ -171,11 +171,9 @@ public class FollowUpService {
 
     @Transactional(readOnly = true)
     public List<AuditLogEntity> visits(String customerId) {
+        var actor = access.actor();
         var ids = loans.findByCustomerId(customerId).stream()
-                .filter(l -> {
-                    access.collector(l.getCollectorId());
-                    return true;
-                })
+                .filter(l -> actor.canReverseOrCancel() || actor.userId().equals(l.getCollectorId()))
                 .map(LoanEntity::getId)
                 .toList();
         return audit.findAll().stream()

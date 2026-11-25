@@ -3,6 +3,7 @@ package com.cartera.ui.views;
 import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.print.PrinterJob;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -19,7 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * Diálogo modal para visualizar y compartir el comprobante digital de cobro por WhatsApp o portapapeles.
+ * Diálogo modal para visualizar, imprimir y compartir el comprobante digital de cobro por WhatsApp o portapapeles.
  */
 public class ReceiptDialog extends Stage {
 
@@ -39,17 +40,30 @@ public class ReceiptDialog extends Stage {
             String collectorName,
             String paymentMethod,
             String companyName,
-            String companyPhone
-    ) {}
+            String customerPhone
+    ) {
+        public String companyPhone() {
+            return customerPhone;
+        }
+    }
 
     private final ReceiptData data;
+    private final String receiptTimestamp;
 
     public ReceiptDialog(ReceiptData data, Stage ownerStage) {
+        this(data, null, ownerStage);
+    }
+
+    public ReceiptDialog(ReceiptData data, String receiptTimestamp, Stage ownerStage) {
         this.data = data;
+        this.receiptTimestamp = (receiptTimestamp != null && !receiptTimestamp.isBlank())
+                ? receiptTimestamp
+                : LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
 
         initModality(Modality.WINDOW_MODAL);
         initOwner(ownerStage);
-        setTitle("Comprobante Digital de Pago #" + (data.receiptId().length() > 8 ? data.receiptId().substring(0, 8) : data.receiptId()));
+        String safeId = data.receiptId() != null ? data.receiptId() : "N/A";
+        setTitle("Comprobante Digital de Pago #" + (safeId.length() > 8 ? safeId.substring(0, 8) : safeId));
         setResizable(false);
 
         buildUI();
@@ -59,14 +73,17 @@ public class ReceiptDialog extends Stage {
         VBox root = new VBox(16);
         root.setPadding(new Insets(24));
         root.setStyle("-fx-background-color: #f1f5f9;");
-        root.setPrefWidth(440);
+        root.setPrefWidth(460);
 
         VBox ticketCard = new VBox(8);
         ticketCard.setAlignment(Pos.CENTER);
         ticketCard.setPadding(new Insets(20));
         ticketCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-border-color: #e2e8f0; -fx-border-radius: 12; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 20, 0, 0, 4);");
 
-        String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+        String safeId = data.receiptId() != null && !data.receiptId().isBlank() ? data.receiptId() : "N/A";
+        String shortId = safeId.substring(0, Math.min(8, safeId.length())).toUpperCase();
+        BigDecimal safePaid = data.amountPaid() != null ? data.amountPaid() : BigDecimal.ZERO;
+        BigDecimal safeBalance = data.remainingBalance() != null ? data.remainingBalance() : BigDecimal.ZERO;
 
         Label company = new Label(data.companyName() != null && !data.companyName().isBlank() ? data.companyName().toUpperCase() : "SISTEMA DE CARTERA");
         company.setStyle("-fx-text-fill: #111827; -fx-font-weight: bold; -fx-font-size: 15px; -fx-font-family: 'Consolas', monospace;");
@@ -80,12 +97,12 @@ public class ReceiptDialog extends Stage {
         VBox details = new VBox(4);
         details.setAlignment(Pos.CENTER_LEFT);
         details.getChildren().addAll(
-                createTicketLine("Fecha/Hora:", now),
-                createTicketLine("Recibo No:", data.receiptId().substring(0, Math.min(8, data.receiptId().length())).toUpperCase()),
-                createTicketLine("Cliente:", data.customerName()),
-                createTicketLine("Documento:", data.customerDoc()),
-                createTicketLine("Método:", data.paymentMethod()),
-                createTicketLine("Cobrador:", data.collectorName())
+                createTicketLine("Fecha/Hora:", receiptTimestamp),
+                createTicketLine("Recibo No:", shortId),
+                createTicketLine("Cliente:", data.customerName() != null ? data.customerName() : "-"),
+                createTicketLine("Documento:", data.customerDoc() != null ? data.customerDoc() : "-"),
+                createTicketLine("Método:", data.paymentMethod() != null ? data.paymentMethod() : "EFECTIVO"),
+                createTicketLine("Cobrador:", data.collectorName() != null ? data.collectorName() : "Cobrador de Ruta")
         );
 
         Label divider2 = new Label("----------------------------------------");
@@ -94,15 +111,15 @@ public class ReceiptDialog extends Stage {
         VBox financial = new VBox(4);
         financial.setAlignment(Pos.CENTER_LEFT);
         financial.getChildren().addAll(
-                createTicketLine("VALOR PAGADO:", CURRENCY.format(data.amountPaid()), true),
+                createTicketLine("VALOR PAGADO:", CURRENCY.format(safePaid), true),
                 createTicketLine("Cuotas aplicadas:", String.valueOf(data.installmentsAffected())),
-                createTicketLine("SALDO RESTANTE:", CURRENCY.format(data.remainingBalance()), true)
+                createTicketLine("SALDO RESTANTE:", CURRENCY.format(safeBalance), true)
         );
 
         Label divider3 = new Label("----------------------------------------");
         divider3.setStyle("-fx-text-fill: #9ca3af; -fx-font-family: 'Consolas', monospace;");
 
-        Label footer = new Label("¡Gracias por su puntual cumplimiento!\nComprobante digital listo para enviar por WhatsApp.");
+        Label footer = new Label("¡Gracias por su puntual cumplimiento!\nComprobante digital oficial.");
         footer.setStyle("-fx-text-fill: #6b7280; -fx-font-size: 10px; -fx-text-alignment: center; -fx-font-family: 'Consolas', monospace;");
 
         ticketCard.getChildren().addAll(company, sub, divider1, details, divider2, financial, divider3, footer);
@@ -112,45 +129,77 @@ public class ReceiptDialog extends Stage {
         lblCopied.setManaged(false);
         lblCopied.setWrapText(true);
 
-        HBox actions = new HBox(10);
+        HBox actions = new HBox(8);
         actions.setAlignment(Pos.CENTER);
 
-        Button btnWhatsApp = new Button("Enviar Recibo por WhatsApp");
-        btnWhatsApp.setStyle("-fx-background-color: #16a34a; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 14; -fx-background-radius: 8; -fx-cursor: hand;");
+        Button btnWhatsApp = new Button("Enviar WhatsApp");
+        btnWhatsApp.setStyle("-fx-background-color: #16a34a; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 12; -fx-background-radius: 8; -fx-cursor: hand;");
         btnWhatsApp.setOnAction(e -> {
             String message = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
                     data.companyName(),
-                    data.receiptId(),
+                    safeId,
                     data.customerName(),
                     data.customerDoc(),
-                    data.amountPaid(),
-                    data.remainingBalance(),
+                    safePaid,
+                    safeBalance,
                     data.installmentsAffected(),
                     data.paymentMethod(),
                     data.collectorName(),
-                    now
+                    receiptTimestamp
             );
-            WhatsAppReceiptUtil.sendViaWhatsApp(data.companyPhone(), message);
-            lblCopied.setText("Recibo copiado y enviado a WhatsApp.");
-            lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+            boolean opened = WhatsAppReceiptUtil.sendViaWhatsApp(data.customerPhone(), message);
+            if (opened) {
+                lblCopied.setText("Recibo copiado y enviado a WhatsApp.");
+                lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+            } else {
+                lblCopied.setText("Texto copiado al portapapeles, pero no se pudo abrir WhatsApp automáticamente. Verifique el número o el navegador.");
+                lblCopied.setStyle("-fx-text-fill: #b45309; -fx-background-color: #fffbeb; -fx-border-color: #fde68a; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+            }
             lblCopied.setVisible(true);
             lblCopied.setManaged(true);
         });
 
-        Button btnCopy = new Button("Copiar Texto");
+        Button btnPrint = new Button("Imprimir");
+        btnPrint.getStyleClass().add("btn-secondary");
+        btnPrint.setOnAction(e -> {
+            try {
+                PrinterJob job = PrinterJob.createPrinterJob();
+                if (job == null) {
+                    lblCopied.setText("No se encontró ninguna impresora disponible en el equipo.");
+                    lblCopied.setStyle("-fx-text-fill: #b45309; -fx-background-color: #fffbeb; -fx-border-color: #fde68a; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+                } else if (job.showPrintDialog(this)) {
+                    boolean printed = job.printPage(ticketCard);
+                    if (printed) {
+                        job.endJob();
+                        lblCopied.setText("Comprobante enviado a la impresora.");
+                        lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+                    } else {
+                        lblCopied.setText("No se pudo imprimir el comprobante.");
+                        lblCopied.setStyle("-fx-text-fill: #dc2626; -fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+                    }
+                }
+            } catch (Exception ex) {
+                lblCopied.setText("Error al imprimir: " + ex.getMessage());
+                lblCopied.setStyle("-fx-text-fill: #dc2626; -fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+            }
+            lblCopied.setVisible(true);
+            lblCopied.setManaged(true);
+        });
+
+        Button btnCopy = new Button("Copiar");
         btnCopy.getStyleClass().add("btn-secondary");
         btnCopy.setOnAction(e -> {
             String message = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
                     data.companyName(),
-                    data.receiptId(),
+                    safeId,
                     data.customerName(),
                     data.customerDoc(),
-                    data.amountPaid(),
-                    data.remainingBalance(),
+                    safePaid,
+                    safeBalance,
                     data.installmentsAffected(),
                     data.paymentMethod(),
                     data.collectorName(),
-                    now
+                    receiptTimestamp
             );
             Clipboard clipboard = Clipboard.getSystemClipboard();
             ClipboardContent content = new ClipboardContent();
@@ -167,12 +216,13 @@ public class ReceiptDialog extends Stage {
         btnClose.getStyleClass().add("btn-secondary");
         btnClose.setOnAction(e -> close());
 
-        actions.getChildren().addAll(btnWhatsApp, btnCopy, btnClose);
+        actions.getChildren().addAll(btnWhatsApp, btnPrint, btnCopy, btnClose);
 
         root.getChildren().addAll(ticketCard, lblCopied, actions);
 
         var scene = new Scene(root);
-        scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
+        var css = getClass().getResource("/ui/theme.css");
+        if (css != null) scene.getStylesheets().add(css.toExternalForm());
         setScene(scene);
     }
 

@@ -142,29 +142,97 @@ public class SupabaseRegistryClient {
         return Optional.empty();
     }
 
-    public List<JsonNode> fetchOfficeRows(String supabaseUrl, String apiKey, String table, String officeId) throws Exception {
+    public Optional<JsonNode> fetchOfficeSettings(String supabaseUrl, String apiKey, String officeId) throws Exception {
         validateConnection(supabaseUrl, apiKey);
         String encoded = URLEncoder.encode(officeId.trim(), StandardCharsets.UTF_8);
-        String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/" + table + "?office_id=eq." + encoded;
+        String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/offices?id=eq." + encoded + "&select=settings&limit=1";
 
         HttpRequest req = baseRequest(url, apiKey, activeSessionToken, null).GET().build();
         HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
         if (resp.statusCode() >= 400) {
-            throw new IllegalStateException("Error descargando " + table + " (" + resp.statusCode() + "): " + resp.body());
+            return Optional.empty();
         }
-
         JsonNode arr = objectMapper.readTree(resp.body());
+        if (arr.isArray() && !arr.isEmpty()) {
+            JsonNode settings = arr.get(0).path("settings");
+            if (settings != null && settings.isObject()) {
+                return Optional.of(settings);
+            }
+        }
+        return Optional.empty();
+    }
+
+    public void patchOfficeSettings(String supabaseUrl, String apiKey, String officeId, ObjectNode settings) throws Exception {
+        if (settings == null) return;
+        validateConnection(supabaseUrl, apiKey);
+        String encoded = URLEncoder.encode(officeId.trim(), StandardCharsets.UTF_8);
+        String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/offices?id=eq." + encoded;
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.set("settings", settings);
+        body.put("updated_at", java.time.Instant.now().toString());
+
+        HttpRequest req = baseRequest(url, apiKey, activeSessionToken, null)
+                .header("Prefer", "return=minimal")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() >= 400) {
+            throw new IllegalStateException("Error actualizando configuración de oficina (" + resp.statusCode() + "): " + resp.body());
+        }
+    }
+
+    public List<JsonNode> fetchOfficeRows(String supabaseUrl, String apiKey, String table, String officeId) throws Exception {
+        validateConnection(supabaseUrl, apiKey);
+        String encoded = URLEncoder.encode(officeId.trim(), StandardCharsets.UTF_8);
+        String baseUrl = normalizeBaseUrl(supabaseUrl) + "/rest/v1/" + table + "?office_id=eq." + encoded + "&order=id.asc";
+
+        final int pageSize = 1000;
         List<JsonNode> out = new ArrayList<>();
-        if (arr.isArray()) {
-            arr.forEach(out::add);
+        int offset = 0;
+        while (true) {
+            int end = offset + pageSize - 1;
+            HttpRequest req = baseRequest(baseUrl, apiKey, activeSessionToken, null)
+                    .header("Range-Unit", "items")
+                    .header("Range", offset + "-" + end)
+                    .GET()
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() == 416) {
+                // Range not satisfiable: exact boundary reached on previous page
+                break;
+            }
+            if (resp.statusCode() >= 400) {
+                throw new IllegalStateException("Error descargando " + table + " (" + resp.statusCode() + "): " + resp.body());
+            }
+
+            JsonNode arr = objectMapper.readTree(resp.body());
+            int fetched = 0;
+            if (arr.isArray()) {
+                for (JsonNode n : arr) {
+                    out.add(n);
+                    fetched++;
+                }
+            }
+            if (fetched < pageSize) {
+                break;
+            }
+            offset += pageSize;
         }
         return out;
     }
 
     public void upsertRowsBatch(String supabaseUrl, String apiKey, String table, List<ObjectNode> rows, boolean ignoreDuplicates) throws Exception {
+        upsertRowsBatch(supabaseUrl, apiKey, table, rows, ignoreDuplicates, null);
+    }
+
+    public void upsertRowsBatch(String supabaseUrl, String apiKey, String table, List<ObjectNode> rows, boolean ignoreDuplicates, String onConflict) throws Exception {
         if (rows == null || rows.isEmpty()) return;
         validateConnection(supabaseUrl, apiKey);
-        String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/" + table;
+        String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/" + table
+                + (onConflict != null && !onConflict.isBlank()
+                ? "?on_conflict=" + URLEncoder.encode(onConflict.trim(), StandardCharsets.UTF_8)
+                : "");
         String prefer = ignoreDuplicates
                 ? "resolution=ignore-duplicates,return=minimal"
                 : "resolution=merge-duplicates,return=minimal";

@@ -33,6 +33,7 @@ import {
 } from 'lucide-react-native';
 import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
 import { supabaseSyncService } from '../../../infrastructure/sync/supabase-client';
+import { cloudSyncEngine } from '../../../infrastructure/sync/cloud-sync';
 import { verifyPassword } from '../../../core/utils/security';
 import { COLORS, FONT_FAMILY } from '../../theme/colors';
 import {
@@ -146,6 +147,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
         return;
       }
 
+      const existingCfg = localStore.getOfficeConfig();
+      const localOfficeId = (existingCfg.officeId || '').trim();
+      const hasLocalPortfolio =
+        localStore.getCustomers().length > 0 ||
+        localStore.getLoans().length > 0 ||
+        localStore.getPayments().length > 0;
+      // NUNCA sobrescribir datos locales no sincronizados cuando el usuario re-autentica la MISMA oficina
+      const preserveLocalSameOffice =
+        hasLocalPortfolio && (!localOfficeId || localOfficeId === res.officeId);
+
       await localStore.applyLinkedOfficeBundle({
         officeId: res.officeId,
         activationCode: res.activationCode || '',
@@ -158,8 +169,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
         users: res.users || [],
         routes: res.routes || [],
         portfolio: res.portfolio,
-        preserveLocalPortfolio: false,
+        preserveLocalPortfolio: preserveLocalSameOffice,
       });
+
+      if (preserveLocalSameOffice) {
+        // Subir primero las novedades locales y luego fusionar desde la nube
+        cloudSyncEngine.syncBidirectional().catch(() => {});
+      }
 
       if (rememberPassword) {
         safeStorage.setItem(
@@ -237,6 +253,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
         FORBIDDEN_DEFAULT_PASSWORDS.has(cleanPass.toLowerCase()) ||
         !verifyPassword(cleanPass, storedPassword)
       ) {
+        if (supabaseSyncService.isConnected()) {
+          await handleCloudCredentialLogin(cleanUser, cleanPass);
+          return;
+        }
         setErrorMessage('Credenciales incorrectas. Verifica tu usuario y contraseña.');
         triggerShake();
         return;
@@ -252,24 +272,34 @@ export const LoginView: React.FC<LoginViewProps> = ({
       }
 
       // Si este dispositivo no tiene token de sesión RLS o le falta officeId, autenticar en segundo plano conservando datos locales
+      const currentCfg = localStore.getOfficeConfig();
       if (
-        (!localStore.getOfficeConfig().officeId?.trim() || !localStore.getOfficeConfig().cloudSessionToken?.trim()) &&
+        (!currentCfg.officeId?.trim() || !currentCfg.cloudSessionToken?.trim()) &&
         supabaseSyncService.isConnected()
       ) {
         try {
-          const cloudCheck = await supabaseSyncService.loginWithCloudCredentials(cleanUser, cleanPass);
-          if (cloudCheck.ok && cloudCheck.officeId) {
+          const cloudCheck = await supabaseSyncService.reauthenticateCloudSession(cleanUser, cleanPass);
+          const localOfficeId = (currentCfg.officeId || '').trim();
+          if (
+            cloudCheck.ok &&
+            cloudCheck.officeId &&
+            cloudCheck.sessionToken &&
+            (!localOfficeId || localOfficeId === cloudCheck.officeId)
+          ) {
             await localStore.updateOfficeConfig({
               officeId: cloudCheck.officeId,
-              activationCode: cloudCheck.activationCode || '',
+              activationCode: cloudCheck.activationCode || currentCfg.activationCode || '',
               licenseStatus: cloudCheck.licenseStatus || 'ACTIVE',
               licensePlan: cloudCheck.licensePlan || 'LIFETIME',
               licenseExpiresAt: cloudCheck.licenseExpiresAt ?? null,
-              cloudSessionToken: cloudCheck.sessionToken || '',
+              cloudSessionToken: cloudCheck.sessionToken,
             });
           }
         } catch {}
       }
+
+      // Disparar sincronización inmediata (PUSH-first) tras iniciar sesión
+      cloudSyncEngine.syncNowIfAutoEnabled().catch(() => {});
 
       // El sistema identifica automáticamente si es Administrador o a qué Ruta pertenece el cobrador
       onLoginSuccess(matchedUser, rememberPassword);

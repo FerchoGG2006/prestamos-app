@@ -4,6 +4,7 @@ import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.entity.PaymentEntity;
+import com.cartera.infrastructure.persistence.repository.AppUserRepository;
 import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
@@ -48,6 +49,14 @@ public class ReportsView extends VBox {
     private final AuditLogRepository auditLogRepository;
     private final ExcelReportExporter excelReportExporter;
     private final Stage ownerStage;
+    private AppUserRepository appUserRepository;
+
+    public void setAppUserRepository(AppUserRepository appUserRepository) {
+        this.appUserRepository = appUserRepository;
+        if (auditLogRepository != null) {
+            auditView = new AuditView(auditLogRepository, appUserRepository, true);
+        }
+    }
 
     private AuditView auditView;
     private StackPane contentArea;
@@ -63,10 +72,10 @@ public class ReportsView extends VBox {
     public record LoanReportItem(
             String loanId,
             String customerName,
-            String principal,
-            String totalAgreed,
-            String paidAmount,
-            String balance,
+            BigDecimal principal,
+            BigDecimal totalAgreed,
+            BigDecimal paidAmount,
+            BigDecimal balance,
             String status
     ) {}
 
@@ -111,7 +120,6 @@ public class ReportsView extends VBox {
 
         buildHeader();
         buildContentArea();
-        refresh();
     }
 
     private void buildHeader() {
@@ -162,7 +170,12 @@ public class ReportsView extends VBox {
 
             File dest = chooser.showSaveDialog(ownerStage);
             if (dest != null) {
-                Path savedPath = excelReportExporter.exportAccountingWorkbook(dest.toPath());
+                Path targetPath = dest.toPath();
+                if (!targetPath.getFileName().toString().toLowerCase().endsWith(".xlsx")) {
+                    targetPath = targetPath.resolveSibling(targetPath.getFileName() + ".xlsx");
+                }
+                String activeRoute = UserSessionContext.getSelectedRouteId();
+                Path savedPath = excelReportExporter.exportAccountingWorkbook(targetPath, activeRoute);
                 Alert ok = new Alert(Alert.AlertType.INFORMATION);
                 if (ownerStage != null) ok.initOwner(ownerStage);
                 ok.setTitle("Exportación Contable Completada");
@@ -178,11 +191,23 @@ public class ReportsView extends VBox {
                 );
                 ok.showAndWait();
 
-                try {
-                    if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
-                        Desktop.getDesktop().open(savedPath.toFile());
+                final File fileToOpen = savedPath.toFile();
+                Thread opener = new Thread(() -> {
+                    try {
+                        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                            Desktop.getDesktop().open(fileToOpen);
+                        }
+                    } catch (Exception openEx) {
+                        javafx.application.Platform.runLater(() -> {
+                            Alert warn = new Alert(Alert.AlertType.WARNING,
+                                    "El archivo Excel se guardó correctamente, pero no se pudo abrir automáticamente: " + openEx.getMessage());
+                            if (ownerStage != null) warn.initOwner(ownerStage);
+                            warn.showAndWait();
+                        });
                     }
-                } catch (Exception ignored) {}
+                }, "kredia-open-excel");
+                opener.setDaemon(true);
+                opener.start();
             }
         } catch (Exception ex) {
             Alert err = new Alert(Alert.AlertType.ERROR, "Error al exportar a Excel: " + ex.getMessage());
@@ -216,8 +241,10 @@ public class ReportsView extends VBox {
         reportsContainer.getChildren().addAll(buildMetrics(), buildTableCard());
 
         if (auditLogRepository != null) {
-            auditView = new AuditView(auditLogRepository);
-            auditView.setPadding(new Insets(0));
+            auditView = new AuditView(auditLogRepository, appUserRepository, true);
+        } else if (btnTabAudit != null) {
+            btnTabAudit.setVisible(false);
+            btnTabAudit.setManaged(false);
         }
 
         contentArea.getChildren().setAll(reportsContainer);
@@ -267,38 +294,31 @@ public class ReportsView extends VBox {
         colCust.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().customerName()));
         colCust.setPrefWidth(180);
 
-        TableColumn<LoanReportItem, String> colPrin = new TableColumn<>("CAPITAL");
-        colPrin.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().principal()));
-        colPrin.setPrefWidth(120);
+        TableColumn<LoanReportItem, BigDecimal> colPrin = createMoneyCol("CAPITAL", LoanReportItem::principal);
+        TableColumn<LoanReportItem, BigDecimal> colTot = createMoneyCol("TOTAL PACTADO", LoanReportItem::totalAgreed);
+        TableColumn<LoanReportItem, BigDecimal> colPaid = createMoneyCol("TOTAL ABONADO", LoanReportItem::paidAmount);
+        TableColumn<LoanReportItem, BigDecimal> colBal = createMoneyCol("SALDO RESTANTE", LoanReportItem::balance);
 
-        TableColumn<LoanReportItem, String> colTot = new TableColumn<>("TOTAL PACTADO");
-        colTot.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().totalAgreed()));
-        colTot.setPrefWidth(120);
-
-        TableColumn<LoanReportItem, String> colPaid = new TableColumn<>("TOTAL ABONADO");
-        colPaid.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().paidAmount()));
-        colPaid.setPrefWidth(120);
-
-        TableColumn<LoanReportItem, String> colBal = new TableColumn<>("SALDO RESTANTE");
-        colBal.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().balance()));
-        colBal.setPrefWidth(120);
-
-        TableColumn<LoanReportItem, LoanReportItem> colSt = new TableColumn<>("ESTADO");
-        colSt.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
+        TableColumn<LoanReportItem, String> colSt = new TableColumn<>("ESTADO");
+        colSt.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().status() != null ? d.getValue().status() : ""));
         colSt.setCellFactory(col -> new TableCell<>() {
             @Override
-            protected void updateItem(LoanReportItem item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
+            protected void updateItem(String statusVal, boolean empty) {
+                super.updateItem(statusVal, empty);
+                if (empty || statusVal == null) {
                     setText(null);
                     setGraphic(null);
                 } else {
-                    Label badge = new Label(item.status().toUpperCase());
-                    String st = item.status().toUpperCase();
-                    if (st.contains("CANCELADO") || st.contains("PAGADO")) {
+                    String st = statusVal.toUpperCase();
+                    Label badge = new Label(st);
+                    if (st.contains("FINALIZADO") || st.contains("COMPLETADO") || st.contains("PAGADO") || st.contains("CANCELADO")) {
                         badge.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    } else if (st.contains("RENOVADO")) {
+                        badge.setStyle("-fx-background-color: #eef2ff; -fx-text-fill: #4338ca; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
                     } else if (st.contains("ACTIVO")) {
                         badge.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #059669; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    } else if (st.contains("ANULADO")) {
+                        badge.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #991b1b; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
                     } else if (st.contains("MORA")) {
                         badge.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-padding: 3 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
                     } else {
@@ -319,6 +339,19 @@ public class ReportsView extends VBox {
         return tableCard;
     }
 
+    private TableColumn<LoanReportItem, BigDecimal> createMoneyCol(String title, java.util.function.Function<LoanReportItem, BigDecimal> extractor) {
+        TableColumn<LoanReportItem, BigDecimal> col = new TableColumn<>(title);
+        col.setCellValueFactory(d -> new SimpleObjectProperty<>(extractor.apply(d.getValue())));
+        col.setCellFactory(c -> new TableCell<>() {
+            @Override protected void updateItem(BigDecimal val, boolean empty) {
+                super.updateItem(val, empty);
+                setText(empty || val == null ? null : CURRENCY.format(val));
+            }
+        });
+        col.setPrefWidth(120);
+        return col;
+    }
+
     public void refresh() {
         String selectedRoute = UserSessionContext.getSelectedRouteId();
         boolean filterRoute = selectedRoute != null && !"ALL".equalsIgnoreCase(selectedRoute);
@@ -326,17 +359,26 @@ public class ReportsView extends VBox {
         List<LoanEntity> loans = loanRepository.findAll().stream()
                 .filter(l -> !filterRoute || selectedRoute.equalsIgnoreCase(l.getRouteId()))
                 .toList();
-        List<InstallmentEntity> installments = installmentRepository.findAll();
-        List<PaymentEntity> payments = paymentRepository.findAll();
+        var filteredLoanIds = loans.stream().map(LoanEntity::getId).collect(java.util.stream.Collectors.toSet());
+        var activeLoanIds = loans.stream()
+                .filter(l -> "ACTIVO".equalsIgnoreCase(l.getStatus()))
+                .map(LoanEntity::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        var instByLoan = installmentRepository.findAll().stream()
+                .filter(i -> filteredLoanIds.contains(i.getLoanId()))
+                .collect(java.util.stream.Collectors.groupingBy(InstallmentEntity::getLoanId));
+        List<PaymentEntity> payments = paymentRepository.findAll().stream()
+                .filter(p -> filteredLoanIds.contains(p.getLoanId()))
+                .toList();
         var customerMap = customerRepository.findAll().stream()
                 .collect(java.util.stream.Collectors.toMap(CustomerEntity::getId, CustomerEntity::getFullName, (a, b) -> a));
 
         BigDecimal totalPrincipal = loans.stream()
-                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()))
+                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()) && !"CANCELLED".equalsIgnoreCase(l.getStatus()))
                 .map(LoanEntity::getPrincipal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalInterest = loans.stream()
-                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()))
+                .filter(l -> !"ANULADO".equalsIgnoreCase(l.getStatus()) && !"CANCELLED".equalsIgnoreCase(l.getStatus()))
                 .map(LoanEntity::getInterestAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalCollected = payments.stream()
@@ -345,9 +387,12 @@ public class ReportsView extends VBox {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         String todayStr = LocalDate.now().toString();
-        BigDecimal totalOverdue = installments.stream()
+        BigDecimal totalOverdue = instByLoan.entrySet().stream()
+                .filter(e -> activeLoanIds.contains(e.getKey()))
+                .flatMap(e -> e.getValue().stream())
+                .filter(i -> !"ANULADA".equalsIgnoreCase(i.getStatus()))
                 .filter(i -> i.getPendingAmount() != null && i.getPendingAmount().compareTo(BigDecimal.ZERO) > 0)
-                .filter(i -> i.getDueDate().compareTo(todayStr) < 0)
+                .filter(i -> i.getDueDate() != null && i.getDueDate().compareTo(todayStr) < 0)
                 .map(InstallmentEntity::getPendingAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -358,21 +403,24 @@ public class ReportsView extends VBox {
 
         var items = loans.stream().map(l -> {
             String cName = customerMap.getOrDefault(l.getCustomerId(), "Cliente #" + l.getCustomerId());
-            BigDecimal paid = installments.stream()
-                    .filter(i -> l.getId().equals(i.getLoanId()))
-                    .map(i -> i.getPaidAmount() != null ? i.getPaidAmount() : BigDecimal.ZERO)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal balance = "ANULADO".equalsIgnoreCase(l.getStatus())
+            boolean isCancelled = "ANULADO".equalsIgnoreCase(l.getStatus()) || "CANCELLED".equalsIgnoreCase(l.getStatus());
+            BigDecimal paid = isCancelled
+                    ? BigDecimal.ZERO
+                    : instByLoan.getOrDefault(l.getId(), List.of()).stream()
+                            .filter(i -> !"ANULADA".equalsIgnoreCase(i.getStatus()))
+                            .map(i -> i.getPaidAmount() != null ? i.getPaidAmount() : BigDecimal.ZERO)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal balance = isCancelled
                     ? BigDecimal.ZERO
                     : l.getTotalAgreed().subtract(paid).max(BigDecimal.ZERO);
 
             return new LoanReportItem(
                     l.getId(),
                     cName,
-                    CURRENCY.format(l.getPrincipal()),
-                    CURRENCY.format(l.getTotalAgreed()),
-                    CURRENCY.format(paid),
-                    CURRENCY.format(balance),
+                    l.getPrincipal() != null ? l.getPrincipal() : BigDecimal.ZERO,
+                    l.getTotalAgreed() != null ? l.getTotalAgreed() : BigDecimal.ZERO,
+                    paid,
+                    balance,
                     l.getStatus()
             );
         }).toList();

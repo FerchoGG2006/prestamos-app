@@ -54,6 +54,11 @@ public class CustomersView extends VBox {
     public void setOperationalServices(com.cartera.customers.application.FollowUpService follow,com.cartera.customers.application.AttachmentService files){followUp=follow;attachments=files;}
     private com.cartera.customers.application.CustomerLifecycleService lifecycle;
     public void setLifecycleService(com.cartera.customers.application.CustomerLifecycleService service) { lifecycle=service; }
+    private com.cartera.customers.application.CreateCustomerWithLoanUseCase createCustomerWithLoanUseCase;
+    public void setCreateCustomerWithLoanUseCase(com.cartera.customers.application.CreateCustomerWithLoanUseCase useCase) { this.createCustomerWithLoanUseCase = useCase; }
+    private Runnable onDataChanged;
+    public void setOnDataChanged(Runnable onDataChanged) { this.onDataChanged = onDataChanged; }
+
     private final CustomerRepository customerRepository;
     private final com.cartera.customers.application.CreateCustomerUseCase createCustomerUseCase;
     private final LoanRepository loanRepository;
@@ -71,15 +76,45 @@ public class CustomersView extends VBox {
     private final Stage ownerStage;
 
     private final ObservableList<CustomerEntity> customerList = FXCollections.observableArrayList();
+    private FilteredList<CustomerEntity> filteredCustomers;
+    private TextField searchField;
     private final TableView<CustomerEntity> table = new TableView<>();
     private final Label lblFooterTotal = new Label();
+    private Map<String, String> routeNameCache = new HashMap<>();
 
     private StackPane contentArea;
     private SplitPane splitPane;
     private VBox detailCard;
+    private HBox segmentBar;
     private Button btnTabCustomers;
     private Button btnTabLoans;
     private java.util.function.Consumer<String> onOpenCreditHistory;
+    private java.util.function.Consumer<String> onOpenCustomer360;
+
+    public void setOnOpenCustomer360(java.util.function.Consumer<String> onOpenCustomer360) {
+        this.onOpenCustomer360 = onOpenCustomer360;
+    }
+
+    private void notifyDataChanged() {
+        if (onDataChanged != null) {
+            onDataChanged.run();
+        }
+    }
+
+    private void showAlert(Alert.AlertType type, String message) {
+        Alert alert = new Alert(type, message);
+        alert.initOwner(ownerStage);
+        alert.showAndWait();
+    }
+
+    public void clearFilters() {
+        if (searchField != null) {
+            searchField.clear();
+        }
+        table.getSelectionModel().clearSelection();
+        showPlaceholderDetail();
+        showSection("customers");
+    }
 
     public void setOnOpenCreditHistory(java.util.function.Consumer<String> onOpenCreditHistory) {
         this.onOpenCreditHistory = onOpenCreditHistory;
@@ -167,7 +202,6 @@ public class CustomersView extends VBox {
 
         buildHeader();
         buildContentArea();
-        refresh();
     }
 
     private void buildHeader() {
@@ -183,7 +217,7 @@ public class CustomersView extends VBox {
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
         // Segmented Control
-        HBox segmentBar = new HBox(4);
+        segmentBar = new HBox(4);
         segmentBar.getStyleClass().add("segment-bar");
         segmentBar.setAlignment(Pos.CENTER);
 
@@ -201,10 +235,13 @@ public class CustomersView extends VBox {
         btnNewCustomer.getStyleClass().add("btn-primary");
         btnNewCustomer.setOnAction(e -> {
             if (createCustomerUseCase != null) {
-                new CustomerDialog(createCustomerUseCase, createLoanUseCase, settingRepository, routeRepository, ownerStage, c -> {
+                var dlg = new CustomerDialog(createCustomerUseCase, createLoanUseCase, settingRepository, routeRepository, ownerStage, c -> {
                     refresh();
                     if (loansView != null) loansView.refresh();
-                }).showAndWait();
+                    notifyDataChanged();
+                });
+                dlg.setCreateCustomerWithLoanUseCase(createCustomerWithLoanUseCase);
+                dlg.showAndWait();
             }
         });
 
@@ -212,7 +249,16 @@ public class CustomersView extends VBox {
         btnRefresh.getStyleClass().add("btn-secondary");
         btnRefresh.setOnAction(e -> refresh());
 
-        Button alerts=new Button("Compromisos");alerts.setOnAction(e->{try{if(followUp==null)throw new IllegalStateException("Servicio no disponible.");CustomerOperationsDialog.showAlerts(ownerStage,followUp);}catch(Exception ex){new Alert(Alert.AlertType.ERROR,ex.getMessage()).showAndWait();}});
+        Button alerts = new Button("Compromisos");
+        alerts.getStyleClass().add("btn-secondary");
+        alerts.setOnAction(e -> {
+            try {
+                if (followUp == null) throw new IllegalStateException("Servicio no disponible.");
+                CustomerOperationsDialog.showAlerts(ownerStage, followUp, customerRepository);
+            } catch (Exception ex) {
+                showAlert(Alert.AlertType.ERROR, ex.getMessage());
+            }
+        });
         top.getChildren().addAll(titleBox, segmentBar, btnNewCustomer, alerts, btnRefresh);
         getChildren().add(top);
     }
@@ -221,7 +267,11 @@ public class CustomersView extends VBox {
         btnTabCustomers.getStyleClass().remove("segment-btn-active");
         btnTabLoans.getStyleClass().remove("segment-btn-active");
 
-        if ("loans".equalsIgnoreCase(section)) {
+        boolean isCollector = UserSessionContext.getSession()
+                .map(com.cartera.infrastructure.security.UserSession::isCollector)
+                .orElse(false);
+
+        if ("loans".equalsIgnoreCase(section) && !isCollector) {
             btnTabLoans.getStyleClass().add("segment-btn-active");
             if (loansView != null) {
                 loansView.refresh();
@@ -246,24 +296,24 @@ public class CustomersView extends VBox {
         leftPane.getStyleClass().add("table-card");
         leftPane.setPadding(new Insets(14));
 
-        TextField searchField = new TextField();
+        searchField = new TextField();
         searchField.setPromptText("Buscar por nombre, documento o barrio...");
         searchField.getStyleClass().add("search-field");
         searchField.setMaxWidth(Double.MAX_VALUE);
 
-        FilteredList<CustomerEntity> filtered = new FilteredList<>(customerList, p -> true);
+        filteredCustomers = new FilteredList<>(customerList, p -> true);
         searchField.textProperty().addListener((obs, old, val) -> {
-            filtered.setPredicate(c -> {
+            filteredCustomers.setPredicate(c -> {
                 if (val == null || val.isBlank()) return true;
                 String q = val.toLowerCase().trim();
-                return c.getFullName().toLowerCase().contains(q)
-                        || c.getDocumentNumber().toLowerCase().contains(q)
+                return (c.getFullName() != null && c.getFullName().toLowerCase().contains(q))
+                        || (c.getDocumentNumber() != null && c.getDocumentNumber().toLowerCase().contains(q))
                         || (c.getNeighborhood() != null && c.getNeighborhood().toLowerCase().contains(q))
                         || (c.getBusinessName() != null && c.getBusinessName().toLowerCase().contains(q));
             });
-            updateStats(filtered.size());
+            updateStats(filteredCustomers.size());
         });
-        table.setItems(filtered);
+        table.setItems(filteredCustomers);
         table.setPlaceholder(UiLabels.emptyState("Sin clientes registrados", "No hay clientes en esta ruta o búsqueda. Registra uno nuevo con el botón superior."));
 
         buildTableColumns();
@@ -277,17 +327,21 @@ public class CustomersView extends VBox {
 
         leftPane.getChildren().addAll(searchField, table, footer);
 
-        // Panel Derecho: Ficha Detallada
+        // Panel Derecho: Ficha Detallada con scroll
         detailCard = new VBox(16);
-        detailCard.getStyleClass().add("table-card");
         detailCard.setPadding(new Insets(20));
-        detailCard.setPrefWidth(395);
-        detailCard.setMinWidth(330);
+
+        ScrollPane detailScroll = new ScrollPane(detailCard);
+        detailScroll.setFitToWidth(true);
+        detailScroll.getStyleClass().add("table-card");
+        detailScroll.setStyle("-fx-background-color: #ffffff; -fx-background: #ffffff;");
+        detailScroll.setPrefWidth(410);
+        detailScroll.setMinWidth(340);
 
         showPlaceholderDetail();
 
-        splitPane.getItems().addAll(leftPane, detailCard);
-        splitPane.setDividerPositions(0.58);
+        splitPane.getItems().addAll(leftPane, detailScroll);
+        splitPane.setDividerPositions(0.56);
 
         contentArea.getChildren().setAll(splitPane);
         getChildren().add(contentArea);
@@ -365,6 +419,16 @@ public class CustomersView extends VBox {
             }
         });
 
+        table.setRowFactory(tv -> {
+            TableRow<CustomerEntity> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && !row.isEmpty() && onOpenCustomer360 != null) {
+                    onOpenCustomer360.accept(row.getItem().getId());
+                }
+            });
+            return row;
+        });
+
         table.getColumns().addAll(colName, colContact);
     }
 
@@ -386,6 +450,10 @@ public class CustomersView extends VBox {
     }
 
     private void updateDetailCard(CustomerEntity c) {
+        updateDetailCard(c, null);
+    }
+
+    private void updateDetailCard(CustomerEntity c, String preferredLoanId) {
         if (c == null) {
             showPlaceholderDetail();
             return;
@@ -393,6 +461,15 @@ public class CustomersView extends VBox {
 
         detailCard.getChildren().clear();
         detailCard.setAlignment(Pos.TOP_LEFT);
+
+        boolean isInactive = "INACTIVO".equalsIgnoreCase(c.getStatus());
+        boolean isCollector = UserSessionContext.getSession()
+                .map(com.cartera.infrastructure.security.UserSession::isCollector)
+                .orElse(false);
+        boolean allowNewLoans = !isCollector || settingRepository == null
+                || settingRepository.findById("route_allow_new_loans")
+                        .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
+                        .orElse(true);
 
         // Encabezado Ficha
         HBox header = new HBox(12);
@@ -403,40 +480,75 @@ public class CustomersView extends VBox {
         StackPane avatar = new StackPane(lblInitials);
         avatar.setPrefSize(48, 48);
         avatar.setMinSize(48, 48);
-        avatar.setStyle("-fx-background-color: #2563eb; -fx-background-radius: 24;");
+        avatar.setStyle("-fx-background-color: " + (isInactive ? "#94a3b8" : "#2563eb") + "; -fx-background-radius: 24;");
 
         VBox namesBox = new VBox(2);
         Label lblName = new Label(c.getFullName());
         lblName.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 15px; -fx-font-weight: bold;");
-        Label lblDoc = new Label("C.C. " + c.getDocumentNumber() + (c.getRouteId() != null ? " • Ruta: " + c.getRouteId() : ""));
+        Label lblDoc = new Label("C.C. " + c.getDocumentNumber()
+                + (c.getRouteId() != null ? " • Ruta: " + resolveRouteName(c.getRouteId()) : ""));
         lblDoc.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
         namesBox.getChildren().addAll(lblName, lblDoc);
 
         header.getChildren().addAll(avatar, namesBox);
 
-        // Datos de Contacto
+        // Datos de Contacto completos
         VBox contactBox = new VBox(6);
         contactBox.setStyle("-fx-background-color: #f8fafc; -fx-background-radius: 8; -fx-padding: 12; -fx-border-color: #e2e8f0; -fx-border-radius: 8;");
 
         contactBox.getChildren().addAll(
-                createDetailRow("Teléfono:", c.getPhone() != null ? c.getPhone() : "No registrado"),
-                createDetailRow("Dirección:", c.getAddress() != null ? c.getAddress() : "No registrada"),
-                createDetailRow("Barrio:", c.getNeighborhood() != null ? c.getNeighborhood() : "Sin barrio"),
-                createDetailRow("Negocio:", c.getBusinessName() != null ? c.getBusinessName() : "Particular"),
+                createDetailRow("Teléfono:", c.getPhone() != null && !c.getPhone().isBlank() ? c.getPhone() : "No registrado"),
+                createDetailRow("WhatsApp:", c.getAltPhone() != null && !c.getAltPhone().isBlank() ? c.getAltPhone() : "Igual / No registrado"),
+                createDetailRow("Dirección:", c.getAddress() != null && !c.getAddress().isBlank() ? c.getAddress() : "No registrada"),
+                createDetailRow("Barrio:", c.getNeighborhood() != null && !c.getNeighborhood().isBlank() ? c.getNeighborhood() : "Sin barrio"),
+                createDetailRow("Ciudad:", c.getCity() != null && !c.getCity().isBlank() ? c.getCity() : "No registrada"),
+                createDetailRow("Negocio:", c.getBusinessName() != null && !c.getBusinessName().isBlank() ? c.getBusinessName() : "Particular"),
+                createDetailRow("Ocupación:", c.getOccupation() != null && !c.getOccupation().isBlank() ? c.getOccupation() : "No registrada"),
                 createDetailRow("Estado:", c.getStatus() != null ? c.getStatus() : "ACTIVO")
         );
+        if (c.getNotes() != null && !c.getNotes().isBlank()) {
+            contactBox.getChildren().add(createDetailRow("Notas:", c.getNotes()));
+        }
 
-        // Sección de Crédito
+        // Sección de Crédito (soporte multi-crédito activo)
         VBox creditCard = new VBox(10);
         creditCard.setStyle("-fx-background-color: #f8fafc; -fx-background-radius: 10; -fx-padding: 14; -fx-border-color: #e2e8f0; -fx-border-radius: 10;");
 
         List<LoanEntity> customerLoans = (loanRepository != null) ? loanRepository.findByCustomerId(c.getId()) : List.of();
-        LoanEntity activeLoan = customerLoans.stream()
+        List<LoanEntity> activeLoans = customerLoans.stream()
                 .filter(l -> "ACTIVO".equalsIgnoreCase(l.getStatus()))
+                .toList();
+        LoanEntity activeLoan = activeLoans.stream()
+                .filter(l -> preferredLoanId != null && preferredLoanId.equals(l.getId()))
                 .findFirst()
-                .orElse(null);
+                .orElse(activeLoans.isEmpty() ? null : activeLoans.get(0));
 
         if (activeLoan != null) {
+            if (activeLoans.size() > 1) {
+                ComboBox<LoanEntity> cmbActiveLoans = new ComboBox<>(FXCollections.observableArrayList(activeLoans));
+                cmbActiveLoans.setMaxWidth(Double.MAX_VALUE);
+                cmbActiveLoans.setValue(activeLoan);
+                cmbActiveLoans.setConverter(new javafx.util.StringConverter<>() {
+                    @Override
+                    public String toString(LoanEntity l) {
+                        if (l == null) return "";
+                        String shortId = l.getId().length() > 8 ? l.getId().substring(0, 8).toUpperCase() : l.getId();
+                        return "Crédito #" + shortId + " (" + CURRENCY.format(l.getTotalAgreed()) + " · " + l.getFrequency() + ")";
+                    }
+                    @Override
+                    public LoanEntity fromString(String s) { return null; }
+                });
+                cmbActiveLoans.setOnAction(e -> {
+                    LoanEntity chosen = cmbActiveLoans.getValue();
+                    if (chosen != null && !chosen.getId().equals(activeLoan.getId())) {
+                        updateDetailCard(c, chosen.getId());
+                    }
+                });
+                Label lblMulti = new Label("Cliente con " + activeLoans.size() + " créditos activos — Selecciona uno:");
+                lblMulti.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold;");
+                creditCard.getChildren().addAll(lblMulti, cmbActiveLoans);
+            }
+
             List<InstallmentEntity> activeInsts = (installmentRepository != null)
                     ? installmentRepository.findByLoanId(activeLoan.getId())
                     : List.of();
@@ -471,14 +583,17 @@ public class CustomersView extends VBox {
             lblBalVal.setStyle("-fx-text-fill: #059669; -fx-font-size: 20px; -fx-font-weight: bold;");
 
             BigDecimal totalPaid = activeLoan.getTotalAgreed().subtract(currentBalance).max(BigDecimal.ZERO);
-            double loanProgress = activeLoan.getTotalAgreed().compareTo(BigDecimal.ZERO) > 0
-                    ? totalPaid.divide(activeLoan.getTotalAgreed(), 4, java.math.RoundingMode.HALF_UP).doubleValue()
-                    : 0.0;
-            ProgressBar pbLoan = new ProgressBar(Math.min(1.0, Math.max(0.0, loanProgress)));
+            BigDecimal progressPct = activeLoan.getTotalAgreed().compareTo(BigDecimal.ZERO) > 0
+                    ? totalPaid.divide(activeLoan.getTotalAgreed(), 4, java.math.RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO;
+            double loanProgress = Math.min(1.0, Math.max(0.0, progressPct.doubleValue()));
+            ProgressBar pbLoan = new ProgressBar(loanProgress);
             pbLoan.setMaxWidth(Double.MAX_VALUE);
             pbLoan.setPrefHeight(6);
 
-            Label lblAmort = new Label((int) Math.round(loanProgress * 100) + "% amortizado • Pagado: " + CURRENCY.format(totalPaid));
+            int pctInt = progressPct.multiply(BigDecimal.valueOf(100))
+                    .setScale(0, java.math.RoundingMode.HALF_UP).intValue();
+            Label lblAmort = new Label(Math.min(100, Math.max(0, pctInt)) + "% amortizado • Pagado: " + CURRENCY.format(totalPaid));
             lblAmort.setStyle("-fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold;");
 
             Label lblDetails = new Label("Prestado: " + CURRENCY.format(activeLoan.getPrincipal())
@@ -488,114 +603,94 @@ public class CustomersView extends VBox {
             figures.getChildren().addAll(lblBalTitle, lblBalVal, pbLoan, lblAmort, lblDetails);
 
             creditCard.getChildren().addAll(credHeader, figures);
+        } else if (isInactive) {
+            Label inactiveMsg = new Label("Cliente inactivo. Reactívelo para otorgar nuevos créditos.");
+            inactiveMsg.setWrapText(true);
+            inactiveMsg.setStyle("-fx-text-fill: #dc2626; -fx-font-size: 12px; -fx-font-weight: bold;");
+            creditCard.getChildren().add(inactiveMsg);
         } else {
             Label noLoan = new Label("Cliente disponible sin crédito activo.");
             noLoan.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px;");
+            creditCard.getChildren().add(noLoan);
 
-            // Barra de Fecha Fija en una sola línea de párrafo
-            HBox fixedDateBar = new HBox(8);
-            fixedDateBar.setAlignment(Pos.CENTER_LEFT);
-            fixedDateBar.setStyle("-fx-background-color: #eff6ff; -fx-padding: 6 10; -fx-background-radius: 8; -fx-border-color: #bfdbfe; -fx-border-radius: 8;");
+            if (allowNewLoans) {
+                HBox fixedDateBar = new HBox(8);
+                fixedDateBar.setAlignment(Pos.CENTER_LEFT);
+                fixedDateBar.setStyle("-fx-background-color: #eff6ff; -fx-padding: 6 10; -fx-background-radius: 8; -fx-border-color: #bfdbfe; -fx-border-radius: 8;");
 
-            Label lblFixedLabel = new Label("Fecha Fija:");
-            lblFixedLabel.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold;");
+                Label lblFixedLabel = new Label("Fecha Fija:");
+                lblFixedLabel.setStyle("-fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold;");
 
-            DatePicker dpFixed = new DatePicker(LocalDate.now().plusDays(20));
-            dpFixed.setPrefWidth(125);
-            dpFixed.setStyle("-fx-font-size: 11px; -fx-padding: 3 6;");
+                DatePicker dpFixed = new DatePicker(LocalDate.now().plusDays(20));
+                dpFixed.setPrefWidth(125);
+                dpFixed.setStyle("-fx-font-size: 11px; -fx-padding: 3 6;");
 
-            Button btnPill7 = new Button("+7d");
-            btnPill7.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
-            btnPill7.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(7)));
+                Button btnPill7 = new Button("+7d");
+                btnPill7.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
+                btnPill7.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(7)));
 
-            Button btnPill15 = new Button("+15d");
-            btnPill15.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
-            btnPill15.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(15)));
+                Button btnPill15 = new Button("+15d");
+                btnPill15.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
+                btnPill15.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(15)));
 
-            Button btnPill30 = new Button("+30d");
-            btnPill30.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
-            btnPill30.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(30)));
+                Button btnPill30 = new Button("+30d");
+                btnPill30.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 6; -fx-background-color: #dbeafe; -fx-text-fill: #1e40af; -fx-background-radius: 4; -fx-cursor: hand;");
+                btnPill30.setOnAction(e -> dpFixed.setValue(LocalDate.now().plusDays(30)));
 
-            Region spFixed = new Region();
-            HBox.setHgrow(spFixed, Priority.ALWAYS);
+                Region spFixed = new Region();
+                HBox.setHgrow(spFixed, Priority.ALWAYS);
 
-            Button btnApplyFixed = new Button("Crear Préstamo");
-            btnApplyFixed.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
-            btnApplyFixed.setOnAction(e -> {
-                if (createLoanUseCase != null && customerRepository != null) {
-                    var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
-                        refresh();
-                        if (loansView != null) loansView.refresh();
-                    });
-                    dlg.setSelectedCustomer(c.getId());
-                    dlg.setFrequency("FECHA FIJA");
-                    dlg.setStartDate(dpFixed.getValue() != null ? dpFixed.getValue() : LocalDate.now().plusDays(15));
-                    dlg.showAndWait();
-                }
-            });
+                Button btnApplyFixed = new Button("Crear Préstamo");
+                btnApplyFixed.setStyle("-fx-background-color: #2563eb; -fx-text-fill: white; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 4 10; -fx-background-radius: 6; -fx-cursor: hand;");
+                btnApplyFixed.setOnAction(e -> openNewLoanDialog(c, "FECHA FIJA", dpFixed.getValue() != null ? dpFixed.getValue() : LocalDate.now().plusDays(15)));
 
-            fixedDateBar.getChildren().addAll(lblFixedLabel, dpFixed, btnPill7, btnPill15, btnPill30, spFixed, btnApplyFixed);
-            creditCard.getChildren().addAll(noLoan, fixedDateBar);
+                fixedDateBar.getChildren().addAll(lblFixedLabel, dpFixed, btnPill7, btnPill15, btnPill30, spFixed, btnApplyFixed);
+                creditCard.getChildren().add(fixedDateBar);
+            }
         }
 
-        // BARRA DE BOTONES EN UNA SOLA LÍNEA (BOTONES PEQUEÑOS, DE 2 PALABRAS, CON EMOJI)
-        HBox singleLineActionBar = new HBox(6);
-        singleLineActionBar.setAlignment(Pos.CENTER_LEFT);
-        singleLineActionBar.setPadding(new Insets(2, 0, 2, 0));
+        // Barra de acciones con FlowPane (accesible y sin perder botones en scroll)
+        FlowPane actionBar = new FlowPane(6, 6);
+        actionBar.setAlignment(Pos.CENTER_LEFT);
+        actionBar.setPadding(new Insets(2, 0, 2, 0));
 
-        Button btnFixedDate = new Button("Fecha Fija");
-        btnFixedDate.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
-        btnFixedDate.setOnAction(e -> {
-            if (createLoanUseCase != null && customerRepository != null) {
-                var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
-                    refresh();
-                    if (loansView != null) loansView.refresh();
-                });
-                dlg.setSelectedCustomer(c.getId());
-                dlg.setFrequency("FECHA FIJA");
-                dlg.setStartDate(LocalDate.now().plusDays(20));
-                dlg.showAndWait();
-            }
-        });
+        if (!isInactive && allowNewLoans) {
+            Button btnFixedDate = new Button("Fecha Fija");
+            btnFixedDate.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+            btnFixedDate.setOnAction(e -> openNewLoanDialog(c, "FECHA FIJA", LocalDate.now().plusDays(20)));
 
-        Button btnNewCredit = new Button("Nuevo Crédito");
-        btnNewCredit.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f0fdf4; -fx-text-fill: #15803d; -fx-border-color: #bbf7d0; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
-        btnNewCredit.setOnAction(e -> {
-            if (createLoanUseCase != null && customerRepository != null) {
-                var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
-                    refresh();
-                    if (loansView != null) loansView.refresh();
-                });
-                dlg.setSelectedCustomer(c.getId());
-                dlg.showAndWait();
-            }
-        });
+            Button btnNewCredit = new Button("Nuevo Crédito");
+            btnNewCredit.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f0fdf4; -fx-text-fill: #15803d; -fx-border-color: #bbf7d0; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+            btnNewCredit.setOnAction(e -> openNewLoanDialog(c, null, null));
 
-        singleLineActionBar.getChildren().addAll(btnFixedDate, btnNewCredit);
+            actionBar.getChildren().addAll(btnFixedDate, btnNewCredit);
+        }
 
         if (activeLoan != null) {
+            final LoanEntity currentSelectedLoan = activeLoan;
             Button btnRenew = new Button("Renovar Crédito");
             btnRenew.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #eff6ff; -fx-text-fill: #2563eb; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
             btnRenew.setOnAction(e -> {
                 if (renewLoanUseCase != null && installmentRepository != null) {
-                    new RenewLoanDialog(activeLoan, c.getFullName(), renewLoanUseCase, installmentRepository, settingRepository, ownerStage, renewed -> {
+                    new RenewLoanDialog(currentSelectedLoan, c.getFullName(), renewLoanUseCase, installmentRepository, settingRepository, ownerStage, renewed -> {
                         refresh();
                         if (loansView != null) loansView.refresh();
+                        notifyDataChanged();
                     }).showAndWait();
                 }
             });
 
             Button btnPlan = new Button("Ver Cuotas");
             btnPlan.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
-            btnPlan.setOnAction(e -> showInstallmentsModal(activeLoan));
+            btnPlan.setOnAction(e -> showInstallmentsModal(currentSelectedLoan));
 
-            singleLineActionBar.getChildren().addAll(btnRenew, btnPlan);
+            actionBar.getChildren().addAll(btnRenew, btnPlan);
 
             if (UserSessionContext.canCurrentUserReverseOrCancel() && cancelLoanUseCase != null) {
                 Button btnVoid = new Button("Anular Crédito");
                 btnVoid.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
-                btnVoid.setOnAction(e -> promptCancelActiveLoan(activeLoan, c));
-                singleLineActionBar.getChildren().add(btnVoid);
+                btnVoid.setOnAction(e -> promptCancelActiveLoan(currentSelectedLoan, c));
+                actionBar.getChildren().add(btnVoid);
             }
         }
 
@@ -611,63 +706,120 @@ public class CustomersView extends VBox {
         btnEdit.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnEdit.setOnAction(e -> showEditCustomerDialog(c));
 
+        final LoanEntity selectedLoanForWa = activeLoan;
         Button btnWhatsApp = new Button("Enviar WhatsApp");
         btnWhatsApp.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #dcfce7; -fx-text-fill: #166534; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
-        btnWhatsApp.setOnAction(e -> sendAccountStatementViaWhatsApp(c));
+        btnWhatsApp.setOnAction(e -> sendAccountStatementViaWhatsApp(c, selectedLoanForWa));
 
         Button btnMap = new Button("Ver Mapa");
         btnMap.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #e0f2fe; -fx-text-fill: #0369a1; -fx-border-color: #7dd3fc; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
         btnMap.setOnAction(e -> openGoogleMaps(c));
 
-        Button btnDelete = new Button("Dar de baja");
-        btnDelete.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
-        btnDelete.setOnAction(e -> handleDeleteCustomer(c));
+        Button operations = new Button("Seguimiento y archivos");
+        operations.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #f8fafc; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+        operations.setOnAction(e -> {
+            try {
+                if (followUp == null || attachments == null) throw new IllegalStateException("Servicios no disponibles.");
+                new CustomerOperationsDialog(ownerStage, c, followUp, attachments, loanRepository).showAndWait();
+                refresh();
+            } catch (Exception ex) {
+                showAlert(Alert.AlertType.ERROR, ex.getMessage());
+            }
+        });
 
-        Button operations=new Button("Seguimiento y archivos");operations.setOnAction(e->{try{if(followUp==null || attachments==null)throw new IllegalStateException("Servicios no disponibles.");new CustomerOperationsDialog(ownerStage,c,followUp,attachments,loanRepository).showAndWait();refresh();}catch(Exception ex){new Alert(Alert.AlertType.ERROR,ex.getMessage()).showAndWait();}});
-        singleLineActionBar.getChildren().addAll(btnHistory, btnEdit, operations, btnWhatsApp, btnMap);
+        Button btnFicha360 = new Button("Ficha 360°");
+        btnFicha360.setStyle("-fx-font-size: 11px; -fx-padding: 5 12; -fx-background-color: #0d9488; -fx-text-fill: white; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+        btnFicha360.setOnAction(e -> {
+            if (onOpenCustomer360 != null) {
+                onOpenCustomer360.accept(c.getId());
+            }
+        });
+
+        actionBar.getChildren().addAll(btnFicha360, btnHistory, btnEdit, operations, btnWhatsApp, btnMap);
+
         if (UserSessionContext.canCurrentUserReverseOrCancel()) {
-            singleLineActionBar.getChildren().add(btnDelete);
+            if (isInactive) {
+                Button btnReactivate = new Button("Reactivar Cliente");
+                btnReactivate.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+                btnReactivate.setOnAction(e -> handleReactivateCustomer(c));
+                actionBar.getChildren().add(btnReactivate);
+            } else {
+                Button btnDelete = new Button("Dar de baja");
+                btnDelete.setStyle("-fx-font-size: 11px; -fx-padding: 5 10; -fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+                btnDelete.setOnAction(e -> handleDeleteCustomer(c));
+                actionBar.getChildren().add(btnDelete);
+            }
         }
 
-        ScrollPane scrollActionBar = new ScrollPane(singleLineActionBar);
-        scrollActionBar.setFitToHeight(true);
-        scrollActionBar.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        scrollActionBar.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollActionBar.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-border-color: transparent; -fx-padding: 0;");
+        detailCard.getChildren().addAll(header, contactBox, creditCard, actionBar);
+    }
 
-        detailCard.getChildren().addAll(header, contactBox, creditCard, scrollActionBar);
+    private void openNewLoanDialog(CustomerEntity c, String frequency, LocalDate startDate) {
+        if (createLoanUseCase == null || customerRepository == null) return;
+        var dlg = new CreateLoanDialog(createLoanUseCase, customerRepository, settingRepository, loanRepository, routeRepository, ownerStage, created -> {
+            refresh();
+            if (loansView != null) loansView.refresh();
+            notifyDataChanged();
+        });
+        dlg.setAttachmentService(attachments);
+        dlg.setInstallmentRepository(installmentRepository);
+        dlg.setCreateCustomerWithLoanUseCase(createCustomerWithLoanUseCase);
+        dlg.setSelectedCustomer(c.getId());
+        if (frequency != null) dlg.setFrequency(frequency);
+        if (startDate != null) dlg.setStartDate(startDate);
+        dlg.showAndWait();
     }
 
     private void openGoogleMaps(CustomerEntity c) {
         try {
-            String query = (c.getAddress() != null ? c.getAddress() : "")
+            String fallbackCity = settingRepository != null
+                    ? settingRepository.findById("company_city").map(SystemSettingEntity::getSettingValue).orElse("")
+                    : "";
+            String city = (c.getCity() != null && !c.getCity().isBlank()) ? c.getCity() : fallbackCity;
+            String query = ((c.getAddress() != null ? c.getAddress() : "")
                     + " " + (c.getNeighborhood() != null ? c.getNeighborhood() : "")
-                    + " " + (c.getCity() != null ? c.getCity() : "Barranquilla")
-                    + " Colombia";
-            String url = "https://www.google.com/maps/search/?api=1&query=" + URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
+                    + " " + city
+                    + " Colombia").trim();
+            if (query.equalsIgnoreCase("Colombia")) {
+                showAlert(Alert.AlertType.WARNING, "Este cliente no tiene dirección ni barrio registrado para abrir el mapa.");
+                return;
+            }
+            String url = "https://www.google.com/maps/search/?api=1&query=" + URLEncoder.encode(query, StandardCharsets.UTF_8);
             if (Desktop.isDesktopSupported()) {
                 Desktop.getDesktop().browse(URI.create(url));
+            } else {
+                showAlert(Alert.AlertType.WARNING, "El sistema no soporta abrir el navegador automáticamente.");
             }
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            showAlert(Alert.AlertType.ERROR, "No se pudo abrir Google Maps: " + ex.getMessage());
         }
     }
 
-    private void sendAccountStatementViaWhatsApp(CustomerEntity c) {
+    private void sendAccountStatementViaWhatsApp(CustomerEntity c, LoanEntity selectedLoan) {
+        String targetPhone = (c.getAltPhone() != null && !c.getAltPhone().isBlank()) ? c.getAltPhone() : c.getPhone();
+        if (targetPhone == null || targetPhone.isBlank()) {
+            showAlert(Alert.AlertType.WARNING, "El cliente no tiene número de teléfono o WhatsApp registrado.");
+            return;
+        }
         String companyName = settingRepository != null
                 ? settingRepository.findById("company_name").map(SystemSettingEntity::getSettingValue).orElse("SISTEMA DE CARTERA")
                 : "SISTEMA DE CARTERA";
 
-        List<LoanEntity> customerLoans = (loanRepository != null) ? loanRepository.findByCustomerId(c.getId()) : List.of();
-        LoanEntity activeLoan = customerLoans.stream()
-                .filter(l -> "ACTIVO".equalsIgnoreCase(l.getStatus()))
-                .findFirst()
-                .orElse(null);
+        LoanEntity activeLoan = selectedLoan;
+        if (activeLoan == null && loanRepository != null) {
+            activeLoan = loanRepository.findByCustomerId(c.getId()).stream()
+                    .filter(l -> "ACTIVO".equalsIgnoreCase(l.getStatus()))
+                    .findFirst()
+                    .orElse(null);
+        }
 
         if (activeLoan == null) {
             String msg = "*ESTADO DE CUENTA — " + companyName + "*\n"
                     + "*Cliente:* " + c.getFullName() + "\n"
                     + "Actualmente usted se encuentra *A PAZ Y SALVO* sin créditos pendientes.";
-            WhatsAppReceiptUtil.sendViaWhatsApp(c.getPhone(), msg);
+            if (!WhatsAppReceiptUtil.sendViaWhatsApp(targetPhone, msg)) {
+                showAlert(Alert.AlertType.WARNING, "No se pudo abrir WhatsApp. Verifique el número telefónico (" + targetPhone + ").");
+            }
             return;
         }
 
@@ -675,7 +827,9 @@ public class CustomersView extends VBox {
                 ? installmentRepository.findByLoanId(activeLoan.getId())
                 : List.of();
         int totalInst = insts.size();
-        int paidInst = (int) insts.stream().filter(i -> "PAGADA".equalsIgnoreCase(i.getStatus())).count();
+        int paidInst = (int) insts.stream()
+                .filter(i -> "PAGADA".equalsIgnoreCase(i.getStatus()) || "ADELANTADA".equalsIgnoreCase(i.getStatus()))
+                .count();
         String todayStr = LocalDate.now().toString();
         int overdueInst = (int) insts.stream().filter(i ->
                 i.getPendingAmount() != null
@@ -708,7 +862,9 @@ public class CustomersView extends VBox {
                 overdueInst,
                 nextDue
         );
-        WhatsAppReceiptUtil.sendViaWhatsApp(c.getPhone(), statement);
+        if (!WhatsAppReceiptUtil.sendViaWhatsApp(targetPhone, statement)) {
+            showAlert(Alert.AlertType.WARNING, "No se pudo abrir WhatsApp. Verifique el número telefónico (" + targetPhone + ").");
+        }
     }
 
     private void promptCancelActiveLoan(LoanEntity activeLoan, CustomerEntity customer) {
@@ -728,9 +884,10 @@ public class CustomersView extends VBox {
                 refresh();
                 updateDetailCard(customer);
                 if (loansView != null) loansView.refresh();
-                new Alert(Alert.AlertType.INFORMATION, "Crédito anulado y reversado en caja exitosamente.").showAndWait();
+                notifyDataChanged();
+                showAlert(Alert.AlertType.INFORMATION, "Crédito anulado y reversado en caja exitosamente.");
             } catch (Exception ex) {
-                new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait();
+                showAlert(Alert.AlertType.ERROR, ex.getMessage());
             }
         });
     }
@@ -745,39 +902,46 @@ public class CustomersView extends VBox {
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: #ffffff;");
-        root.setPrefWidth(460);
+        root.setPrefWidth(480);
 
         Label lblTitle = new Label("Editar Datos del Cliente");
         lblTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
 
         TextField txtName = new TextField(customer.getFullName());
-        TextField txtPhone = new TextField(customer.getPhone());
+        TextField txtPhone = new TextField(customer.getPhone() != null ? customer.getPhone() : "");
+        TextField txtAltPhone = new TextField(customer.getAltPhone() != null ? customer.getAltPhone() : "");
         TextField txtAddress = new TextField(customer.getAddress() != null ? customer.getAddress() : "");
         TextField txtNeighborhood = new TextField(customer.getNeighborhood() != null ? customer.getNeighborhood() : "");
+        TextField txtCity = new TextField(customer.getCity() != null ? customer.getCity() : "");
         TextField txtBusiness = new TextField(customer.getBusinessName() != null ? customer.getBusinessName() : "");
         TextField txtOccupation = new TextField(customer.getOccupation() != null ? customer.getOccupation() : "");
+        TextField txtNotes = new TextField(customer.getNotes() != null ? customer.getNotes() : "");
 
         ComboBox<RouteOption> cmbRoute = new ComboBox<>();
         cmbRoute.setMaxWidth(Double.MAX_VALUE);
         RouteOption selectedOpt = null;
         if (routeRepository != null) {
             for (RouteEntity r : routeRepository.findAll()) {
-                if (r.getActive() != null && r.getActive() == 0) continue;
-                RouteOption opt = new RouteOption(r.getId(), r.getName());
+                boolean isCurrent = customer.getRouteId() != null && customer.getRouteId().equalsIgnoreCase(r.getId());
+                boolean isActive = r.getActive() == null || r.getActive() != 0;
+                if (!isActive && !isCurrent) continue;
+                String label = isActive ? r.getName() : r.getName() + " (Inactiva)";
+                RouteOption opt = new RouteOption(r.getId(), label);
                 cmbRoute.getItems().add(opt);
-                if (customer.getRouteId() != null && customer.getRouteId().equalsIgnoreCase(r.getId())) {
+                if (isCurrent) {
                     selectedOpt = opt;
                 }
             }
         }
-        if (cmbRoute.getItems().isEmpty()) {
-            selectedOpt = new RouteOption(customer.getRouteId() != null ? customer.getRouteId() : "ruta-principal", "Ruta Principal");
-            cmbRoute.getItems().add(selectedOpt);
-        }
-        if (selectedOpt == null && !cmbRoute.getItems().isEmpty()) {
-            selectedOpt = cmbRoute.getItems().get(0);
+        if (selectedOpt == null && customer.getRouteId() != null && !customer.getRouteId().isBlank()) {
+            selectedOpt = new RouteOption(customer.getRouteId(), resolveRouteName(customer.getRouteId()));
+            cmbRoute.getItems().add(0, selectedOpt);
         }
         cmbRoute.setValue(selectedOpt);
+        boolean isCollector = UserSessionContext.getSession()
+                .map(com.cartera.infrastructure.security.UserSession::isCollector)
+                .orElse(false);
+        cmbRoute.setDisable(isCollector);
 
         GridPane form = new GridPane();
         form.setHgap(10);
@@ -789,17 +953,23 @@ public class CustomersView extends VBox {
         form.add(cmbRoute, 1, 1);
         form.add(new Label("Teléfono:"), 0, 2);
         form.add(txtPhone, 1, 2);
-        form.add(new Label("Dirección:"), 0, 3);
-        form.add(txtAddress, 1, 3);
-        form.add(new Label("Barrio:"), 0, 4);
-        form.add(txtNeighborhood, 1, 4);
-        form.add(new Label("Negocio:"), 0, 5);
-        form.add(txtBusiness, 1, 5);
-        form.add(new Label("Ocupación:"), 0, 6);
-        form.add(txtOccupation, 1, 6);
+        form.add(new Label("WhatsApp:"), 0, 3);
+        form.add(txtAltPhone, 1, 3);
+        form.add(new Label("Dirección:"), 0, 4);
+        form.add(txtAddress, 1, 4);
+        form.add(new Label("Barrio:"), 0, 5);
+        form.add(txtNeighborhood, 1, 5);
+        form.add(new Label("Ciudad:"), 0, 6);
+        form.add(txtCity, 1, 6);
+        form.add(new Label("Negocio:"), 0, 7);
+        form.add(txtBusiness, 1, 7);
+        form.add(new Label("Ocupación:"), 0, 8);
+        form.add(txtOccupation, 1, 8);
+        form.add(new Label("Notas:"), 0, 9);
+        form.add(txtNotes, 1, 9);
 
         ColumnConstraints c1 = new ColumnConstraints();
-        c1.setPrefWidth(90);
+        c1.setPrefWidth(95);
         ColumnConstraints c2 = new ColumnConstraints();
         c2.setHgrow(Priority.ALWAYS);
         form.getColumnConstraints().addAll(c1, c2);
@@ -814,18 +984,38 @@ public class CustomersView extends VBox {
         btnSave.getStyleClass().add("btn-primary");
         btnSave.setOnAction(e -> {
             try {
-                if (lifecycle==null) throw new IllegalStateException("Servicio de clientes no disponible.");
-                var updated=lifecycle.update(new com.cartera.customers.application.CustomerLifecycleService.Profile(
-                    customer.getId(),txtName.getText(),txtPhone.getText(),txtAddress.getText(),txtNeighborhood.getText(),
-                    txtBusiness.getText(),txtOccupation.getText(),cmbRoute.getValue()==null ? customer.getRouteId() : cmbRoute.getValue().id()));
-                dialog.close(); refresh(); updateDetailCard(updated);
-            } catch (Exception ex) { new Alert(Alert.AlertType.ERROR,ex.getMessage()).showAndWait(); }
+                if (lifecycle == null) throw new IllegalStateException("Servicio de clientes no disponible.");
+                var updated = lifecycle.update(new com.cartera.customers.application.CustomerLifecycleService.Profile(
+                        customer.getId(),
+                        txtName.getText(),
+                        txtPhone.getText(),
+                        txtAltPhone.getText(),
+                        txtAddress.getText(),
+                        txtNeighborhood.getText(),
+                        txtCity.getText(),
+                        txtBusiness.getText(),
+                        txtOccupation.getText(),
+                        txtNotes.getText(),
+                        cmbRoute.getValue() == null ? customer.getRouteId() : cmbRoute.getValue().id()));
+                dialog.close();
+                refresh();
+                updateDetailCard(updated);
+                notifyDataChanged();
+            } catch (Exception ex) {
+                Alert err = new Alert(Alert.AlertType.ERROR, ex.getMessage());
+                err.initOwner(dialog);
+                err.showAndWait();
+            }
         });
 
         btnBox.getChildren().addAll(btnCancel, btnSave);
         root.getChildren().addAll(lblTitle, form, btnBox);
 
-        Scene scene = new Scene(root);
+        ScrollPane sp = new ScrollPane(root);
+        sp.setFitToWidth(true);
+        sp.setStyle("-fx-background-color: #ffffff; -fx-background: #ffffff; -fx-border-color: transparent;");
+
+        Scene scene = new Scene(sp, 500, 520);
         try {
             var cssUrl = getClass().getResource("/ui/theme.css");
             if (cssUrl != null) {
@@ -837,17 +1027,43 @@ public class CustomersView extends VBox {
     }
 
     private void handleDeleteCustomer(CustomerEntity customer) {
-        TextInputDialog reason=new TextInputDialog(); reason.initOwner(ownerStage);
+        TextInputDialog reason = new TextInputDialog();
+        reason.initOwner(ownerStage);
         reason.setTitle("Dar de baja al cliente");
         reason.setHeaderText("Se conservará el historial. Los créditos activos deben admitir anulación.");
         reason.setContentText("Motivo obligatorio:");
         reason.showAndWait().ifPresent(value -> {
             try {
-                if (lifecycle==null) throw new IllegalStateException("Servicio de clientes no disponible.");
-                lifecycle.deactivate(customer.getId(),value);
-                refresh(); showPlaceholderDetail(); if (loansView!=null) loansView.refresh();
-                new Alert(Alert.AlertType.INFORMATION,"Cliente inactivado. Historial conservado.").showAndWait();
-            } catch (Exception ex) { new Alert(Alert.AlertType.ERROR,"No se realizó la baja: " + ex.getMessage()).showAndWait(); }
+                if (lifecycle == null) throw new IllegalStateException("Servicio de clientes no disponible.");
+                lifecycle.deactivate(customer.getId(), value);
+                refresh();
+                showPlaceholderDetail();
+                if (loansView != null) loansView.refresh();
+                notifyDataChanged();
+                showAlert(Alert.AlertType.INFORMATION, "Cliente inactivado. Historial conservado.");
+            } catch (Exception ex) {
+                showAlert(Alert.AlertType.ERROR, "No se realizó la baja: " + ex.getMessage());
+            }
+        });
+    }
+
+    private void handleReactivateCustomer(CustomerEntity customer) {
+        TextInputDialog reason = new TextInputDialog();
+        reason.initOwner(ownerStage);
+        reason.setTitle("Reactivar cliente");
+        reason.setHeaderText("Reactivar a " + customer.getFullName() + " para habilitar nuevos créditos.");
+        reason.setContentText("Motivo obligatorio:");
+        reason.showAndWait().ifPresent(value -> {
+            try {
+                if (lifecycle == null) throw new IllegalStateException("Servicio de clientes no disponible.");
+                CustomerEntity reactivated = lifecycle.reactivate(customer.getId(), value);
+                refresh();
+                updateDetailCard(reactivated);
+                notifyDataChanged();
+                showAlert(Alert.AlertType.INFORMATION, "Cliente reactivado exitosamente.");
+            } catch (Exception ex) {
+                showAlert(Alert.AlertType.ERROR, "No se pudo reactivar: " + ex.getMessage());
+            }
         });
     }
 
@@ -873,29 +1089,42 @@ public class CustomersView extends VBox {
         tableInst.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         VBox.setVgrow(tableInst, Priority.ALWAYS);
 
-        // Preload payments and payment dates for this loan
+        // Preload valid payments and payment dates for this loan (filtrando por STATUS, nunca por método!)
         Map<String, String> installmentPaymentDates = new HashMap<>();
-        Map<String, String> installmentPaymentIds = new HashMap<>();
+        Map<String, List<PaymentEntity>> installmentValidPayments = new HashMap<>();
         if (paymentAllocationRepository != null && paymentRepository != null) {
-            List<PaymentEntity> loanPayments = paymentRepository.findByLoanId(loan.getId());
-            Map<String, String> paymentDateMap = loanPayments.stream()
-                    .filter(p -> !"ANULADO".equalsIgnoreCase(p.getPaymentMethod()))
-                    .collect(Collectors.toMap(PaymentEntity::getId, p -> {
-                        String c = p.getCreatedAt();
-                        return (c != null && c.length() >= 10) ? c.substring(0, 10) : (c != null ? c : "");
-                    }, (a, b) -> a));
+            Map<String, PaymentEntity> validPaymentsById = paymentRepository.findByLoanId(loan.getId()).stream()
+                    .filter(p -> !"ANULADO".equalsIgnoreCase(p.getStatus())
+                            && !"REVERTIDO".equalsIgnoreCase(p.getStatus())
+                            && !"REVERSED".equalsIgnoreCase(p.getStatus()))
+                    .collect(Collectors.toMap(PaymentEntity::getId, p -> p, (a, b) -> a));
 
             List<InstallmentEntity> allLoanInst = installmentRepository.findByLoanId(loan.getId());
             for (InstallmentEntity inst : allLoanInst) {
                 List<PaymentAllocationEntity> allocs = paymentAllocationRepository.findByInstallmentId(inst.getId());
                 if (!allocs.isEmpty()) {
+                    List<PaymentEntity> validList = new java.util.ArrayList<>();
                     for (PaymentAllocationEntity alloc : allocs) {
-                        String pDate = paymentDateMap.get(alloc.getPaymentId());
-                        if (pDate != null && !pDate.isBlank()) {
-                            installmentPaymentDates.put(inst.getId(), pDate);
-                            installmentPaymentIds.put(inst.getId(), alloc.getPaymentId());
-                            break;
+                        PaymentEntity pay = validPaymentsById.get(alloc.getPaymentId());
+                        if (pay != null) {
+                            if (validList.stream().noneMatch(existing -> existing.getId().equals(pay.getId()))) {
+                                validList.add(pay);
+                            }
+                            String created = pay.getCreatedAt();
+                            String pDate = (created != null && created.length() >= 10)
+                                    ? created.substring(0, 10)
+                                    : (created != null ? created : "");
+                            if (!pDate.isBlank()) {
+                                String currentLatest = installmentPaymentDates.get(inst.getId());
+                                if (currentLatest == null || pDate.compareTo(currentLatest) > 0) {
+                                    installmentPaymentDates.put(inst.getId(), pDate);
+                                }
+                            }
                         }
+                    }
+                    if (!validList.isEmpty()) {
+                        validList.sort((a, b) -> String.valueOf(b.getCreatedAt()).compareTo(String.valueOf(a.getCreatedAt())));
+                        installmentValidPayments.put(inst.getId(), validList);
                     }
                 }
             }
@@ -927,7 +1156,10 @@ public class CustomersView extends VBox {
                     setText(null);
                 } else {
                     String status = inst.getStatus() != null ? inst.getStatus().toUpperCase() : "PENDIENTE";
-                    boolean isOverdue = !"PAGADA".equalsIgnoreCase(status)
+                    boolean isSettled = "PAGADA".equalsIgnoreCase(status)
+                            || "ADELANTADA".equalsIgnoreCase(status)
+                            || "ANULADA".equalsIgnoreCase(status);
+                    boolean isOverdue = !isSettled
                             && inst.getPendingAmount() != null
                             && inst.getPendingAmount().compareTo(BigDecimal.ZERO) > 0
                             && inst.getDueDate() != null
@@ -939,6 +1171,10 @@ public class CustomersView extends VBox {
                     String base = "-fx-padding: 3 8; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 10px;";
                     if ("PAGADA".equalsIgnoreCase(displayStatus)) {
                         badge.setStyle(base + "-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-border-color: #bbf7d0; -fx-border-radius: 12;");
+                    } else if ("ADELANTADA".equalsIgnoreCase(displayStatus)) {
+                        badge.setStyle(base + "-fx-background-color: #e0e7ff; -fx-text-fill: #4338ca; -fx-border-color: #c7d2fe; -fx-border-radius: 12;");
+                    } else if ("ANULADA".equalsIgnoreCase(displayStatus)) {
+                        badge.setStyle(base + "-fx-background-color: #f1f5f9; -fx-text-fill: #64748b; -fx-border-color: #cbd5e1; -fx-border-radius: 12;");
                     } else if ("VENCIDA".equalsIgnoreCase(displayStatus) || "MORA".equalsIgnoreCase(displayStatus)) {
                         badge.setStyle(base + "-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 12;");
                     } else if ("PARCIAL".equalsIgnoreCase(displayStatus)) {
@@ -951,13 +1187,15 @@ public class CustomersView extends VBox {
                 }
             }
         });
-        colSt.setPrefWidth(85);
+        colSt.setPrefWidth(95);
 
         // FECHA PAGO
         TableColumn<InstallmentEntity, String> colPaidDate = new TableColumn<>("FECHA PAGO");
         colPaidDate.setCellValueFactory(d -> {
             String pDate = installmentPaymentDates.get(d.getValue().getId());
-            return new SimpleObjectProperty<>(pDate != null ? pDate : ("PAGADA".equalsIgnoreCase(d.getValue().getStatus()) ? d.getValue().getDueDate() : "-"));
+            boolean isPaidStatus = "PAGADA".equalsIgnoreCase(d.getValue().getStatus())
+                    || "ADELANTADA".equalsIgnoreCase(d.getValue().getStatus());
+            return new SimpleObjectProperty<>(pDate != null ? pDate : (isPaidStatus ? d.getValue().getDueDate() : "-"));
         });
         colPaidDate.setCellFactory(col -> new TableCell<>() {
             @Override
@@ -993,22 +1231,28 @@ public class CustomersView extends VBox {
                     badge.setAlignment(Pos.CENTER);
                     String base = "-fx-padding: 3 8; -fx-background-radius: 12; -fx-font-weight: bold; -fx-font-size: 10px;";
 
+                    boolean isPaidStatus = "PAGADA".equalsIgnoreCase(inst.getStatus())
+                            || "ADELANTADA".equalsIgnoreCase(inst.getStatus());
+                    boolean isCancelled = "ANULADA".equalsIgnoreCase(inst.getStatus());
                     String pDateStr = installmentPaymentDates.get(inst.getId());
-                    if (pDateStr == null && "PAGADA".equalsIgnoreCase(inst.getStatus())) {
+                    if (pDateStr == null && isPaidStatus) {
                         pDateStr = inst.getDueDate();
                     }
 
-                    if ("PAGADA".equalsIgnoreCase(inst.getStatus()) && pDateStr != null) {
+                    if (isCancelled) {
+                        badge.setText("Anulada");
+                        badge.setStyle(base + "-fx-background-color: #f1f5f9; -fx-text-fill: #64748b;");
+                    } else if (isPaidStatus && pDateStr != null) {
                         try {
                             LocalDate dueDate = LocalDate.parse(inst.getDueDate());
                             LocalDate paidDate = LocalDate.parse(pDateStr.length() >= 10 ? pDateStr.substring(0, 10) : pDateStr);
                             if (paidDate.isAfter(dueDate)) {
                                 long days = ChronoUnit.DAYS.between(dueDate, paidDate);
-                                badge.setText("" + days + " d retraso");
+                                badge.setText(days + " d retraso");
                                 badge.setStyle(base + "-fx-background-color: #fef3c7; -fx-text-fill: #b45309; -fx-border-color: #fde68a; -fx-border-radius: 12;");
-                            } else if (paidDate.isBefore(dueDate)) {
-                                long days = ChronoUnit.DAYS.between(paidDate, dueDate);
-                                badge.setText("Adelantada (" + days + "d)");
+                            } else if (paidDate.isBefore(dueDate) || "ADELANTADA".equalsIgnoreCase(inst.getStatus())) {
+                                long days = Math.max(0, ChronoUnit.DAYS.between(paidDate, dueDate));
+                                badge.setText(days > 0 ? "Adelantada (" + days + "d)" : "Adelantada");
                                 badge.setStyle(base + "-fx-background-color: #e0e7ff; -fx-text-fill: #4338ca; -fx-border-color: #c7d2fe; -fx-border-radius: 12;");
                             } else {
                                 badge.setText("A tiempo");
@@ -1018,7 +1262,7 @@ public class CustomersView extends VBox {
                             badge.setText("Pagada");
                             badge.setStyle(base + "-fx-background-color: #dcfce7; -fx-text-fill: #15803d;");
                         }
-                    } else if (!"PAGADA".equalsIgnoreCase(inst.getStatus()) && inst.getDueDate() != null) {
+                    } else if (inst.getDueDate() != null) {
                         try {
                             LocalDate dueDate = LocalDate.parse(inst.getDueDate());
                             if (dueDate.isBefore(today)) {
@@ -1062,25 +1306,52 @@ public class CustomersView extends VBox {
                         setGraphic(null);
                         setText(null);
                     } else {
-                        String payId = installmentPaymentIds.get(inst.getId());
-                        if (payId != null) {
-                            Button btnRev = new Button("Anular Pago");
+                        List<PaymentEntity> validPayments = installmentValidPayments.get(inst.getId());
+                        if (validPayments != null && !validPayments.isEmpty()) {
+                            Button btnRev = new Button(validPayments.size() > 1 ? "Anular (" + validPayments.size() + ")" : "Anular Pago");
                             btnRev.setStyle("-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-border-color: #fca5a5; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 3 8; -fx-cursor: hand;");
                             btnRev.setOnAction(e -> {
+                                String targetPayId;
+                                if (validPayments.size() == 1) {
+                                    targetPayId = validPayments.get(0).getId();
+                                } else {
+                                    record PayChoice(PaymentEntity payment) {
+                                        @Override
+                                        public String toString() {
+                                            String d = payment.getCreatedAt() != null && payment.getCreatedAt().length() >= 10
+                                                    ? payment.getCreatedAt().substring(0, 10) : "-";
+                                            return d + " · " + CURRENCY.format(payment.getAmount()) + " (" + payment.getMethod() + ")";
+                                        }
+                                    }
+                                    List<PayChoice> choices = validPayments.stream().map(PayChoice::new).toList();
+                                    ChoiceDialog<PayChoice> pick = new ChoiceDialog<>(choices.get(0), choices);
+                                    pick.initOwner(modal);
+                                    pick.setTitle("Seleccionar pago a anular");
+                                    pick.setHeaderText("Esta cuota tiene " + validPayments.size() + " pagos aplicados");
+                                    pick.setContentText("Seleccione el pago:");
+                                    Optional<PayChoice> chosen = pick.showAndWait();
+                                    if (chosen.isEmpty()) return;
+                                    targetPayId = chosen.get().payment().getId();
+                                }
+
                                 TextInputDialog dlg = new TextInputDialog();
                                 dlg.initOwner(modal);
                                 dlg.setTitle("Anulación Auditada de Pago");
                                 dlg.setHeaderText("Revertir Pago Asociado a Cuota #" + inst.getInstallmentNumber());
                                 dlg.setContentText("Motivo obligatorio de anulación:");
+                                final String finalPayId = targetPayId;
                                 dlg.showAndWait().ifPresent(reason -> {
                                     try {
-                                        reversePaymentUseCase.execute(payId, reason);
+                                        reversePaymentUseCase.execute(finalPayId, reason);
                                         modal.close();
                                         refresh();
                                         if (loansView != null) loansView.refresh();
-                                        new Alert(Alert.AlertType.INFORMATION, "Pago anulado y saldo restaurado exitosamente.").showAndWait();
+                                        notifyDataChanged();
+                                        showAlert(Alert.AlertType.INFORMATION, "Pago anulado y saldo restaurado exitosamente.");
                                     } catch (Exception ex) {
-                                        new Alert(Alert.AlertType.ERROR, ex.getMessage()).showAndWait();
+                                        Alert err = new Alert(Alert.AlertType.ERROR, ex.getMessage());
+                                        err.initOwner(modal);
+                                        err.showAndWait();
                                     }
                                 });
                             });
@@ -1093,7 +1364,7 @@ public class CustomersView extends VBox {
                     }
                 }
             });
-            colRev.setPrefWidth(110);
+            colRev.setPrefWidth(115);
             tableInst.getColumns().add(colRev);
         }
 
@@ -1108,7 +1379,7 @@ public class CustomersView extends VBox {
         bot.setAlignment(Pos.CENTER_RIGHT);
 
         root.getChildren().addAll(title, tableInst, bot);
-        Scene scene = new Scene(root, 780, 450);
+        Scene scene = new Scene(root, 800, 460);
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
         modal.setScene(scene);
         modal.showAndWait();
@@ -1118,25 +1389,55 @@ public class CustomersView extends VBox {
         HBox row = new HBox(6);
         Label l = new Label(label);
         l.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
+        l.setMinWidth(70);
         Label v = new Label(value);
         v.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 11px;");
+        v.setWrapText(true);
         row.getChildren().addAll(l, v);
         return row;
     }
 
     public void refresh() {
+        boolean isCollector = UserSessionContext.getSession()
+                .map(com.cartera.infrastructure.security.UserSession::isCollector)
+                .orElse(false);
+        if (btnTabLoans != null) {
+            btnTabLoans.setVisible(!isCollector);
+            btnTabLoans.setManaged(!isCollector);
+        }
+        if (isCollector && contentArea != null && !contentArea.getChildren().contains(splitPane)) {
+            showSection("customers");
+        }
+
+        // Recargar cache de nombres de rutas (evita N+1 por celda)
+        Map<String, String> freshRoutes = new HashMap<>();
+        if (routeRepository != null) {
+            for (RouteEntity r : routeRepository.findAll()) {
+                freshRoutes.put(r.getId(), r.getName() != null ? r.getName() : r.getId());
+            }
+        }
+        routeNameCache = freshRoutes;
+
         var selected = table.getSelectionModel().getSelectedItem();
         String selectedRoute = UserSessionContext.getSelectedRouteId();
         List<CustomerEntity> allCustomers = customerRepository.findAll().stream()
-                .filter(c -> selectedRoute == null || "ALL".equalsIgnoreCase(selectedRoute) || selectedRoute.equalsIgnoreCase(c.getRouteId()))
+                .filter(c -> {
+                    if ("NONE".equalsIgnoreCase(selectedRoute)) return false;
+                    return selectedRoute == null || "ALL".equalsIgnoreCase(selectedRoute) || selectedRoute.equalsIgnoreCase(c.getRouteId());
+                })
                 .toList();
         customerList.setAll(allCustomers);
-        updateStats(customerList.size());
+        updateStats(filteredCustomers != null ? filteredCustomers.size() : customerList.size());
         if (selected != null) {
-            customerList.stream()
+            Optional<CustomerEntity> match = customerList.stream()
                     .filter(c -> c.getId().equals(selected.getId()))
-                    .findFirst()
-                    .ifPresent(table.getSelectionModel()::select);
+                    .findFirst();
+            if (match.isPresent()) {
+                table.getSelectionModel().select(match.get());
+                updateDetailCard(match.get());
+            } else {
+                showPlaceholderDetail();
+            }
         }
     }
 
@@ -1155,6 +1456,8 @@ public class CustomersView extends VBox {
 
     private String resolveRouteName(String routeId) {
         if (routeId == null || routeId.isBlank()) return "Sin Ruta";
+        String cached = routeNameCache.get(routeId);
+        if (cached != null) return cached;
         if (routeRepository != null) {
             return routeRepository.findById(routeId).map(RouteEntity::getName).orElse(routeId);
         }

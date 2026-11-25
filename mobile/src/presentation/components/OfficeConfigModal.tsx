@@ -922,25 +922,57 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
                   <View style={styles.capGlobalCard}>
                     <Text style={styles.capGlobalTitle}>CONSOLIDADO GENERAL (TODAS LAS RUTAS)</Text>
                     <View style={styles.capGlobalGrid}>
-                      <View style={styles.capGlobalCol}>
+                      <View style={[styles.capGlobalCol, { minWidth: 0 }]}>
                         <Text style={styles.capGlobalLabel}>ADMINISTRATIVO</Text>
-                        <Text style={styles.capGlobalValue} numberOfLines={1} adjustsFontSizeToFit>
+                        <Text
+                          style={[
+                            styles.capGlobalValue,
+                            {
+                              fontSize:
+                                Math.abs(displayGlobalAdmin) >= 100_000_000 ? 11 : Math.abs(displayGlobalAdmin) >= 10_000_000 ? 12 : 13.5,
+                            },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                        >
                           {formatCOP(displayGlobalAdmin)}
                         </Text>
                         <Text style={styles.capGlobalHint}>Cupo global red</Text>
                       </View>
                       <Text style={styles.capGlobalOperator}>=</Text>
-                      <View style={styles.capGlobalCol}>
+                      <View style={[styles.capGlobalCol, { minWidth: 0 }]}>
                         <Text style={[styles.capGlobalLabel, { color: '#0F766E' }]}>CARTERA CALLE</Text>
-                        <Text style={[styles.capGlobalValue, { color: '#0F766E' }]} numberOfLines={1} adjustsFontSizeToFit>
+                        <Text
+                          style={[
+                            styles.capGlobalValue,
+                            {
+                              color: '#0F766E',
+                              fontSize:
+                                Math.abs(displayGlobalCartera) >= 100_000_000 ? 11 : Math.abs(displayGlobalCartera) >= 10_000_000 ? 12 : 13.5,
+                            },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                        >
                           {formatCOP(displayGlobalCartera)}
                         </Text>
                         <Text style={styles.capGlobalHint}>{allLoans.length} créditos activos</Text>
                       </View>
                       <Text style={styles.capGlobalOperator}>+</Text>
-                      <View style={styles.capGlobalCol}>
+                      <View style={[styles.capGlobalCol, { minWidth: 0 }]}>
                         <Text style={[styles.capGlobalLabel, { color: '#0284C7' }]}>BASE EN MANO</Text>
-                        <Text style={[styles.capGlobalValue, { color: '#0284C7' }]} numberOfLines={1} adjustsFontSizeToFit>
+                        <Text
+                          style={[
+                            styles.capGlobalValue,
+                            {
+                              color: '#0284C7',
+                              fontSize:
+                                Math.abs(displayGlobalBase) >= 100_000_000 ? 11 : Math.abs(displayGlobalBase) >= 10_000_000 ? 12 : 13.5,
+                            },
+                          ]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                        >
                           {formatCOP(displayGlobalBase)}
                         </Text>
                         <Text style={styles.capGlobalHint}>Efectivo en bolsillo</Text>
@@ -1994,6 +2026,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0,
     marginRight: 10,
   },
   headerIconCircle: {
@@ -2027,6 +2060,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceSoft,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   tabBarWrapper: {
     backgroundColor: '#F8FAFC',
@@ -2099,6 +2133,7 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
   },
   inputLabel: {
     fontFamily: FONT_FAMILY,
@@ -2125,6 +2160,7 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontWeight: '600',
     minWidth: 0,
+    width: '100%',
   },
   highlightSwitchCard: {
     flexDirection: 'row',

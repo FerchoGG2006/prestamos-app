@@ -30,12 +30,22 @@ public class DatabaseBackupService {
         this.auditTransaction = new TransactionTemplate(manager);
         this.auditTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
+    private static final int MAX_RETAINED_BACKUPS = 30;
+
     public Path getDatabasePath() {
         try (var connection = dataSource.getConnection()) {
             String url = connection.getMetaData().getURL();
             if (!url.startsWith("jdbc:sqlite:") || url.contains(":memory:") || url.contains("mode=memory"))
                 throw new IllegalStateException("El respaldo requiere una base SQLite persistida en disco.");
-            return Paths.get(url.substring("jdbc:sqlite:".length())).toAbsolutePath().normalize();
+            String rawPath = url.substring("jdbc:sqlite:".length());
+            int queryIdx = rawPath.indexOf('?');
+            if (queryIdx >= 0) {
+                rawPath = rawPath.substring(0, queryIdx);
+            }
+            if (rawPath.startsWith("file:")) {
+                rawPath = rawPath.substring("file:".length());
+            }
+            return Paths.get(rawPath).toAbsolutePath().normalize();
         } catch (SQLException ex) { throw new IllegalStateException("No se pudo identificar la base activa.", ex); }
     }
     public Path getBackupsDirectory() { return getDatabasePath().getParent().resolve("backups"); }
@@ -75,21 +85,49 @@ public class DatabaseBackupService {
                 statement.execute("VACUUM INTO '" + partial.toString().replace("'", "''") + "'");
             }
             try (var connection = DriverManager.getConnection("jdbc:sqlite:" + partial);
-                 var statement = connection.createStatement(); var rows = statement.executeQuery("PRAGMA integrity_check")) {
-                if (!rows.next() || !"ok".equalsIgnoreCase(rows.getString(1)))
-                    throw new IllegalStateException("El respaldo no superó la verificación de integridad.");
+                 var statement = connection.createStatement()) {
+                try (var rows = statement.executeQuery("PRAGMA integrity_check")) {
+                    if (!rows.next() || !"ok".equalsIgnoreCase(rows.getString(1)))
+                        throw new IllegalStateException("El respaldo no superó la verificación de integridad.");
+                }
+                try (var fkRows = statement.executeQuery("PRAGMA foreign_key_check")) {
+                    if (fkRows.next()) {
+                        throw new IllegalStateException("El respaldo contiene referencias foráneas inconsistentes.");
+                    }
+                }
             }
             Files.move(partial, target);
-            auditTransaction.executeWithoutResult(status -> auditLogRepository.save(new AuditLogEntity(
-                UUID.randomUUID().toString(), actor, "DATABASE_BACKUP", target.getFileName().toString(),
-                "CREAR_BACKUP", null, "Archivo verificado: " + target.getFileName(),
-                reason == null ? "Copia de seguridad" : reason, LocalDateTime.now().toString())));
+            pruneOldBackups(dir);
+            try {
+                auditTransaction.executeWithoutResult(status -> auditLogRepository.save(new AuditLogEntity(
+                        UUID.randomUUID().toString(), actor, "DATABASE_BACKUP", target.getFileName().toString(),
+                        "CREAR_BACKUP", null, "Archivo verificado: " + target.getFileName(),
+                        reason == null ? "Copia de seguridad" : reason, LocalDateTime.now().toString())));
+            } catch (Exception auditEx) {
+                LOG.warn("Respaldo creado en {}, pero falló el registro en auditoría: {}", target.getFileName(), auditEx.getMessage());
+            }
             lastFailure = null;
             return target;
         } catch (Exception ex) {
             if (partial != null) try { Files.deleteIfExists(partial); } catch (Exception cleanup) { ex.addSuppressed(cleanup); }
             lastFailure = "No se pudo crear la copia de seguridad: " + ex.getMessage();
             throw new IllegalStateException(lastFailure, ex);
+        }
+    }
+
+    private void pruneOldBackups(Path dir) {
+        try {
+            List<Path> backups = listBackups();
+            if (backups.size() <= MAX_RETAINED_BACKUPS) return;
+            for (int i = MAX_RETAINED_BACKUPS; i < backups.size(); i++) {
+                try {
+                    Files.deleteIfExists(backups.get(i));
+                } catch (Exception delEx) {
+                    LOG.warn("No se pudo rotar respaldo antiguo {}: {}", backups.get(i).getFileName(), delEx.getMessage());
+                }
+            }
+        } catch (Exception ex) {
+            LOG.warn("No se pudo aplicar retención de respaldos en {}: {}", dir, ex.getMessage());
         }
     }
     public List<Path> listBackups() {

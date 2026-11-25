@@ -2,9 +2,11 @@ package com.cartera.infrastructure.licensing;
 
 import com.cartera.infrastructure.backup.DatabaseBackupService;
 import com.cartera.infrastructure.licensing.SupabaseRegistryClient.RemoteOffice;
+import com.cartera.infrastructure.persistence.entity.AuditLogEntity;
 import com.cartera.infrastructure.persistence.entity.SystemSettingEntity;
 import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
+import com.cartera.infrastructure.security.UserSessionContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -90,6 +92,7 @@ class OfficeLicensingServiceTest {
 
     @Test
     void registerCommercialOfficeSavesOfficeAndAdminUser() throws Exception {
+        UserSessionContext.clear();
         Map<String, String> store = new HashMap<>();
         store.put(OfficeLicensingService.KEY_SUPABASE_URL, "https://demo.supabase.co");
         store.put(OfficeLicensingService.KEY_SUPABASE_KEY, "anon-key");
@@ -126,6 +129,21 @@ class OfficeLicensingServiceTest {
                 eq("3001112233")
         );
         assertNotEquals("ClaveSegura123", hashCaptor.getValue());
+        verify(registryClient).upsertRoute(
+                eq("https://demo.supabase.co"),
+                eq("anon-key"),
+                anyString(),
+                eq(created.id()),
+                eq("Ruta 1"),
+                eq("R-01"),
+                isNull()
+        );
+
+        ArgumentCaptor<AuditLogEntity> auditCaptor = ArgumentCaptor.forClass(AuditLogEntity.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        assertNull(auditCaptor.getValue().getUserId(),
+                "Vendor audit log outside a logged-in user session must use NULL user_id to satisfy SQLite FK");
+        assertTrue(auditCaptor.getValue().getReason().startsWith("Panel distribuidor:"));
     }
 
     @Test

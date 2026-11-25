@@ -14,14 +14,19 @@ import com.cartera.payments.application.ReversePaymentUseCase;
 import com.cartera.reports.application.ExcelReportExporter;
 import com.cartera.sync.application.MobileSyncProcessorService;
 import com.cartera.sync.infrastructure.LanSyncServerService;
+import com.cartera.infrastructure.version.AppVersion;
+import com.cartera.infrastructure.version.DesktopOtaService;
+import com.cartera.infrastructure.version.DesktopUpdateChecker;
 import com.cartera.ui.util.MotionUtil;
 import com.cartera.ui.views.CashManagementView;
 import com.cartera.ui.views.ConfigurationView;
 import com.cartera.ui.views.CreditHistoryView;
+import com.cartera.ui.views.Customer360Dialog;
 import com.cartera.ui.views.CustomersView;
 import com.cartera.ui.views.DashboardView;
 import com.cartera.ui.views.LoansView;
 import com.cartera.ui.views.LoginView;
+import com.cartera.ui.views.NotificationsDialog;
 import com.cartera.ui.views.ReportsView;
 import com.cartera.ui.views.SettlementManagementView;
 import com.cartera.ui.views.TodayCollectionsView;
@@ -73,6 +78,11 @@ public final class CarteraApplication extends Application {
 
     private AuthService authService;
     private RouteRepository routeRepository;
+    private TodayCollectionsService collectionsService;
+    private DesktopUpdateChecker desktopUpdateChecker;
+    private DesktopOtaService desktopOtaService;
+    private Customer360Dialog.Services customer360Services;
+    private Stage primaryStage;
     private LoginView loginView;
     private Label lblUserName;
     private Label lblUserRole;
@@ -84,10 +94,13 @@ public final class CarteraApplication extends Application {
     private LoansView loansView;
     private CreditHistoryView creditHistoryView;
     private SettlementManagementView settlementManagementView;
+    private SettlementManagementView treasurySettlementView;
     private TreasuryManagementView treasuryManagementView;
     private CashManagementView cashManagementView;
     private ReportsView reportsView;
     private ConfigurationView configurationView;
+    private LanSyncServerService lanSyncServerService;
+    private boolean updatingGlobalRoute = false;
 
     @Override
     public void init() throws Exception {
@@ -125,12 +138,17 @@ public final class CarteraApplication extends Application {
         }
         authService = context.getBean(AuthService.class);
         routeRepository = context.getBean(RouteRepository.class);
+        this.primaryStage = stage;
 
         root = new BorderPane();
         root.setStyle("-fx-background-color: #F6F4EE;");
 
         // Inicializar vistas con servicios inyectados de Spring
-        var collectionsService = context.getBean(TodayCollectionsService.class);
+        this.collectionsService = context.getBean(TodayCollectionsService.class);
+        var collectionsService = this.collectionsService;
+        this.desktopUpdateChecker = context.getBean(DesktopUpdateChecker.class);
+        this.desktopOtaService = context.getBean(DesktopOtaService.class);
+        this.desktopOtaService.markCurrentBootHealthy();
         var paymentUseCase = context.getBean(RecordPaymentUseCase.class);
         var reversePaymentUseCase = context.getBean(ReversePaymentUseCase.class);
         var customerRepository = context.getBean(CustomerRepository.class);
@@ -151,11 +169,17 @@ public final class CarteraApplication extends Application {
         var paymentRepository = context.getBean(PaymentRepository.class);
         var paymentAllocationRepository = context.getBean(PaymentAllocationRepository.class);
         var syncProcessorService = context.getBean(MobileSyncProcessorService.class);
-        var lanSyncServerService = context.getBean(LanSyncServerService.class);
+        this.lanSyncServerService = context.getBean(LanSyncServerService.class);
         var excelReportExporter = context.getBean(ExcelReportExporter.class);
         var databaseBackupService = context.getBean(DatabaseBackupService.class);
 
+        this.lanSyncServerService.setOnSyncReceivedCallback(() -> Platform.runLater(() -> {
+            reloadGlobalRoutes();
+            refreshActiveViews();
+        }));
+
         dashboardView = new DashboardView(collectionsService, routeRepository, userRepository, this::navigateTo, this::selectGlobalRoute);
+        dashboardView.setSettingRepository(settingRepository);
 
         todayCollectionsView = new TodayCollectionsView(
                 collectionsService,
@@ -179,6 +203,30 @@ public final class CarteraApplication extends Application {
                     if (customersView != null) customersView.refresh();
                 }
         );
+        todayCollectionsView.setSupplementalRepositories(paymentRepository, paymentAllocationRepository, routeRepository, userRepository);
+        todayCollectionsView.setOnOpenCustomer360(this::openCustomer360);
+
+        var attachmentService = context.getBean(com.cartera.customers.application.AttachmentService.class);
+        var followUpService = context.getBean(com.cartera.customers.application.FollowUpService.class);
+        var lifecycleService = context.getBean(com.cartera.customers.application.CustomerLifecycleService.class);
+        var createCustomerWithLoanUseCase = context.getBean(com.cartera.customers.application.CreateCustomerWithLoanUseCase.class);
+
+        this.customer360Services = new Customer360Dialog.Services(
+                customerRepository,
+                loanRepository,
+                installmentRepository,
+                paymentRepository,
+                routeRepository,
+                settingRepository,
+                paymentUseCase,
+                reversePaymentUseCase,
+                createLoanUseCase,
+                renewLoanUseCase,
+                followUpService,
+                attachmentService,
+                lifecycleService,
+                createCustomerWithLoanUseCase
+        );
 
         loansView = new LoansView(
                 loanRepository,
@@ -194,8 +242,12 @@ public final class CarteraApplication extends Application {
                     dashboardView.refresh();
                     todayCollectionsView.refreshData();
                     if (customersView != null) customersView.refresh();
+                    refreshNotificationsBadge();
                 }
         );
+        loansView.setAttachmentService(attachmentService);
+        loansView.setCreateCustomerWithLoanUseCase(createCustomerWithLoanUseCase);
+        loansView.setOnOpenCustomer360(this::openCustomer360);
 
         customersView = new CustomersView(
                 customerRepository,
@@ -215,9 +267,15 @@ public final class CarteraApplication extends Application {
                 stage
         );
 
-        customersView.setLifecycleService(context.getBean(com.cartera.customers.application.CustomerLifecycleService.class));
-
-        customersView.setOperationalServices(context.getBean(com.cartera.customers.application.FollowUpService.class),context.getBean(com.cartera.customers.application.AttachmentService.class));
+        customersView.setLifecycleService(lifecycleService);
+        customersView.setOperationalServices(followUpService, attachmentService);
+        customersView.setCreateCustomerWithLoanUseCase(createCustomerWithLoanUseCase);
+        customersView.setOnOpenCustomer360(this::openCustomer360);
+        customersView.setOnDataChanged(() -> {
+            if (dashboardView != null) dashboardView.refresh();
+            if (todayCollectionsView != null) todayCollectionsView.refreshData();
+            refreshNotificationsBadge();
+        });
         var creditHistoryService = context.getBean(com.cartera.history.application.CreditHistoryService.class);
         creditHistoryView = new CreditHistoryView(creditHistoryService, stage);
         customersView.setOnOpenCreditHistory(doc -> {
@@ -229,10 +287,15 @@ public final class CarteraApplication extends Application {
         cashManagementView = new CashManagementView(cashMovementRepository, cashMovementUseCase, routeRepository, stage);
 
         settlementManagementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository, userRepository, routeRepository, stage);
-        treasuryManagementView = new TreasuryManagementView(cashManagementView, settlementManagementView);
+        treasurySettlementView = new SettlementManagementView(settlementUseCase, dailySettlementRepository, userRepository, routeRepository, stage);
+        treasuryManagementView = new TreasuryManagementView(cashManagementView, treasurySettlementView);
 
         reportsView = new ReportsView(loanRepository, installmentRepository, paymentRepository, customerRepository, auditLogRepository, excelReportExporter, stage);
+        reportsView.setAppUserRepository(userRepository);
         configurationView = new ConfigurationView(settingRepository, userRepository, auditLogRepository, routeRepository, databaseBackupService, stage);
+        configurationView.setAuthService(authService);
+        configurationView.setUpdateChecker(desktopUpdateChecker);
+        configurationView.setOtaService(desktopOtaService, this::performOtaRestart);
         configurationView.setRecoveryService(context.getBean(com.cartera.infrastructure.backup.OfficeRecoveryService.class));
         var licensingService = context.getBean(com.cartera.infrastructure.licensing.OfficeLicensingService.class);
         configurationView.setOfficeLicensingService(licensingService);
@@ -261,7 +324,7 @@ public final class CarteraApplication extends Application {
         var scene = new Scene(appRoot, initialWidth, initialHeight);
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
 
-        stage.setTitle("Sistema de Cartera y Cobros");
+        stage.setTitle("Sistema de Cartera y Cobros " + AppVersion.shortTag());
         try {
             var iconStream = getClass().getResourceAsStream("/ui/icon.png");
             if (iconStream != null) {
@@ -280,6 +343,70 @@ public final class CarteraApplication extends Application {
     private VBox navContainer;
     private com.cartera.sync.application.DesktopCloudSyncService desktopCloudSyncService;
     private java.util.concurrent.ScheduledExecutorService silentSyncExecutor;
+    private Label lblCloudSyncStatus;
+    private Button btnSyncNow;
+    private Button btnNotifications;
+    private Button btnUpdateAvailable;
+    private DesktopUpdateChecker.UpdateInfo pendingUpdateInfo;
+    private boolean otaStagedReady = false;
+
+    private void updateCloudSyncBadge() {
+        if (lblCloudSyncStatus == null || desktopCloudSyncService == null) return;
+        var st = desktopCloudSyncService.getLastSyncStatus();
+        String timeStr = st.lastSyncAt() != null
+                ? st.lastSyncAt().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                : "";
+        if (st.synced()) {
+            lblCloudSyncStatus.setText(timeStr.isBlank() ? "● Nube sincronizada" : ("● Nube " + timeStr));
+            lblCloudSyncStatus.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold;");
+        } else if (st.hasError()) {
+            lblCloudSyncStatus.setText("⚠ Nube sin sincronizar");
+            lblCloudSyncStatus.setStyle("-fx-background-color: #fffbeb; -fx-text-fill: #b45309; -fx-border-color: #fcd34d; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold;");
+        } else {
+            lblCloudSyncStatus.setText("● Conectando nube...");
+            lblCloudSyncStatus.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold;");
+        }
+        lblCloudSyncStatus.setTooltip(new javafx.scene.control.Tooltip(st.message() != null ? st.message() : "Estado de sincronización con Supabase"));
+    }
+
+    private void triggerManualCloudSync() {
+        if (desktopCloudSyncService == null) return;
+        if (btnSyncNow != null) {
+            btnSyncNow.setDisable(true);
+            btnSyncNow.setText("Sincronizando...");
+        }
+        if (lblCloudSyncStatus != null) {
+            lblCloudSyncStatus.setText("↻ Sincronizando...");
+        }
+        Thread t = new Thread(() -> {
+            boolean updated = false;
+            try {
+                updated = desktopCloudSyncService.syncSilentlyInBackground();
+            } catch (Exception ignored) {}
+            final boolean hadChanges = updated;
+            Platform.runLater(() -> {
+                updateCloudSyncBadge();
+                if (btnSyncNow != null) {
+                    btnSyncNow.setDisable(false);
+                    btnSyncNow.setText("↻ Sincronizar");
+                }
+                reloadGlobalRoutes();
+                refreshActiveViews();
+                var st = desktopCloudSyncService.getLastSyncStatus();
+                if (st.synced()) {
+                    MotionUtil.showToast(appRoot,
+                            hadChanges ? "Nube sincronizada — se cargaron novedades." : "Nube al día (sin cambios nuevos).",
+                            MotionUtil.ToastType.SUCCESS);
+                } else {
+                    MotionUtil.showToast(appRoot,
+                            st.message() != null ? st.message() : "No se pudo sincronizar con la nube.",
+                            MotionUtil.ToastType.ERROR);
+                }
+            });
+        }, "kredia-manual-sync");
+        t.setDaemon(true);
+        t.start();
+    }
 
     private void startSilentBackgroundSync() {
         stopSilentBackgroundSync();
@@ -292,15 +419,13 @@ public final class CarteraApplication extends Application {
         silentSyncExecutor.scheduleWithFixedDelay(() -> {
             try {
                 boolean updated = desktopCloudSyncService.syncSilentlyInBackground();
-                if (updated) {
-                    Platform.runLater(() -> {
+                Platform.runLater(() -> {
+                    updateCloudSyncBadge();
+                    if (updated) {
                         reloadGlobalRoutes();
-                        if (dashboardView != null) dashboardView.refresh();
-                        if (todayCollectionsView != null) todayCollectionsView.refreshData();
-                        if (customersView != null) customersView.refresh();
-                        if (loansView != null) loansView.refresh();
-                    });
-                }
+                        refreshActiveViews();
+                    }
+                });
             } catch (Exception ignored) {}
         }, 30, 30, java.util.concurrent.TimeUnit.SECONDS);
     }
@@ -334,12 +459,143 @@ public final class CarteraApplication extends Application {
         appRoot.getChildren().setAll(root);
         MotionUtil.transitionView(root);
         MotionUtil.showToast(appRoot, "Bienvenido, " + session.fullName(), MotionUtil.ToastType.SUCCESS);
+        updateCloudSyncBadge();
+        refreshNotificationsBadge();
         startSilentBackgroundSync();
+        checkForDesktopUpdateAsync();
+    }
+
+    private void openCustomer360(String customerId) {
+        if (customerId == null || customerId.isBlank() || customer360Services == null) return;
+        new Customer360Dialog(primaryStage, customerId, customer360Services, () -> {
+            refreshActiveViews();
+            refreshNotificationsBadge();
+        }).showAndWait();
+    }
+
+    private void openNotificationsDialog() {
+        if (collectionsService == null) return;
+        new NotificationsDialog(
+                primaryStage,
+                collectionsService,
+                routeRepository,
+                this::openCustomer360,
+                () -> navigateTo("Cobros y Rutas")
+        ).showAndWait();
+        refreshNotificationsBadge();
+    }
+
+    private void refreshNotificationsBadge() {
+        if (btnNotifications == null || collectionsService == null) return;
+        try {
+            String routeId = UserSessionContext.getSelectedRouteId();
+            var alerts = collectionsService.getActionableNotifications(java.time.LocalDate.now(), routeId);
+            int count = alerts.size();
+            btnNotifications.setText("Alertas (" + count + ")");
+            if (count > 0) {
+                btnNotifications.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-border-color: #fecaca; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold; -fx-cursor: hand;");
+            } else {
+                btnNotifications.setStyle("-fx-background-color: #f8fafc; -fx-text-fill: #475569; -fx-border-color: #cbd5e1; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold; -fx-cursor: hand;");
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void checkForDesktopUpdateAsync() {
+        if (desktopUpdateChecker == null) return;
+        Thread t = new Thread(() -> {
+            var opt = desktopUpdateChecker.checkForUpdate();
+            if (opt.isPresent() && opt.get().updateAvailable()) {
+                var info = opt.get();
+                boolean stagedOta = false;
+                if (desktopOtaService != null
+                        && AppVersion.isOtaLauncherPresent()
+                        && info.supportsOtaForShell(AppVersion.installedShellVersion())) {
+                    var res = desktopOtaService.stageOtaUpdate(info);
+                    stagedOta = res.success();
+                }
+                final boolean finalStagedOta = stagedOta;
+                Platform.runLater(() -> {
+                    pendingUpdateInfo = info;
+                    otaStagedReady = finalStagedOta;
+                    if (btnUpdateAvailable != null) {
+                        btnUpdateAvailable.setText(finalStagedOta
+                                ? ("⬇ v" + info.latestVersion() + " lista — Reiniciar")
+                                : ("⬆ Actualizar v" + info.latestVersion()));
+                        btnUpdateAvailable.setVisible(true);
+                        btnUpdateAvailable.setManaged(true);
+                    }
+                });
+            }
+        }, "kredia-update-check");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void showAvailableUpdateDialog() {
+        if (pendingUpdateInfo == null) return;
+        var info = pendingUpdateInfo;
+        var alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION);
+        if (primaryStage != null) alert.initOwner(primaryStage);
+        alert.setTitle("Nueva Versión Disponible — v" + info.latestVersion());
+
+        if (otaStagedReady && desktopOtaService != null) {
+            alert.setHeaderText("Kredia Desktop v" + info.latestVersion() + " ya fue descargada y verificada");
+            alert.setContentText((info.releaseNotes().isBlank() ? "Nueva actualización rápida lista para aplicar." : info.releaseNotes())
+                    + "\n\nVersión actual: v" + info.currentVersion()
+                    + "\nSolo toma ~2 segundos reiniciar y aplicar (sin reinstalar).");
+            var btnRestart = new javafx.scene.control.ButtonType("Reiniciar y actualizar ahora", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+            var btnLater = new javafx.scene.control.ButtonType("Aplicar al próximo inicio", javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
+            alert.getButtonTypes().setAll(btnRestart, btnLater);
+            alert.showAndWait().ifPresent(chosen -> {
+                if (chosen == btnRestart) {
+                    performOtaRestart();
+                }
+            });
+            return;
+        }
+
+        alert.setHeaderText("Kredia Desktop v" + info.latestVersion() + " ya está disponible");
+        alert.setContentText((info.releaseNotes().isBlank() ? "Nueva actualización lista para instalar." : info.releaseNotes())
+                + "\n\nVersión instalada: v" + info.currentVersion());
+        var btnDownload = new javafx.scene.control.ButtonType("Descargar instalador", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        var btnLater = new javafx.scene.control.ButtonType("Después", javafx.scene.control.ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(btnDownload, btnLater);
+        alert.showAndWait().ifPresent(chosen -> {
+            if (chosen == btnDownload && info.downloadUrl() != null && !info.downloadUrl().isBlank()) {
+                try {
+                    if (java.awt.Desktop.isDesktopSupported()) {
+                        java.awt.Desktop.getDesktop().browse(new java.net.URI(info.downloadUrl()));
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    private void performOtaRestart() {
+        if (desktopOtaService == null) return;
+        boolean launched = desktopOtaService.relaunchToApplyUpdate(() -> {
+            stopSilentBackgroundSync();
+            try {
+                if (context != null) context.close();
+            } catch (Exception ignored) {}
+        });
+        if (launched) {
+            Platform.exit();
+            System.exit(0);
+        }
     }
 
     private void onLogout() {
         stopSilentBackgroundSync();
+        if (lanSyncServerService != null) {
+            try { lanSyncServerService.revokePairings(); } catch (Exception ignored) {}
+        }
+        if (todayCollectionsView != null) safeRun(todayCollectionsView::clearFilters);
+        if (customersView != null) safeRun(customersView::clearFilters);
+        if (loansView != null) safeRun(loansView::clearFilters);
+        if (creditHistoryView != null) safeRun(creditHistoryView::clearSearch);
         authService.logout();
+        UserSessionContext.setSelectedRouteId("ALL");
         loginView.reset();
         appRoot.getChildren().setAll(loginView);
         MotionUtil.transitionView(loginView);
@@ -395,7 +651,7 @@ public final class CarteraApplication extends Application {
         MotionUtil.installTactileButton(btnLogout);
         box.getChildren().add(btnLogout);
 
-        var versionLabel = new Label("Sistema Cartera v1.4 • Operación Segura");
+        var versionLabel = new Label(AppVersion.displayLabel());
         versionLabel.getStyleClass().add("sidebar-version");
         box.getChildren().add(versionLabel);
 
@@ -472,8 +728,8 @@ public final class CarteraApplication extends Application {
 
         cmbGlobalRoute.setPrefWidth(220);
         cmbGlobalRoute.getStyleClass().add("search-field");
-        reloadGlobalRoutes();
         cmbGlobalRoute.setOnAction(e -> {
+            if (updatingGlobalRoute) return;
             GlobalRouteOption opt = cmbGlobalRoute.getValue();
             if (opt != null) {
                 UserSessionContext.setSelectedRouteId(opt.id());
@@ -482,84 +738,150 @@ public final class CarteraApplication extends Application {
         });
         routeSelectorBox.getChildren().addAll(lblRoute, cmbGlobalRoute);
 
-        var status = new Label("● Conectado • Listo para Operar");
-        status.getStyleClass().add("status-ok");
+        btnNotifications = new Button("Alertas (0)");
+        btnNotifications.setStyle("-fx-background-color: #f8fafc; -fx-text-fill: #475569; -fx-border-color: #cbd5e1; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold; -fx-cursor: hand;");
+        btnNotifications.setTooltip(new javafx.scene.control.Tooltip("Ver mora, promesas de hoy y clientes listos para renovar"));
+        btnNotifications.setOnAction(e -> openNotificationsDialog());
+        MotionUtil.installTactileButton(btnNotifications);
 
-        bar.getChildren().addAll(topTitle, spacer, routeSelectorBox, status);
+        btnUpdateAvailable = new Button("⬆ Actualizar");
+        btnUpdateAvailable.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #6ee7b7; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold; -fx-cursor: hand;");
+        btnUpdateAvailable.setVisible(false);
+        btnUpdateAvailable.setManaged(false);
+        btnUpdateAvailable.setOnAction(e -> showAvailableUpdateDialog());
+        MotionUtil.installTactileButton(btnUpdateAvailable);
+
+        lblCloudSyncStatus = new Label("● Conectando nube...");
+        lblCloudSyncStatus.getStyleClass().add("status-ok");
+        lblCloudSyncStatus.setStyle(lblCloudSyncStatus.getStyle() + " -fx-cursor: hand;");
+        lblCloudSyncStatus.setOnMouseClicked(e -> {
+            if (desktopCloudSyncService == null) return;
+            var st = desktopCloudSyncService.getLastSyncStatus();
+            if (st.hasError() && st.message() != null
+                    && (st.message().toLowerCase().contains("vencida") || st.message().toLowerCase().contains("token"))) {
+                var confirm = new javafx.scene.control.Alert(
+                        javafx.scene.control.Alert.AlertType.CONFIRMATION,
+                        "Tu sesión en la nube expiró. ¿Deseas volver a iniciar sesión para reconectar la sincronización ahora?",
+                        javafx.scene.control.ButtonType.YES, javafx.scene.control.ButtonType.NO);
+                if (primaryStage != null) confirm.initOwner(primaryStage);
+                confirm.setTitle("Reconectar Sesión en la Nube");
+                confirm.setHeaderText("Sesión de sincronización vencida");
+                confirm.showAndWait().ifPresent(bt -> {
+                    if (bt == javafx.scene.control.ButtonType.YES) onLogout();
+                });
+            } else {
+                triggerManualCloudSync();
+            }
+        });
+
+        btnSyncNow = new Button("↻ Sincronizar");
+        btnSyncNow.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold; -fx-cursor: hand;");
+        btnSyncNow.setOnAction(e -> triggerManualCloudSync());
+        MotionUtil.installTactileButton(btnSyncNow);
+
+        bar.getChildren().addAll(topTitle, spacer, routeSelectorBox, btnUpdateAvailable, btnNotifications, lblCloudSyncStatus, btnSyncNow);
         return bar;
     }
 
     private void reloadGlobalRoutes() {
-        UserSession session = UserSessionContext.getSession().orElse(null);
-        String prevSelected = UserSessionContext.getSelectedRouteId();
-        cmbGlobalRoute.getItems().clear();
+        updatingGlobalRoute = true;
+        try {
+            UserSession session = UserSessionContext.getSession().orElse(null);
+            String prevSelected = UserSessionContext.getSelectedRouteId();
+            cmbGlobalRoute.getItems().clear();
 
-        if (session != null && session.isCollector()) {
-            cmbGlobalRoute.setDisable(true);
-            GlobalRouteOption targetSelection = null;
+            if (session != null && session.isCollector()) {
+                List<GlobalRouteOption> assigned = new java.util.ArrayList<>();
+                if (routeRepository != null) {
+                    List<RouteEntity> routes = routeRepository.findAll();
+                    for (RouteEntity r : routes) {
+                        if (r.getActive() != null && r.getActive() == 0) continue;
+                        if (r.getCollectorId() != null && session.userId().equalsIgnoreCase(r.getCollectorId())) {
+                            assigned.add(new GlobalRouteOption(r.getId(), "Mi Ruta: " + r.getName()));
+                        }
+                    }
+                }
+                if (assigned.isEmpty()) {
+                    GlobalRouteOption noneOpt = new GlobalRouteOption("NONE", "Sin ruta asignada");
+                    cmbGlobalRoute.getItems().add(noneOpt);
+                    cmbGlobalRoute.setValue(noneOpt);
+                    cmbGlobalRoute.setDisable(true);
+                    UserSessionContext.setSelectedRouteId("NONE");
+                } else {
+                    cmbGlobalRoute.getItems().addAll(assigned);
+                    GlobalRouteOption chosen = assigned.stream()
+                            .filter(o -> prevSelected != null && prevSelected.equalsIgnoreCase(o.id()))
+                            .findFirst()
+                            .orElse(assigned.get(0));
+                    cmbGlobalRoute.setValue(chosen);
+                    cmbGlobalRoute.setDisable(assigned.size() <= 1);
+                    UserSessionContext.setSelectedRouteId(chosen.id());
+                }
+                return;
+            }
+
+            cmbGlobalRoute.setDisable(false);
+            GlobalRouteOption allOption = new GlobalRouteOption("ALL", "Todas las Rutas (Consolidado)");
+            cmbGlobalRoute.getItems().add(allOption);
+
+            GlobalRouteOption targetSelection = allOption;
             if (routeRepository != null) {
                 List<RouteEntity> routes = routeRepository.findAll();
                 for (RouteEntity r : routes) {
                     if (r.getActive() != null && r.getActive() == 0) continue;
-                    if (session.userId().equalsIgnoreCase(r.getCollectorId())) {
-                        GlobalRouteOption opt = new GlobalRouteOption(r.getId(), "Mi Ruta: " + r.getName());
-                        cmbGlobalRoute.getItems().add(opt);
+                    GlobalRouteOption opt = new GlobalRouteOption(r.getId(), r.getName());
+                    cmbGlobalRoute.getItems().add(opt);
+                    if (prevSelected != null && prevSelected.equalsIgnoreCase(r.getId())) {
                         targetSelection = opt;
-                        break;
                     }
                 }
-                if (targetSelection == null && !routes.isEmpty()) {
-                    RouteEntity first = routes.get(0);
-                    targetSelection = new GlobalRouteOption(first.getId(), "Mi Ruta: " + first.getName());
-                    cmbGlobalRoute.getItems().add(targetSelection);
-                }
             }
-            if (targetSelection != null) {
-                cmbGlobalRoute.setValue(targetSelection);
-                UserSessionContext.setSelectedRouteId(targetSelection.id());
-            }
-            return;
+            cmbGlobalRoute.setValue(targetSelection);
+            UserSessionContext.setSelectedRouteId(targetSelection.id());
+        } finally {
+            updatingGlobalRoute = false;
         }
-
-        cmbGlobalRoute.setDisable(false);
-        GlobalRouteOption allOption = new GlobalRouteOption("ALL", "Todas las Rutas (Consolidado)");
-        cmbGlobalRoute.getItems().add(allOption);
-
-        GlobalRouteOption targetSelection = allOption;
-        if (routeRepository != null) {
-            List<RouteEntity> routes = routeRepository.findAll();
-            for (RouteEntity r : routes) {
-                if (r.getActive() != null && r.getActive() == 0) continue;
-                GlobalRouteOption opt = new GlobalRouteOption(r.getId(), r.getName());
-                cmbGlobalRoute.getItems().add(opt);
-                if (prevSelected != null && prevSelected.equalsIgnoreCase(r.getId())) {
-                    targetSelection = opt;
-                }
-            }
-        }
-        cmbGlobalRoute.setValue(targetSelection);
     }
 
     public void selectGlobalRoute(String routeId) {
         if (routeId == null) return;
-        for (GlobalRouteOption opt : cmbGlobalRoute.getItems()) {
-            if (routeId.equalsIgnoreCase(opt.id())) {
-                cmbGlobalRoute.setValue(opt);
-                UserSessionContext.setSelectedRouteId(opt.id());
-                refreshActiveViews();
-                break;
+        updatingGlobalRoute = true;
+        boolean matched = false;
+        try {
+            for (GlobalRouteOption opt : cmbGlobalRoute.getItems()) {
+                if (routeId.equalsIgnoreCase(opt.id())) {
+                    cmbGlobalRoute.setValue(opt);
+                    UserSessionContext.setSelectedRouteId(opt.id());
+                    matched = true;
+                    break;
+                }
             }
+        } finally {
+            updatingGlobalRoute = false;
+        }
+        if (matched) {
+            refreshActiveViews();
         }
     }
 
     private void refreshActiveViews() {
-        if (dashboardView != null) dashboardView.refresh();
-        if (todayCollectionsView != null) todayCollectionsView.refreshData();
-        if (customersView != null) customersView.refresh();
-        if (loansView != null) loansView.refresh();
-        if (settlementManagementView != null) settlementManagementView.refresh();
-        if (cashManagementView != null) cashManagementView.refresh();
-        if (reportsView != null) reportsView.refresh();
+        Node current = mainContainer != null ? mainContainer.getCenter() : null;
+        if (current == dashboardView && dashboardView != null) safeRun(dashboardView::refresh);
+        else if (current == todayCollectionsView && todayCollectionsView != null) safeRun(todayCollectionsView::refreshData);
+        else if (current == customersView && customersView != null) safeRun(customersView::refresh);
+        else if (current == loansView && loansView != null) safeRun(loansView::refresh);
+        else if (current == settlementManagementView && settlementManagementView != null) safeRun(settlementManagementView::refresh);
+        else if (current == treasuryManagementView && treasuryManagementView != null) safeRun(treasuryManagementView::refresh);
+        else if (current == reportsView && reportsView != null) safeRun(reportsView::refresh);
+        else if (current == configurationView && configurationView != null) safeRun(configurationView::refreshUsers);
+        else if (current == creditHistoryView && creditHistoryView != null) safeRun(creditHistoryView::refresh);
+        refreshNotificationsBadge();
+    }
+
+    private static void safeRun(Runnable action) {
+        try {
+            action.run();
+        } catch (Exception ignored) {}
     }
 
     private void navigateTo(String viewName) {
@@ -687,10 +1009,16 @@ public final class CarteraApplication extends Application {
     @Override
     public void stop() {
         stopSilentBackgroundSync();
+        if (lanSyncServerService != null) {
+            try { lanSyncServerService.stopServer(); } catch (Exception ignored) {}
+        }
         if (desktopCloudSyncService != null) {
-            try {
-                desktopCloudSyncService.syncSilentlyInBackground();
-            } catch (Exception ignored) {}
+            Thread finalSync = new Thread(() -> {
+                try { desktopCloudSyncService.syncSilentlyInBackground(); } catch (Exception ignored) {}
+            }, "kredia-shutdown-sync");
+            finalSync.setDaemon(true);
+            finalSync.start();
+            try { finalSync.join(1500); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
         }
         if (context != null) {
             context.close();

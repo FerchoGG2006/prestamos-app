@@ -161,16 +161,16 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
         <View style={styles.modalCard}>
           {/* Header */}
           <View style={styles.headerRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={styles.iconBox}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: 10 }}>
+              <View style={[styles.iconBox, { flexShrink: 0 }]}>
                 <UserCheck size={20} color="#2563eb" />
               </View>
-              <View style={{ marginLeft: 10 }}>
+              <View style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
                 <Text style={styles.title}>Editar Datos del Cliente</Text>
                 <Text style={styles.subtitle}>Actualizar información de contacto y ruta</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { flexShrink: 0 }]} activeOpacity={0.7}>
               <X size={20} color="#64748b" />
             </TouchableOpacity>
           </View>
@@ -208,10 +208,10 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
             {/* Teléfonos (Llamadas y WhatsApp) */}
             <View style={styles.rowTwoCols}>
-              <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+              <View style={[styles.fieldGroup, { flex: 1, minWidth: 0 }]}>
                 <Text style={styles.fieldLabel}>Teléfono Llamadas *</Text>
                 <View style={styles.inputWithIcon}>
-                  <Phone size={14} color="#64748b" style={{ marginRight: 6 }} />
+                  <Phone size={14} color="#64748b" style={{ marginRight: 6, flexShrink: 0 }} />
                   <TextInput
                     style={[styles.textInputBare, { flex: 1 }]}
                     value={phone}
@@ -222,7 +222,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   />
                 </View>
               </View>
-              <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+              <View style={[styles.fieldGroup, { flex: 1, minWidth: 0 }]}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={styles.fieldLabel}>WhatsApp *</Text>
                   {phone.trim().length > 0 && whatsappPhone !== phone && (
@@ -235,7 +235,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   )}
                 </View>
                 <View style={styles.inputWithIcon}>
-                  <Phone size={14} color="#059669" style={{ marginRight: 6 }} />
+                  <Phone size={14} color="#059669" style={{ marginRight: 6, flexShrink: 0 }} />
                   <TextInput
                     style={[styles.textInputBare, { flex: 1 }]}
                     value={whatsappPhone}
@@ -250,10 +250,10 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
             {/* Dirección y Barrio */}
             <View style={styles.rowTwoCols}>
-              <View style={[styles.fieldGroup, { flex: 1.2, marginRight: 8 }]}>
+              <View style={[styles.fieldGroup, { flex: 1.2, minWidth: 0 }]}>
                 <Text style={styles.fieldLabel}>Dirección de Cobro</Text>
                 <View style={styles.inputWithIcon}>
-                  <MapPin size={14} color="#64748b" style={{ marginRight: 6 }} />
+                  <MapPin size={14} color="#64748b" style={{ marginRight: 6, flexShrink: 0 }} />
                   <TextInput
                     style={[styles.textInputBare, { flex: 1 }]}
                     value={address}
@@ -263,7 +263,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   />
                 </View>
               </View>
-              <View style={[styles.fieldGroup, { flex: 0.9, marginLeft: 8 }]}>
+              <View style={[styles.fieldGroup, { flex: 0.9, minWidth: 0 }]}>
                 <Text style={styles.fieldLabel}>Barrio</Text>
                 <TextInput
                   style={styles.textInput}
@@ -277,10 +277,10 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
             {/* Negocio y Ocupación */}
             <View style={styles.rowTwoCols}>
-              <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+              <View style={[styles.fieldGroup, { flex: 1, minWidth: 0 }]}>
                 <Text style={styles.fieldLabel}>Nombre del Negocio</Text>
                 <View style={styles.inputWithIcon}>
-                  <Briefcase size={14} color="#64748b" style={{ marginRight: 6 }} />
+                  <Briefcase size={14} color="#64748b" style={{ marginRight: 6, flexShrink: 0 }} />
                   <TextInput
                     style={[styles.textInputBare, { flex: 1 }]}
                     value={businessName}
@@ -290,7 +290,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   />
                 </View>
               </View>
-              <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+              <View style={[styles.fieldGroup, { flex: 1, minWidth: 0 }]}>
                 <Text style={styles.fieldLabel}>Ocupación / Oficio</Text>
                 <TextInput
                   style={styles.textInput}
@@ -304,7 +304,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
 
             {/* Ciudad y Orden en Ruta */}
             <View style={styles.rowTwoCols}>
-              <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+              <View style={[styles.fieldGroup, { flex: 1, minWidth: 0 }]}>
                 <Text style={styles.fieldLabel}>Ciudad</Text>
                 <TextInput
                   style={styles.textInput}
@@ -314,8 +314,8 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                   placeholderTextColor="#94a3b8"
                 />
               </View>
-              <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
-                <Text style={styles.fieldLabel}>Posición / Orden en Ruta (#)</Text>
+              <View style={[styles.fieldGroup, { flex: 1, minWidth: 0 }]}>
+                <Text style={styles.fieldLabel}>Orden en Ruta (#)</Text>
                 <TextInput
                   style={styles.textInput}
                   value={orderIndexStr}
@@ -380,7 +380,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
               </View>
 
               <View style={styles.rowTwoCols}>
-                <View style={[styles.fieldGroup, { flex: 1, marginRight: 8 }]}>
+                <View style={[styles.fieldGroup, { flex: 1, minWidth: 0 }]}>
                   <Text style={styles.fieldLabel}>Parentesco</Text>
                   <TextInput
                     style={styles.textInput}
@@ -390,7 +390,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
                     placeholderTextColor="#94a3b8"
                   />
                 </View>
-                <View style={[styles.fieldGroup, { flex: 1, marginLeft: 8 }]}>
+                <View style={[styles.fieldGroup, { flex: 1, minWidth: 0 }]}>
                   <Text style={styles.fieldLabel}>Teléfono Referencia</Text>
                   <TextInput
                     style={styles.textInput}
@@ -442,6 +442,7 @@ const styles = StyleSheet.create({
     maxHeight: '88%',
     flexShrink: 1,
     padding: 20,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.15,
@@ -498,6 +499,8 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   textInput: {
+    width: '100%',
+    minWidth: 0,
     backgroundColor: '#f8fafc',
     borderWidth: 1,
     borderColor: '#cbd5e1',
@@ -510,11 +513,15 @@ const styles = StyleSheet.create({
   },
   rowTwoCols: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    gap: 10,
   },
   inputWithIcon: {
     flexDirection: 'row',
     alignItems: 'center',
+    minWidth: 0,
+    width: '100%',
+    overflow: 'hidden',
     backgroundColor: '#f8fafc',
     borderWidth: 1,
     borderColor: '#cbd5e1',
@@ -522,6 +529,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   textInputBare: {
+    minWidth: 0,
     paddingVertical: Platform.OS === 'ios' ? 10 : 7,
     fontFamily: FONT_FAMILY,
     fontSize: 13,

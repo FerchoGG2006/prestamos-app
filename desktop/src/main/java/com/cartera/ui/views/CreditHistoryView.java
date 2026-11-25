@@ -6,6 +6,7 @@ import com.cartera.history.application.CreditHistoryService.LoanHistoryItem;
 import com.cartera.history.application.CreditHistoryService.RepaymentRating;
 import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
+import com.cartera.ui.util.UiLabels;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
@@ -69,22 +70,16 @@ public class CreditHistoryView extends VBox {
         VBox searchCard = new VBox(10);
         searchCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-padding: 16 20; -fx-border-color: #e2e8f0; -fx-border-radius: 12; -fx-border-width: 1;");
 
-        Label lblSearchPrompt = new Label("Ingrese la Cédula del Cliente (solo números):");
+        Label lblSearchPrompt = new Label("Ingrese Cédula, Documento (CE/NIT/PPT) o Nombre del Cliente:");
         lblSearchPrompt.setStyle("-fx-text-fill: #1e293b; -fx-font-size: 13px; -fx-font-weight: bold;");
 
         HBox searchRow = new HBox(12);
         searchRow.setAlignment(Pos.CENTER_LEFT);
 
         txtDocument = new TextField();
-        txtDocument.setPromptText("Ej: 1098765432");
-        txtDocument.setTextFormatter(new TextFormatter<>(change -> {
-            if (change.getControlNewText().matches("\\d*")) {
-                return change;
-            }
-            return null;
-        }));
+        txtDocument.setPromptText("Ej: 1098765432, CE12345 o Nombre...");
         txtDocument.getStyleClass().add("search-field");
-        txtDocument.setPrefWidth(280);
+        txtDocument.setPrefWidth(290);
         txtDocument.setOnAction(e -> handleSearch());
 
         Button btnSearch = new Button("Consultar Historial");
@@ -94,12 +89,12 @@ public class CreditHistoryView extends VBox {
         // Selector rápido opcional con clientes registrados
         cbCustomerSuggest = new ComboBox<>();
         cbCustomerSuggest.setPromptText("O seleccionar de la lista...");
-        cbCustomerSuggest.setPrefWidth(260);
+        cbCustomerSuggest.setPrefWidth(270);
         cbCustomerSuggest.setConverter(new javafx.util.StringConverter<>() {
             @Override
             public String toString(CustomerEntity c) {
                 if (c == null) return "";
-                return c.getFullName() + " (C.C. " + c.getDocumentNumber() + ")";
+                return c.getFullName() + " (" + c.getDocumentNumber() + ")";
             }
             @Override
             public CustomerEntity fromString(String string) {
@@ -116,27 +111,31 @@ public class CreditHistoryView extends VBox {
 
         Button btnClear = new Button("Limpiar");
         btnClear.getStyleClass().add("btn-secondary");
-        btnClear.setOnAction(e -> {
-            txtDocument.clear();
-            cbCustomerSuggest.setValue(null);
-            showEmptyState();
-        });
+        btnClear.setOnAction(e -> clearSearch());
 
         searchRow.getChildren().addAll(txtDocument, btnSearch, cbCustomerSuggest, btnClear);
 
-        // Chips de clientes rápidos
+        // Chips de clientes rápidos (se cargan en refresh() post-login respetando rol)
         quickChipsPane = new FlowPane(8, 8);
         quickChipsPane.setAlignment(Pos.CENTER_LEFT);
-        loadQuickSuggestions();
 
         searchCard.getChildren().addAll(lblSearchPrompt, searchRow, quickChipsPane);
         getChildren().add(searchCard);
     }
 
+    public void clearSearch() {
+        if (txtDocument != null) txtDocument.clear();
+        if (cbCustomerSuggest != null) cbCustomerSuggest.setValue(null);
+        showEmptyState();
+    }
+
     private void buildContentArea() {
         contentContainer = new VBox(16);
-        VBox.setVgrow(contentContainer, Priority.ALWAYS);
-        getChildren().add(contentContainer);
+        ScrollPane scroll = new ScrollPane(contentContainer);
+        scroll.setFitToWidth(true);
+        scroll.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-border-color: transparent;");
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+        getChildren().add(scroll);
         showEmptyState();
     }
 
@@ -178,21 +177,46 @@ public class CreditHistoryView extends VBox {
         loadReportForCustomer(documentNumber);
     }
 
-    private void loadReportForCustomer(String documentNumber) {
-        var opt = creditHistoryService.getReportByDocument(documentNumber);
+    private void loadReportForCustomer(String query) {
+        var opt = creditHistoryService.getReportByDocument(query);
         if (opt.isEmpty()) {
-            // Si no lo encuentra por cédula exacta, intentamos búsqueda por coincidencia
-            List<CustomerEntity> matches = creditHistoryService.searchCustomers(documentNumber);
-            if (!matches.isEmpty()) {
+            List<CustomerEntity> matches = creditHistoryService.searchCustomers(query);
+            if (matches.size() == 1) {
                 opt = creditHistoryService.getReportByDocument(matches.get(0).getDocumentNumber());
+            } else if (matches.size() > 1) {
+                showMultipleMatchesState(query, matches);
+                return;
             }
         }
 
         if (opt.isPresent()) {
             renderReport(opt.get());
         } else {
-            showNotFoundState(documentNumber);
+            showNotFoundState(query);
         }
+    }
+
+    private void showMultipleMatchesState(String searched, List<CustomerEntity> matches) {
+        contentContainer.getChildren().clear();
+        VBox box = new VBox(12);
+        box.setPadding(new Insets(24));
+        box.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-border-color: #bfdbfe; -fx-border-radius: 12;");
+
+        Label title = new Label("Se encontraron " + matches.size() + " coincidencias para \"" + searched + "\". Seleccione un cliente:");
+        title.setStyle("-fx-text-fill: #1e40af; -fx-font-size: 14px; -fx-font-weight: bold;");
+
+        FlowPane listPane = new FlowPane(10, 10);
+        for (CustomerEntity c : matches) {
+            Button btn = new Button(c.getFullName() + " (" + c.getDocumentNumber() + ")");
+            btn.getStyleClass().add("btn-secondary");
+            btn.setOnAction(e -> {
+                txtDocument.setText(c.getDocumentNumber());
+                loadReportForCustomer(c.getDocumentNumber());
+            });
+            listPane.getChildren().add(btn);
+        }
+        box.getChildren().addAll(title, listPane);
+        contentContainer.getChildren().add(box);
     }
 
     private void showEmptyState() {
@@ -373,6 +397,8 @@ public class CreditHistoryView extends VBox {
 
         TableView<LoanHistoryItem> table = new TableView<>();
         table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        table.setPlaceholder(UiLabels.emptyState("Sin contratos históricos", "Este cliente aún no tiene créditos registrados."));
+        table.setPrefHeight(260);
         VBox.setVgrow(table, Priority.ALWAYS);
 
         TableColumn<LoanHistoryItem, String> colId = new TableColumn<>("CRÉDITO");
@@ -387,40 +413,38 @@ public class CreditHistoryView extends VBox {
         colFreq.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().loan().getFrequency() != null ? d.getValue().loan().getFrequency() : "DIARIO"));
         colFreq.setPrefWidth(95);
 
-        TableColumn<LoanHistoryItem, String> colPrincipal = new TableColumn<>("PRESTADO");
-        colPrincipal.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().loan().getPrincipal())));
+        TableColumn<LoanHistoryItem, BigDecimal> colPrincipal = createMoneyLoanColumn("PRESTADO", i -> i.loan().getPrincipal());
         colPrincipal.setPrefWidth(100);
 
-        TableColumn<LoanHistoryItem, String> colAgreed = new TableColumn<>("TOTAL C/INT");
-        colAgreed.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().loan().getTotalAgreed())));
+        TableColumn<LoanHistoryItem, BigDecimal> colAgreed = createMoneyLoanColumn("TOTAL C/INT", i -> i.loan().getTotalAgreed());
         colAgreed.setPrefWidth(105);
 
-        TableColumn<LoanHistoryItem, String> colPaid = new TableColumn<>("PAGADO");
-        colPaid.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().totalPaid())));
+        TableColumn<LoanHistoryItem, BigDecimal> colPaid = createMoneyLoanColumn("PAGADO", LoanHistoryItem::totalPaid);
         colPaid.setPrefWidth(100);
 
-        TableColumn<LoanHistoryItem, String> colBal = new TableColumn<>("SALDO RESTANTE");
-        colBal.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().remainingBalance())));
+        TableColumn<LoanHistoryItem, BigDecimal> colBal = createMoneyLoanColumn("SALDO RESTANTE", LoanHistoryItem::remainingBalance);
         colBal.setPrefWidth(110);
 
-        TableColumn<LoanHistoryItem, LoanHistoryItem> colStatus = new TableColumn<>("ESTADO");
-        colStatus.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
+        TableColumn<LoanHistoryItem, String> colStatus = new TableColumn<>("ESTADO");
+        colStatus.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().loan().getStatus() != null ? d.getValue().loan().getStatus().toUpperCase() : "DESCONOCIDO"));
         colStatus.setCellFactory(c -> new TableCell<>() {
             @Override
-            protected void updateItem(LoanHistoryItem item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
+            protected void updateItem(String st, boolean empty) {
+                super.updateItem(st, empty);
+                if (empty || st == null) {
                     setGraphic(null);
                     setText(null);
                 } else {
-                    String st = item.loan().getStatus() != null ? item.loan().getStatus().toUpperCase() : "DESCONOCIDO";
                     Label badge = new Label(st);
-                    if ("FINALIZADO".equals(st) || "PAGADO".equals(st) || "PAID".equals(st)) {
+                    if ("FINALIZADO".equals(st) || "COMPLETADO".equals(st) || "PAGADO".equals(st) || "PAID".equals(st)) {
                         badge.setText("PAGADO");
                         badge.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-padding: 2 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
                     } else if ("RENOVADO".equals(st)) {
                         badge.setText("RENOVADO");
                         badge.setStyle("-fx-background-color: #eef2ff; -fx-text-fill: #4338ca; -fx-padding: 2 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
+                    } else if ("ANULADO".equals(st)) {
+                        badge.setText("ANULADO");
+                        badge.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-padding: 2 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
                     } else if ("ACTIVO".equals(st) || "ACTIVE".equals(st)) {
                         badge.setText("ACTIVO");
                         badge.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-padding: 2 8; -fx-background-radius: 10; -fx-font-weight: bold; -fx-font-size: 11px;");
@@ -516,26 +540,31 @@ public class CreditHistoryView extends VBox {
 
         TableView<InstallmentEntity> tableInst = new TableView<>();
         tableInst.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        tableInst.setPlaceholder(UiLabels.emptyState("Sin cuotas registradas", "Este crédito no registra cuotas."));
         VBox.setVgrow(tableInst, Priority.ALWAYS);
 
-        TableColumn<InstallmentEntity, String> colNum = new TableColumn<>("#");
-        colNum.setCellValueFactory(d -> new SimpleObjectProperty<>("Cuota #" + d.getValue().getInstallmentNumber()));
-        colNum.setPrefWidth(70);
+        TableColumn<InstallmentEntity, Integer> colNum = new TableColumn<>("#");
+        colNum.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getInstallmentNumber()));
+        colNum.setCellFactory(c -> new TableCell<>() {
+            @Override
+            protected void updateItem(Integer num, boolean empty) {
+                super.updateItem(num, empty);
+                setText(empty || num == null ? null : "Cuota #" + num);
+            }
+        });
+        colNum.setPrefWidth(75);
 
         TableColumn<InstallmentEntity, String> colDate = new TableColumn<>("VENCE");
         colDate.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue().getDueDate()));
         colDate.setPrefWidth(95);
 
-        TableColumn<InstallmentEntity, String> colAmount = new TableColumn<>("VALOR");
-        colAmount.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().getAmount())));
+        TableColumn<InstallmentEntity, BigDecimal> colAmount = createMoneyInstColumn("VALOR", InstallmentEntity::getAmount);
         colAmount.setPrefWidth(95);
 
-        TableColumn<InstallmentEntity, String> colPaid = new TableColumn<>("ABONADO");
-        colPaid.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().getPaidAmount() != null ? d.getValue().getPaidAmount() : BigDecimal.ZERO)));
+        TableColumn<InstallmentEntity, BigDecimal> colPaid = createMoneyInstColumn("ABONADO", i -> i.getPaidAmount() != null ? i.getPaidAmount() : BigDecimal.ZERO);
         colPaid.setPrefWidth(95);
 
-        TableColumn<InstallmentEntity, String> colPending = new TableColumn<>("PENDIENTE");
-        colPending.setCellValueFactory(d -> new SimpleObjectProperty<>(CURRENCY.format(d.getValue().getPendingAmount())));
+        TableColumn<InstallmentEntity, BigDecimal> colPending = createMoneyInstColumn("PENDIENTE", InstallmentEntity::getPendingAmount);
         colPending.setPrefWidth(95);
 
         LocalDate today = LocalDate.now();
@@ -549,6 +578,7 @@ public class CreditHistoryView extends VBox {
                     setGraphic(null);
                     setText(null);
                 } else {
+                    String rawStatus = inst.getStatus() != null ? inst.getStatus().toUpperCase() : "PENDIENTE";
                     BigDecimal pend = inst.getPendingAmount() != null ? inst.getPendingAmount() : BigDecimal.ZERO;
                     BigDecimal paid = inst.getPaidAmount() != null ? inst.getPaidAmount() : BigDecimal.ZERO;
                     boolean isOverdue = false;
@@ -559,13 +589,19 @@ public class CreditHistoryView extends VBox {
                     }
 
                     Label b = new Label();
-                    if (pend.compareTo(BigDecimal.ZERO) <= 0 || "PAGADA".equalsIgnoreCase(inst.getStatus())) {
+                    if ("ANULADA".equals(rawStatus) || "ANULADO".equals(rawStatus)) {
+                        b.setText("ANULADA");
+                        b.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #991b1b; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
+                    } else if ("ADELANTADA".equals(rawStatus)) {
+                        b.setText("ADELANTADA");
+                        b.setStyle("-fx-background-color: #e0e7ff; -fx-text-fill: #4338ca; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
+                    } else if (pend.compareTo(BigDecimal.ZERO) <= 0 || "PAGADA".equals(rawStatus)) {
                         b.setText("PAGADA");
                         b.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
-                    } else if (isOverdue || "VENCIDA".equalsIgnoreCase(inst.getStatus())) {
+                    } else if (isOverdue || "VENCIDA".equals(rawStatus)) {
                         b.setText("VENCIDA");
                         b.setStyle("-fx-background-color: #fef2f2; -fx-text-fill: #dc2626; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
-                    } else if (paid.compareTo(BigDecimal.ZERO) > 0 || "PARCIAL".equalsIgnoreCase(inst.getStatus())) {
+                    } else if (paid.compareTo(BigDecimal.ZERO) > 0 || "PARCIAL".equals(rawStatus)) {
                         b.setText("PARCIAL");
                         b.setStyle("-fx-background-color: #fffbeb; -fx-text-fill: #d97706; -fx-padding: 2 8; -fx-background-radius: 8; -fx-font-weight: bold; -fx-font-size: 10px;");
                     } else {
@@ -595,6 +631,38 @@ public class CreditHistoryView extends VBox {
         scene.getStylesheets().add(getClass().getResource("/ui/theme.css").toExternalForm());
         modal.setScene(scene);
         modal.showAndWait();
+    }
+
+    private TableColumn<LoanHistoryItem, BigDecimal> createMoneyLoanColumn(String header, java.util.function.Function<LoanHistoryItem, BigDecimal> extractor) {
+        TableColumn<LoanHistoryItem, BigDecimal> col = new TableColumn<>(header);
+        col.setCellValueFactory(d -> {
+            BigDecimal val = extractor.apply(d.getValue());
+            return new SimpleObjectProperty<>(val != null ? val : BigDecimal.ZERO);
+        });
+        col.setCellFactory(c -> new TableCell<>() {
+            @Override
+            protected void updateItem(BigDecimal val, boolean empty) {
+                super.updateItem(val, empty);
+                setText(empty || val == null ? null : CURRENCY.format(val));
+            }
+        });
+        return col;
+    }
+
+    private TableColumn<InstallmentEntity, BigDecimal> createMoneyInstColumn(String header, java.util.function.Function<InstallmentEntity, BigDecimal> extractor) {
+        TableColumn<InstallmentEntity, BigDecimal> col = new TableColumn<>(header);
+        col.setCellValueFactory(d -> {
+            BigDecimal val = extractor.apply(d.getValue());
+            return new SimpleObjectProperty<>(val != null ? val : BigDecimal.ZERO);
+        });
+        col.setCellFactory(c -> new TableCell<>() {
+            @Override
+            protected void updateItem(BigDecimal val, boolean empty) {
+                super.updateItem(val, empty);
+                setText(empty || val == null ? null : CURRENCY.format(val));
+            }
+        });
+        return col;
     }
 
     private void showError(String msg) {

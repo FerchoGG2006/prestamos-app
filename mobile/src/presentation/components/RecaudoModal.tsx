@@ -134,7 +134,7 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
     .filter((p) => p.type === 'RETIRO_PAPELERIA')
     .reduce((sum, p) => sum + p.amount, 0);
 
-  const paperworkAvailableBalance = Math.max(0, totalPaperworkGenerated - totalPaperworkWithdrawn);
+  const paperworkAvailableBalance = localStore.getPaperworkAvailableBalance(routeId);
 
   const formatItemDate = (dateStr: string) => {
     if (!dateStr) return 'Fecha no registrada';
@@ -292,16 +292,16 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
         <View style={[styles.modalCard, { flexShrink: 1 }]}>
           {/* Header */}
           <View style={styles.headerRow}>
-            <View style={styles.headerTitleGroup}>
-              <View style={styles.iconCircle}>
+            <View style={[styles.headerTitleGroup, { minWidth: 0, marginRight: 10 }]}>
+              <View style={[styles.iconCircle, { flexShrink: 0 }]}>
                 <Landmark size={20} color={COLORS.primary} />
               </View>
-              <View>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.modalTitle}>Caja & Tesorería de Ruta</Text>
                 <Text style={styles.modalSubtitle}>Recaudo, inyecciones de capital y papelería</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { flexShrink: 0 }]}>
               <X size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -709,7 +709,13 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
                   </View>
                   <TouchableOpacity
                     style={styles.paperworkWithdrawBtn}
-                    onPress={() => setShowPaperworkWithdrawForm(!showPaperworkWithdrawForm)}
+                    onPress={() => {
+                      const nextOpen = !showPaperworkWithdrawForm;
+                      setShowPaperworkWithdrawForm(nextOpen);
+                      if (nextOpen && paperworkAvailableBalance > 0) {
+                        setPaperworkWithdrawAmountStr(String(paperworkAvailableBalance));
+                      }
+                    }}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.paperworkWithdrawBtnText}>
@@ -732,6 +738,19 @@ export const RecaudoModal: React.FC<RecaudoModalProps> = ({
                         onChangeText={(val) => setPaperworkWithdrawAmountStr(val.replace(/\D/g, ''))}
                       />
                     </View>
+                    <Text style={{ fontSize: 11, color: '#64748B', marginBottom: 10 }}>
+                      Al retirar, la Papelería en caja bajará a{' '}
+                      <Text style={{ fontWeight: '700', color: '#6D28D9' }}>
+                        {formatCOP(
+                          Math.max(
+                            0,
+                            paperworkAvailableBalance -
+                              (parseInt(paperworkWithdrawAmountStr.replace(/\D/g, ''), 10) || 0)
+                          )
+                        )}
+                      </Text>{' '}
+                      y tu Administrativo permanecerá intacto.
+                    </Text>
                     <TouchableOpacity
                       style={styles.submitBtn}
                       onPress={handleSavePaperworkWithdrawal}

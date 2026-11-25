@@ -18,8 +18,10 @@ import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.PaymentAllocationRepository;
 import com.cartera.infrastructure.persistence.repository.PaymentRepository;
+import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import com.cartera.installments.domain.Installment;
 import com.cartera.installments.domain.InstallmentStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,7 +32,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class RecordPaymentUseCase {
@@ -42,6 +46,7 @@ public class RecordPaymentUseCase {
     private final AppUserRepository userRepository;
     private final AuditLogRepository auditLogRepository;
     private final FinancialAccess access;
+    private final SystemSettingRepository settingRepository;
     private final PaymentApplicationService applicationService = new PaymentApplicationService();
 
     public RecordPaymentUseCase(PaymentRepository paymentRepository,
@@ -51,6 +56,20 @@ public class RecordPaymentUseCase {
                                 CashMovementRepository cashMovementRepository,
                                 AppUserRepository userRepository,
                                 AuditLogRepository auditLogRepository, FinancialAccess access) {
+        this(paymentRepository, allocationRepository, installmentRepository, loanRepository,
+                cashMovementRepository, userRepository, auditLogRepository, access, null);
+    }
+
+    @Autowired
+    public RecordPaymentUseCase(PaymentRepository paymentRepository,
+                                PaymentAllocationRepository allocationRepository,
+                                InstallmentRepository installmentRepository,
+                                LoanRepository loanRepository,
+                                CashMovementRepository cashMovementRepository,
+                                AppUserRepository userRepository,
+                                AuditLogRepository auditLogRepository,
+                                FinancialAccess access,
+                                @Autowired(required = false) SystemSettingRepository settingRepository) {
         this.access = access;
         this.paymentRepository = paymentRepository;
         this.allocationRepository = allocationRepository;
@@ -59,6 +78,14 @@ public class RecordPaymentUseCase {
         this.cashMovementRepository = cashMovementRepository;
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
+        this.settingRepository = settingRepository;
+    }
+
+    private boolean isPartialPaymentsAllowed() {
+        if (settingRepository == null) return true;
+        return settingRepository.findById("route_allow_partial_payments")
+                .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
+                .orElse(true);
     }
 
     public record RecordPaymentCommand(
@@ -168,6 +195,17 @@ public class RecordPaymentUseCase {
         LocalDate pDate = command.paymentDate() != null ? command.paymentDate() : LocalDate.now();
         var domainResult = applicationService.allocate(new Money(command.amount()), domainInstallments, pDate);
 
+        if (actor.isCollector() && !isPartialPaymentsAllowed()) {
+            Set<String> affectedIds = domainResult.allocations().stream()
+                    .map(a -> a.installmentId().toString())
+                    .collect(Collectors.toSet());
+            boolean createsPartial = domainResult.installments().stream()
+                    .anyMatch(i -> affectedIds.contains(i.id().toString()) && i.status() == InstallmentStatus.PARCIAL);
+            if (createsPartial) {
+                throw new IllegalStateException("La oficina deshabilitó los abonos parciales en ruta. Ingrese el valor exacto de la cuota completa o el saldo total.");
+            }
+        }
+
         String paymentId = UUID.randomUUID().toString();
         String nowStr = pDate.atTime(LocalDateTime.now().toLocalTime()).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
@@ -228,7 +266,7 @@ public class RecordPaymentUseCase {
         String cashMovementId = UUID.randomUUID().toString();
         CashMovementEntity cashMovement = new CashMovementEntity(
                 cashMovementId,
-                loan.getRouteId() != null ? loan.getRouteId() : "route-norte",
+                loan.getRouteId(),
                 collectorId,
                 null,
                 "INGRESO",

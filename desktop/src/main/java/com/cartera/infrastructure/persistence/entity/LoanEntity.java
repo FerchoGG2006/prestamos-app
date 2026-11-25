@@ -58,6 +58,9 @@ public class LoanEntity {
     @Column(name = "created_at", nullable = false)
     private String createdAt;
 
+    @Column(name = "loan_number")
+    private String loanNumber;
+
     public LoanEntity() {}
 
     public LoanEntity(String id, String customerId, String routeId, String collectorId, String previousLoanId,
@@ -114,4 +117,6 @@ public class LoanEntity {
     public void setStatus(String status) { this.status = status; }
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+    public String getLoanNumber() { return loanNumber; }
+    public void setLoanNumber(String loanNumber) { this.loanNumber = loanNumber; }
 }

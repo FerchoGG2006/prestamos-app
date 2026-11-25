@@ -7,12 +7,17 @@ import com.cartera.infrastructure.persistence.entity.SystemSettingEntity;
 import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import com.cartera.infrastructure.security.PasswordHasher;
+import com.cartera.infrastructure.security.UserSession;
+import com.cartera.infrastructure.security.UserSessionContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
@@ -35,6 +40,7 @@ public class OfficeLicensingService {
     public static final String KEY_VENDOR_SECRET_KEY = "cloud.vendor_secret_key";
     public static final String KEY_CLOUD_SESSION_TOKEN = "cloud.session_token";
     public static final String KEY_VENDOR_MASTER_PIN_HASH = "vendor.master_pin_hash";
+    public static final String KEY_RECOVERY_READ_ONLY = "recovery.read_only_mode";
 
     private static final String CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -180,7 +186,31 @@ public class OfficeLicensingService {
                 .orElse("ACTIVE");
     }
 
+    public String getLinkedLicenseExpiresAt() {
+        return settingRepository.findById(KEY_LICENSE_EXPIRES_AT)
+                .map(SystemSettingEntity::getSettingValue)
+                .orElse("");
+    }
+
+    public boolean isLinkedLicenseValidOffline() {
+        return getLinkedOfficeId().isPresent()
+                && isLicenseCurrentlyActive(getLinkedLicenseStatus(), getLinkedLicenseExpiresAt());
+    }
+
+    public boolean isRecoveryReadOnlyMode() {
+        return settingRepository.findById(KEY_RECOVERY_READ_ONLY)
+                .map(s -> "true".equalsIgnoreCase(s.getSettingValue()))
+                .orElse(false);
+    }
+
     @Transactional
+    public void updateLocalLicenseCache(String status, String expiresAtIso) {
+        if (status != null && !status.isBlank()) {
+            saveSetting(KEY_LICENSE_STATUS, status.trim().toUpperCase());
+        }
+        saveSetting(KEY_LICENSE_EXPIRES_AT, expiresAtIso == null ? "" : expiresAtIso.trim());
+    }
+
     public RemoteOffice registerCommercialOffice(
             String companyName,
             String ownerName,
@@ -199,6 +229,7 @@ public class OfficeLicensingService {
         if (adminUsername == null || adminUsername.isBlank() || adminRawPassword == null || adminRawPassword.length() < 6) {
             throw new IllegalArgumentException("El usuario y contraseña del administrador (mín. 6 caracteres) son obligatorios.");
         }
+        String normalizedExpiresAt = normalizeOptionalExpiration(licenseExpiresAtIso);
 
         String officeId = generateImmutableOfficeId();
         String activationCode = generateActivationCode();
@@ -210,7 +241,7 @@ public class OfficeLicensingService {
                 activationCode,
                 "ACTIVE",
                 plan,
-                licenseExpiresAtIso,
+                normalizedExpiresAt,
                 ownerName == null ? "" : ownerName.trim(),
                 phone == null ? "" : phone.trim(),
                 city == null ? "" : city.trim()
@@ -240,6 +271,9 @@ public class OfficeLicensingService {
                 passwordHash,
                 phone
         );
+        // Crear Ruta 1 inicial para que la oficina nueva pueda operar desde el primer minuto
+        String defaultRouteId = "rt-" + officeId.replace("off-", "") + "-01";
+        registryClient.upsertRoute(url, key, defaultRouteId, officeId, "Ruta 1", "R-01", null);
 
         logAudit("OFFICE_REGISTERED", officeId, "Oficina registrada: " + companyName + " | Admin: " + normalizedAdminUser);
         return office;
@@ -247,8 +281,8 @@ public class OfficeLicensingService {
 
     /**
      * Crea una ruta y su cobrador con usuario único global para una oficina registrada.
+     * Crea primero el usuario y luego la ruta para evitar rutas huérfanas con collectorId inexistente.
      */
-    @Transactional
     public void registerCollectorForOffice(
             String officeId,
             String routeName,
@@ -283,7 +317,7 @@ public class OfficeLicensingService {
         String code = routeName.trim().replaceAll("[^A-Za-z0-9]", "").toUpperCase();
         String routeCode = (code.length() >= 4 ? code.substring(0, 4) : (code.isEmpty() ? "RT" : code)) + "-" + suffix.substring(0, 2).toUpperCase();
 
-        registryClient.upsertRoute(url, key, routeId, officeId, routeName.trim(), routeCode, collectorId);
+        // Primero crear el usuario cobrador; solo si tiene éxito se crea la ruta asignada a él.
         registryClient.upsertUser(
                 url,
                 key,
@@ -296,6 +330,7 @@ public class OfficeLicensingService {
                 List.of(routeId),
                 phone
         );
+        registryClient.upsertRoute(url, key, routeId, officeId, routeName.trim(), routeCode, collectorId);
         logAudit("COLLECTOR_REGISTERED", officeId, "Cobrador creado: " + normalizedUser + " | Ruta: " + routeName);
     }
 
@@ -304,7 +339,6 @@ public class OfficeLicensingService {
         return registryClient.listOffices(getSupabaseUrl(), getSupabaseKey());
     }
 
-    @Transactional
     public void setOfficeLicenseStatus(String officeId, String status) throws Exception {
         applyVendorKey();
         String normalized = status.trim().toUpperCase();
@@ -318,7 +352,6 @@ public class OfficeLicensingService {
         logAudit("LICENSE_STATUS_CHANGED", officeId, "Nuevo estado de licencia: " + normalized);
     }
 
-    @Transactional
     public String regenerateActivationCode(String officeId) throws Exception {
         applyVendorKey();
         String newCode = generateActivationCode();
@@ -331,47 +364,23 @@ public class OfficeLicensingService {
     }
 
     /**
-     * Vincula la instalación local de escritorio a una oficina validando su código y licencia.
+     * Respalda la base SQLite actual y registra formalmente la oficina local sin perder datos existentes.
      */
-    @Transactional
-    public RemoteOffice linkLocalDesktopToOffice(String activationCode) throws Exception {
-        if (activationCode == null || activationCode.isBlank()) {
-            throw new IllegalArgumentException("Ingresa un código de activación válido.");
-        }
-        Optional<RemoteOffice> opt = registryClient.findByActivationCode(getSupabaseUrl(), getSupabaseKey(), activationCode);
-        if (opt.isEmpty()) {
-            throw new IllegalArgumentException("Código de activación no encontrado.");
-        }
-        RemoteOffice office = opt.get();
-        if (!isLicenseCurrentlyActive(office.licenseStatus(), office.licenseExpiresAt())) {
-            throw new IllegalStateException("La licencia de esta oficina está " + office.licenseStatus() + ".");
-        }
-
-        saveSetting(KEY_OFFICE_ID, office.id());
-        saveSetting(KEY_ACTIVATION_CODE, office.activationCode());
-        saveSetting(KEY_LICENSE_STATUS, office.licenseStatus());
-        saveSetting(KEY_LICENSE_PLAN, office.licensePlan());
-        saveSetting(KEY_LICENSE_EXPIRES_AT, office.licenseExpiresAt() == null ? "" : office.licenseExpiresAt());
-        saveSetting("office.company_name", office.companyName());
-
-        logAudit("DESKTOP_LINKED", office.id(), "Equipo vinculado a " + office.companyName());
-        return office;
-    }
-
-    /**
-     * Respalda la base SQLite actual y registra formalmente la oficina local (ej. Inversiones FBV)
-     * sin perder datos existentes.
-     */
-    @Transactional
     public RemoteOffice backupAndLinkExistingLocalOffice(String companyName, String ownerName) throws Exception {
         if (backupService != null) {
             backupService.createAfterCommit("LEGACY_OFFICE_LINK");
         }
         String officeId = getLinkedOfficeId().orElseGet(this::generateImmutableOfficeId);
         String code = getLinkedActivationCode().isBlank() ? generateActivationCode() : getLinkedActivationCode();
+        String resolvedCompany = (companyName != null && !companyName.isBlank())
+                ? companyName.trim()
+                : settingRepository.findById("company_name")
+                        .map(SystemSettingEntity::getSettingValue)
+                        .filter(s -> s != null && !s.isBlank())
+                        .orElse("Mi Oficina");
         RemoteOffice office = new RemoteOffice(
                 officeId,
-                companyName == null || companyName.isBlank() ? "Inversiones FBV" : companyName.trim(),
+                resolvedCompany,
                 code,
                 "ACTIVE",
                 "LIFETIME",
@@ -386,6 +395,10 @@ public class OfficeLicensingService {
         saveSetting(KEY_ACTIVATION_CODE, office.activationCode());
         saveSetting(KEY_LICENSE_STATUS, "ACTIVE");
         saveSetting(KEY_LICENSE_PLAN, "LIFETIME");
+        saveSetting(KEY_LICENSE_EXPIRES_AT, "");
+        saveSetting("company_name", office.companyName());
+        saveSetting("office.company_name", office.companyName());
+        saveSetting("office_setup_completed", "true");
         logAudit("LEGACY_OFFICE_PROTECTED_AND_LINKED", office.id(), "Respaldo + registro formal de " + office.companyName());
         return office;
     }
@@ -395,13 +408,39 @@ public class OfficeLicensingService {
             return false;
         }
         if (expiresAtIso != null && !expiresAtIso.isBlank()) {
-            try {
-                return Instant.parse(expiresAtIso).isAfter(Instant.now());
-            } catch (Exception ignored) {
-                return true;
+            Instant expiry = parseExpirationInstant(expiresAtIso);
+            if (expiry == null) {
+                // Fail-closed ante fechas corruptas o no parseables
+                return false;
             }
+            return expiry.isAfter(Instant.now());
         }
         return true;
+    }
+
+    private static Instant parseExpirationInstant(String raw) {
+        String s = raw.trim();
+        try {
+            return Instant.parse(s);
+        } catch (Exception ignored) {}
+        try {
+            return OffsetDateTime.parse(s).toInstant();
+        } catch (Exception ignored) {}
+        try {
+            return LocalDate.parse(s).plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC);
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private static String normalizeOptionalExpiration(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        Instant parsed = parseExpirationInstant(raw);
+        if (parsed == null) {
+            throw new IllegalArgumentException("Formato de vencimiento inválido. Usa ISO-8601 (ej. 2027-12-31T23:59:59Z o 2027-12-31).");
+        }
+        return parsed.toString();
     }
 
     private void saveSetting(String key, String value) {
@@ -415,15 +454,20 @@ public class OfficeLicensingService {
 
     private void logAudit(String action, String entityId, String details) {
         if (auditLogRepository == null) return;
+        String actorUserId = UserSessionContext.getSession()
+                .map(UserSession::userId)
+                .filter(id -> id != null && !id.isBlank())
+                .orElse(null);
+        String reason = actorUserId == null ? "Panel distribuidor: " + details : details;
         auditLogRepository.save(new AuditLogEntity(
                 "aud-" + UUID.randomUUID().toString().substring(0, 8),
-                "vendor",
+                actorUserId,
                 "OFFICE",
                 entityId,
                 action,
                 null,
                 details,
-                details,
+                reason,
                 LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         ));
     }

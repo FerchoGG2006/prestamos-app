@@ -17,8 +17,10 @@ import {
   generateInstallments,
   applyPaymentToLoan,
   calculateDelinquencyMetrics,
+  calculateDailyCashReconciliation,
+  filterSessionDayPayments,
 } from '../calculator';
-import { Loan, Installment } from '../types';
+import { Loan, Installment, Payment } from '../types';
 
 function runFinancialTests() {
   console.log('=== INICIANDO VALIDACIÓN DE REGLAS FINANCIERAS ===\n');
@@ -160,6 +162,140 @@ function runFinancialTests() {
   console.assert(delinquency.overdueDays === 9, 'Error: Días de mora máximos deben ser 9');
   console.assert(delinquency.surchargeAmount === 0, 'Error: Recargo debe ser 0 (no inventar fórmulas)');
   console.log('Test 6 superado con éxito.\n');
+
+  // 7. CUADRE DIARIO DE EFECTIVO CON SIGNO REAL (Opción B - sin congelar en $0)
+  console.log('Test 7: Balance neto diario con signo y déficit cubierto por base');
+  const deficitDay = calculateDailyCashReconciliation({
+    collectedCash: 23000,
+    expensesToday: 0,
+    disbursedToday: 100000,
+    recaudoRetiradoToday: 0,
+  });
+  console.assert(deficitDay.signedNetCashFlow === -77000, `Error: Balance neto esperado -$77.000, dio ${deficitDay.signedNetCashFlow}`);
+  console.assert(deficitDay.cashToHandOver === 0, 'Error: Efectivo físico a rendir debe ser $0 cuando la base cubrió el déficit');
+  console.assert(deficitDay.coveredByBaseDeficit === 77000, 'Error: Déficit cubierto por base debe ser $77.000');
+  console.assert(deficitDay.isDeficitCoveredByBase === true, 'Error: Debe marcar déficit cubierto por base');
+
+  const afterExtraPayment = calculateDailyCashReconciliation({
+    collectedCash: 33000,
+    expensesToday: 0,
+    disbursedToday: 100000,
+    recaudoRetiradoToday: 0,
+  });
+  console.assert(afterExtraPayment.signedNetCashFlow === -67000, 'Error: Un cobro adicional de $10.000 debe mover el balance de -$77.000 a -$67.000');
+  console.assert(afterExtraPayment.coveredByBaseDeficit === 67000, 'Error: Déficit debe bajar a $67.000');
+
+  const surplusDay = calculateDailyCashReconciliation({
+    collectedCash: 120000,
+    expensesToday: 5000,
+    disbursedToday: 100000,
+    recaudoRetiradoToday: 5000,
+  });
+  console.assert(surplusDay.signedNetCashFlow === 10000, 'Error: Balance neto positivo debe ser $10.000');
+  console.assert(surplusDay.cashToHandOver === 10000, 'Error: Efectivo a rendir debe ser $10.000');
+  console.assert(surplusDay.isDeficitCoveredByBase === false, 'Error: No debe marcar déficit en saldo positivo');
+  console.log('Test 7 superado con éxito.\n');
+
+  // 8. FILTRADO DE CUOTAS COBRADAS EN LA JORNADA (Ticket de cierre diario)
+  console.log('Test 8: Conteo estricto de pagos de la jornada actual');
+  const mixedPayments: Payment[] = [
+    {
+      id: 'p-old',
+      idempotencyKey: 'k-old',
+      loanId: 'loan-1',
+      customerId: 'c-1',
+      collectorId: 'col-1',
+      sessionId: 'ses-2026-11-18',
+      amountReceived: 10000,
+      paymentMethod: 'CASH',
+      installmentsBreakdown: [],
+      status: 'COMPLETED',
+      createdAt: '2026-11-18T10:00:00Z',
+    },
+    {
+      id: 'p-today-1',
+      idempotencyKey: 'k-1',
+      loanId: 'loan-1',
+      customerId: 'c-1',
+      collectorId: 'col-1',
+      sessionId: 'ses-2026-11-19',
+      amountReceived: 13000,
+      paymentMethod: 'CASH',
+      installmentsBreakdown: [],
+      status: 'COMPLETED',
+      createdAt: '2026-11-19T09:00:00Z',
+    },
+    {
+      id: 'p-today-2',
+      idempotencyKey: 'k-2',
+      loanId: 'loan-2',
+      customerId: 'c-2',
+      collectorId: 'col-1',
+      sessionId: 'ses-2026-11-19',
+      amountReceived: 10000,
+      paymentMethod: 'CASH',
+      installmentsBreakdown: [],
+      status: 'COMPLETED',
+      createdAt: '2026-11-19T11:30:00Z',
+    },
+    {
+      id: 'p-annulled',
+      idempotencyKey: 'k-3',
+      loanId: 'loan-2',
+      customerId: 'c-2',
+      collectorId: 'col-1',
+      sessionId: 'ses-2026-11-19',
+      amountReceived: 10000,
+      paymentMethod: 'CASH',
+      installmentsBreakdown: [],
+      status: 'ANNULLED',
+      createdAt: '2026-11-19T12:00:00Z',
+    },
+  ];
+  const dayOnly = filterSessionDayPayments(mixedPayments, '2026-11-19', {
+    id: 'ses-2026-11-19',
+    date: '2026-11-19',
+  });
+  console.assert(dayOnly.length === 2, `Error: Deben contarse exactamente 2 pagos de hoy, dio ${dayOnly.length}`);
+  console.log('Test 8 superado con éxito.\n');
+
+  // 9. LIQUIDACIÓN CON BASE DE INICIO DE RUTA (Opción B: Cobrado hoy + Base)
+  console.log('Test 9: Liquidación con Base de inicio (Cobrado hoy + Base)');
+  const settlementNoLoans = calculateDailyCashReconciliation({
+    collectedCash: 175000,
+    openingRouteBase: 50000,
+    expensesToday: 0,
+    disbursedToday: 0,
+    recaudoRetiradoToday: 0,
+  });
+  console.assert(settlementNoLoans.openingRouteBase === 50000, 'Error: openingRouteBase debe ser $50.000');
+  console.assert(settlementNoLoans.collectedPlusBase === 225000, 'Error: Cobrado + Base debe ser $225.000');
+  console.assert(settlementNoLoans.cashToHandOver === 225000, 'Error: Efectivo a rendir sin préstamos debe ser $225.000');
+  console.assert(settlementNoLoans.isDeficitCoveredByBase === false, 'Error: No debe haber déficit');
+
+  const settlementWithLoanAndGas = calculateDailyCashReconciliation({
+    collectedCash: 175000,
+    openingRouteBase: 50000,
+    expensesToday: 10000,
+    disbursedToday: 95000, // Préstamo de $100k menos $5k papelería retenida
+    recaudoRetiradoToday: 0,
+  });
+  console.assert(settlementWithLoanAndGas.collectedPlusBase === 225000, 'Error: Cobrado + Base sigue siendo $225.000');
+  console.assert(settlementWithLoanAndGas.signedNetCashFlow === 120000, 'Error: Flujo neto debe ser $120.000');
+  console.assert(settlementWithLoanAndGas.cashToHandOver === 120000, 'Error: Efectivo a rendir debe ser $120.000');
+
+  const settlementWithDeficit = calculateDailyCashReconciliation({
+    collectedCash: 23000,
+    openingRouteBase: 50000,
+    expensesToday: 0,
+    disbursedToday: 95000,
+    recaudoRetiradoToday: 0,
+  });
+  console.assert(settlementWithDeficit.collectedPlusBase === 73000, 'Error: Cobrado + Base debe ser $73.000');
+  console.assert(settlementWithDeficit.signedNetCashFlow === -22000, 'Error: Flujo neto negativo debe ser -$22.000');
+  console.assert(settlementWithDeficit.cashToHandOver === 0, 'Error: Físico a entregar en déficit debe ser $0');
+  console.assert(settlementWithDeficit.coveredByBaseDeficit === 22000, 'Error: Déficit cubierto debe ser $22.000');
+  console.log('Test 9 superado con éxito.\n');
 
   console.log('¡TODAS LAS PRUEBAS FINANCIERAS FUERON SUPERADAS AL 100%!');
 }

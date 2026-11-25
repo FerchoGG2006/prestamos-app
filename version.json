@@ -1,10 +1,10 @@
 {
   "status": "success",
   "app_name": "Kredia",
-  "min_version": "1.0.0",
-  "latest_version": "1.2.2",
-  "version_code": 6,
-  "apk_url": "https://expo.dev/artifacts/eas/ZJ_rMSxsF7ebnoIu4ZfzOYqMVoHzh2TBkIYy1FJF5Ws.apk",
+  "min_version": "1.2.17",
+  "latest_version": "1.2.17",
+  "version_code": 19,
+  "apk_url": "https://expo.dev/artifacts/eas/hSvEk5YaKEYdgtTlMdgz20sn-UKNVLyx9xdF8Fg3DSs.apk",
   "force_update": false,
-  "release_notes": "Actualización v1.2.3: Corrección de fórmulas financieras y mejoras visuales."
+  "release_notes": "• Aislamiento estricto por oficina y sincronización automática en la nube.\n• Libro financiero inmutable y balance neto diario con signo real en cierre de caja.\n• Corrección en el conteo de cobros del ticket diario."
 }

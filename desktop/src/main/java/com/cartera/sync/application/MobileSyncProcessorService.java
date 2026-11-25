@@ -98,7 +98,10 @@ public class MobileSyncProcessorService {
     ) {}
 
     public static String normalizeRouteId(String routeId) {
-        if (routeId == null || routeId.isBlank() || "route-1".equalsIgnoreCase(routeId.trim())) {
+        if (routeId == null || routeId.isBlank()) {
+            return "";
+        }
+        if ("route-1".equalsIgnoreCase(routeId.trim())) {
             return "route-norte";
         }
         return routeId.trim();
@@ -125,13 +128,23 @@ public class MobileSyncProcessorService {
         try {
             LocalDate opDate = operatingDate != null ? operatingDate : LocalDate.now();
             boolean filterByRoute = requestedRouteId != null && !requestedRouteId.isBlank() && !"ALL".equalsIgnoreCase(requestedRouteId.trim());
-            String normalizedRoute = filterByRoute ? normalizeRouteId(requestedRouteId) : "route-norte";
+            String normalizedRoute = filterByRoute
+                    ? normalizeRouteId(requestedRouteId)
+                    : (routeRepository != null
+                            ? routeRepository.findAll().stream()
+                                    .filter(r -> r.getActive() == null || r.getActive() == 1)
+                                    .map(RouteEntity::getId)
+                                    .findFirst()
+                                    .orElse("ALL")
+                            : "ALL");
 
-            RouteEntity routeEntity = (routeRepository != null)
+            RouteEntity routeEntity = (routeRepository != null && !normalizedRoute.isBlank() && !"ALL".equalsIgnoreCase(normalizedRoute))
                     ? routeRepository.findById(normalizedRoute).orElse(null)
                     : null;
             String routeName = routeEntity != null ? routeEntity.getName() : (filterByRoute ? normalizedRoute : "Todas las Rutas");
-            String collectorId = (routeEntity != null && routeEntity.getCollectorId() != null) ? routeEntity.getCollectorId() : "usr-col-1";
+            String collectorId = (routeEntity != null && routeEntity.getCollectorId() != null && !routeEntity.getCollectorId().isBlank())
+                    ? routeEntity.getCollectorId()
+                    : actor.userId();
 
             ObjectNode root = mapper.createObjectNode();
             root.put("packageVersion", "1.0.0");
@@ -251,12 +264,27 @@ public class MobileSyncProcessorService {
                 }
             }
 
-            // 4. Parámetros y políticas operativas
+            // 4. Parámetros y políticas operativas (alineando claves Desktop ↔ Móvil)
             ObjectNode settingsNode = root.putObject("settings");
             if (settingRepository != null) {
+                Set<String> allowedKeys = Set.of(
+                        "company_name", "company_phone", "company_city",
+                        "paperwork_enabled", "paperwork_fee", "exclude_sundays",
+                        "max_new_loan_amount", "default_interest_percent", "default_interest_rate",
+                        "route_allow_new_loans", "route_allow_expenses",
+                        "route_allow_reorder", "route_allow_partial_payments"
+                );
+                String defaultInterestPercent = null;
                 for (SystemSettingEntity s : settingRepository.findAll()) {
-                    if (Set.of("company_name","company_phone","paperwork_enabled","paperwork_fee","exclude_sundays","max_new_loan_amount","default_interest_rate").contains(s.getSettingKey()))
+                    if (allowedKeys.contains(s.getSettingKey())) {
                         settingsNode.put(s.getSettingKey(), s.getSettingValue());
+                        if ("default_interest_percent".equals(s.getSettingKey())) {
+                            defaultInterestPercent = s.getSettingValue();
+                        }
+                    }
+                }
+                if (defaultInterestPercent != null && !settingsNode.has("default_interest_rate")) {
+                    settingsNode.put("default_interest_rate", defaultInterestPercent);
                 }
             }
 
@@ -281,8 +309,19 @@ public class MobileSyncProcessorService {
 
             String opDateStr = textOrDefault(rootNode, "operatingDate", LocalDate.now().toString());
             LocalDate opDate = LocalDate.parse(opDateStr.length() >= 10 ? opDateStr.substring(0, 10) : opDateStr);
-            String packageCollectorId = textOrDefault(rootNode, "collectorId", "usr-col-1");
-            String packageRouteId = normalizeRouteId(textOrDefault(rootNode, "routeId", "route-norte"));
+            String packageRouteId = normalizeRouteId(textOrDefault(rootNode, "routeId", ""));
+            if (packageRouteId.isBlank()) {
+                throw new IllegalArgumentException("El paquete JSON debe indicar un routeId válido.");
+            }
+            String packageCollectorId = textOrDefault(rootNode, "collectorId", "");
+            if (packageCollectorId.isBlank() && routeRepository != null) {
+                packageCollectorId = routeRepository.findById(packageRouteId)
+                        .map(RouteEntity::getCollectorId)
+                        .orElse("");
+            }
+            if (packageCollectorId.isBlank()) {
+                throw new IllegalArgumentException("El paquete JSON debe indicar un collectorId válido.");
+            }
 
             validateScope(rootNode,packageRouteId,packageCollectorId);
             int customersImported = 0;
@@ -628,9 +667,9 @@ public class MobileSyncProcessorService {
         return result;
     }
     private static String mobileFrequency(String value){return switch(frequency(value)){case "DIARIO"->"DAILY";case "SEMANAL"->"WEEKLY";case "QUINCENAL"->"BIWEEKLY";case "MENSUAL"->"MONTHLY";default->"FIXED_DATE";};}
-    private static String mobileLoanStatus(String value){return switch(value){case "ACTIVO"->"ACTIVE";case "FINALIZADO","PAGADO"->"PAID";case "RENOVADO"->"RENEWED";case "ANULADO","CANCELADO"->"CANCELLED";default->throw new IllegalArgumentException("Estado de crédito no soportado para descarga móvil.");};}
+    private static String mobileLoanStatus(String value){return switch(value){case "ACTIVO"->"ACTIVE";case "FINALIZADO","PAGADO","COMPLETADO"->"PAID";case "RENOVADO"->"RENEWED";case "ANULADO","CANCELADO"->"CANCELLED";default->throw new IllegalArgumentException("Estado de crédito no soportado para descarga móvil: " + value);};}
     private static String customerStatus(String value){return switch(value.toUpperCase(java.util.Locale.ROOT)){case "ACTIVE","ACTIVO"->"ACTIVO";case "INACTIVE","INACTIVO"->"INACTIVO";case "BLOCKED","BLOQUEADO"->"BLOQUEADO";default->throw new IllegalArgumentException("Estado de cliente desconocido.");};}
-    private static String frequency(String value){return switch(value.toUpperCase(java.util.Locale.ROOT)){case "DAILY","DIARIO"->"DIARIO";case "WEEKLY","SEMANAL"->"SEMANAL";case "BIWEEKLY","QUINCENAL"->"QUINCENAL";case "MONTHLY","MENSUAL"->"MENSUAL";case "FIXED_DATE","FECHA_FIJA"->"FECHA_FIJA";default->throw new IllegalArgumentException("Modalidad desconocida.");};}
+    private static String frequency(String value){return switch(value.toUpperCase(java.util.Locale.ROOT)){case "DAILY","DIARIO"->"DIARIO";case "WEEKLY","SEMANAL"->"SEMANAL";case "BIWEEKLY","QUINCENAL"->"QUINCENAL";case "MONTHLY","MENSUAL"->"MENSUAL";case "FIXED_DATE","FECHA_FIJA","FECHA FIJA"->"FECHA_FIJA";default->throw new IllegalArgumentException("Modalidad desconocida: " + value);};}
     private void validateScope(JsonNode root,String route,String collector){
         var assignment=routeRepository.findById(route).filter(r->Integer.valueOf(1).equals(r.getActive())).orElseThrow(()->new IllegalArgumentException("Ruta no disponible."));
         if(!collector.equals(assignment.getCollectorId()))throw new SecurityException("Cobrador no corresponde a la ruta.");

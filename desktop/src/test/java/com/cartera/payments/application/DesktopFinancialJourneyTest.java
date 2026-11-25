@@ -68,8 +68,10 @@ class DesktopFinancialJourneyTest {
     }
     @Test void digitalMoneyIsAnAssetButCannotBeDeliveredOrWithdrawnAsCash() {
         pay("10000", "NEQUI");
-        money("-285000", metrics().cashBalance()); money("10000", metrics().digitalBalance());
-        money("75000", metrics().totalAdministrativeCapital()); money("350000", metrics().totalActiveDebt());
+        // Spec 008: papelería ($15.000) permanece en caja física (-$285.000) pero NUNCA suma al Efectivo base operativo (-$300.000) ni al Administrativo ($60.000)
+        money("-300000", metrics().cashBalance()); money("15000", metrics().paperworkBalance());
+        money("-285000", metrics().totalPhysicalCashInBox()); money("10000", metrics().digitalBalance());
+        money("60000", metrics().totalAdministrativeCapital()); money("350000", metrics().totalActiveDebt());
         var summary = bean(SettlementUseCase.class).getOrCreateDaySummary(collector, LocalDate.now());
         money("10000", summary.totalCollected()); money("0", summary.netExpectedCash());
         assertEquals(route, bean(CollectionSessionRepository.class).findById(summary.sessionId()).orElseThrow().getRouteId());
@@ -77,8 +79,8 @@ class DesktopFinancialJourneyTest {
         var renewal = new RenewLoanUseCase.RenewLoanCommand(loan.getId(), n("700000"), n("0.4"), n("980000"), 2,
                 "MENSUAL", LocalDate.now(), n("35000"), "usr-admin-1");
         var quote = bean(RenewLoanUseCase.class).preview(renewal);
-        money("75000", quote.quote().administrativeBefore().amount());
-        money("355000", quote.quote().administrativeAfter().amount());
+        money("60000", quote.quote().administrativeBefore().amount());
+        money("340000", quote.quote().administrativeAfter().amount());
         assertThrows(IllegalArgumentException.class, () -> bean(CashMovementUseCase.class).register(new CashMovementUseCase.CashMovementCommand(
             UUID.randomUUID().toString(), route, "EGRESO", "OTRO", n("1"), "Not physical money", null)));
     }
@@ -88,7 +90,8 @@ class DesktopFinancialJourneyTest {
         bean(ReversePaymentUseCase.class).execute(payment.paymentId(), "Test reversal");
         assertEquals(original.stream().map(PaymentAllocationEntity::getId).toList(),
             bean(PaymentAllocationRepository.class).findByPaymentId(payment.paymentId()).stream().map(PaymentAllocationEntity::getId).toList());
-        money("-285000", metrics().cashBalance()); money("0", metrics().digitalBalance()); money("360000", metrics().totalActiveDebt());
+        money("-300000", metrics().cashBalance()); money("-285000", metrics().totalPhysicalCashInBox());
+        money("0", metrics().digitalBalance()); money("360000", metrics().totalActiveDebt());
         long movements = bean(CashMovementRepository.class).count();
         assertThrows(IllegalStateException.class, () -> bean(ReversePaymentUseCase.class).execute(payment.paymentId(), "Again"));
         assertEquals(movements, bean(CashMovementRepository.class).count());
@@ -129,12 +132,13 @@ class DesktopFinancialJourneyTest {
         var pkg = renewalPackage();
         var sync = bean(MobileSyncProcessorService.class);
         assertEquals(1, sync.importPackage(pkg.toString()).renewalsImported());
-        money("-625000", metrics().cashBalance()); money("980000", metrics().totalActiveDebt());
+        money("-640000", metrics().cashBalance()); money("50000", metrics().paperworkBalance());
+        money("-590000", metrics().totalPhysicalCashInBox()); money("980000", metrics().totalActiveDebt());
         assertEquals(0, sync.importPackage(pkg.toString()).renewalsImported());
-        money("-625000", metrics().cashBalance());
+        money("-640000", metrics().cashBalance());
         var tampered = pkg.deepCopy(); ((ObjectNode) tampered.path("renewals").get(0)).put("actualCashDisbursed", 1);
         assertThrows(IllegalArgumentException.class, () -> sync.importPackage(tampered.toString()));
-        money("-625000", metrics().cashBalance());
+        money("-640000", metrics().cashBalance());
     }
     @Test void invalidFirstRenewalDoesNotCreateNewLoanOrCloseOldLoan() {
         var pkg = renewalPackage(); ((ObjectNode) pkg.path("renewals").get(0)).put("previousBalanceDeducted", 1);

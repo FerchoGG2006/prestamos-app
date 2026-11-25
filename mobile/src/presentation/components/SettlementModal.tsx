@@ -21,6 +21,10 @@ import {
 } from '../../core/domain/types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatCOP } from '../../core/config/business-rules';
+import {
+  calculateDailyCashReconciliation,
+  filterSessionDayPayments,
+} from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
 import {
@@ -67,6 +71,10 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const [cashHandedOverStr, setCashHandedOverStr] = useState('0');
+  const [openingRouteBaseStr, setOpeningRouteBaseStr] = useState('0');
+  const [openingBaseSavedFlash, setOpeningBaseSavedFlash] = useState(false);
+  const [closingDisposition, setClosingDisposition] = useState<'KEEP_IN_ROUTE' | 'WITHDRAW_TO_OFFICE'>('KEEP_IN_ROUTE');
+  const [withdrawAmountStr, setWithdrawAmountStr] = useState('');
   const [justification, setJustification] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(false);
@@ -86,19 +94,44 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   const expensesToday = metrics.expensesToday || 0;
   const disbursedToday = metrics.disbursedToday || 0;
   const recaudoRetiradoToday = metrics.recaudoRetiradoToday || 0;
-  const netCashExpected = Math.max(
-    0,
-    collectedCash - expensesToday - disbursedToday - recaudoRetiradoToday
-  );
+  const paperworkGeneratedToday = metrics.paperworkGeneratedToday || 0;
+  const paperworkAvailableBalance = metrics.paperworkAvailableBalance || 0;
+  const autoOpeningRouteBase = metrics.autoOpeningRouteBase ?? metrics.openingRouteBase ?? 0;
+  const openingRouteBase = parseInt(openingRouteBaseStr.replace(/\D/g, ''), 10) || 0;
+  const isManualOpeningOverride = openingRouteBase !== autoOpeningRouteBase;
+  const maxOperationalWithdraw = Math.max(0, metrics.cashAvailableInHand);
+  const withdrawToOfficeAmount =
+    closingDisposition === 'WITHDRAW_TO_OFFICE'
+      ? (parseInt(withdrawAmountStr.replace(/\D/g, ''), 10) || 0)
+      : 0;
+  const isWithdrawOverBase =
+    closingDisposition === 'WITHDRAW_TO_OFFICE' && withdrawToOfficeAmount > maxOperationalWithdraw;
+  const remainingBaseForTomorrow = Math.max(0, maxOperationalWithdraw - withdrawToOfficeAmount);
+  const reconciliation = calculateDailyCashReconciliation({
+    collectedCash,
+    openingRouteBase,
+    expensesToday,
+    disbursedToday,
+    recaudoRetiradoToday,
+  });
+  const collectedPlusBase = reconciliation.collectedPlusBase;
+  const signedNetCashFlow = reconciliation.signedNetCashFlow;
+  const isDeficitCoveredByBase = reconciliation.isDeficitCoveredByBase;
+  const netCashExpected = reconciliation.cashToHandOver;
   const collectedDigital = metrics.collectedDigitalToday;
   const totalCollected = metrics.collectedToday;
+  const sessionDayPayments = filterSessionDayPayments(payments, todayStr, session);
 
   const cashHandedOver = parseInt(cashHandedOverStr.replace(/\D/g, ''), 10) || 0;
   const cashDifference = netCashExpected - cashHandedOver;
 
   useEffect(() => {
     if (visible) {
-      setCashHandedOverStr(netCashExpected.toString());
+      const initialOpening = metrics.openingRouteBase || 0;
+      setOpeningRouteBaseStr(initialOpening > 0 ? String(initialOpening) : '0');
+      setOpeningBaseSavedFlash(false);
+      setClosingDisposition('KEEP_IN_ROUTE');
+      setWithdrawAmountStr('');
       setJustification('');
       setShowImportPanel(false);
       setImportJsonText('');
@@ -112,7 +145,31 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       setWifiStatusText('');
       setWifiConnected(null);
     }
-  }, [visible, netCashExpected]);
+  }, [visible, metrics.openingRouteBase]);
+
+  useEffect(() => {
+    if (visible && !settledRecord) {
+      setCashHandedOverStr(netCashExpected.toString());
+    }
+  }, [visible, netCashExpected, settledRecord]);
+
+  const handlePersistOpeningBase = async () => {
+    if (!isManualOpeningOverride) {
+      await localStore.clearSessionOpeningBaseOverride(todayStr, routeId);
+    } else {
+      await localStore.setSessionOpeningBase(openingRouteBase, todayStr, routeId);
+    }
+    setOpeningBaseSavedFlash(true);
+    setTimeout(() => setOpeningBaseSavedFlash(false), 2000);
+    onSuccess();
+  };
+
+  const handleRestoreAutomaticOpeningBase = async () => {
+    await localStore.clearSessionOpeningBaseOverride(todayStr, routeId);
+    setOpeningRouteBaseStr(autoOpeningRouteBase > 0 ? String(autoOpeningRouteBase) : '0');
+    setOpeningBaseSavedFlash(false);
+    onSuccess();
+  };
 
   // Sesión garantizada: si viene nula o no sincronizada, se construye una activa con los datos de contexto
   const activeSession: CollectionSession = session || {
@@ -130,7 +187,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   };
 
   // Firma de verificación determinista del paquete de ruta
-  const verificationHash = `SYNC-${todayStr.replace(/-/g, '')}-${(payments || []).length}P-${Math.round(
+  const verificationHash = `SYNC-${todayStr.replace(/-/g, '')}-${sessionDayPayments.length}P-${Math.round(
     totalCollected / 1000
   )}K`;
 
@@ -151,6 +208,13 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
   );
 
   const handleCloseSettlement = async () => {
+    if (isWithdrawOverBase) {
+      Alert.alert(
+        'Retiro supera la base disponible',
+        `Solo puedes retirar hasta ${formatCOP(maxOperationalWithdraw)} del efectivo base de la ruta (la papelería se retira aparte).`
+      );
+      return;
+    }
     if (cashDifference !== 0 && !justification.trim() && !deductPayroll) {
       Alert.alert(
         'Justificación Requerida',
@@ -167,6 +231,8 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
     try {
       const settlement = await localStore.closeDailySettlement({
         cashHandedOver,
+        openingRouteBase: isManualOpeningOverride ? openingRouteBase : undefined,
+        withdrawToOfficeAmount,
         differenceJustification: justification.trim() || undefined,
         payrollDeductionAmount: payrollNum,
         payrollDeductionReason: deductPayroll ? payrollReason : undefined,
@@ -387,12 +453,16 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
     const actualCol = st ? st.actualCollection : metrics.collectedToday;
     const cashCol = st ? st.collectedCash : metrics.collectedCashToday;
     const digCol = st ? st.collectedTransfers : metrics.collectedDigitalToday;
+    const stOpeningBase = st?.openingRouteBase ?? openingRouteBase;
+    const stCollectedPlusBase = st?.collectedPlusBase ?? (cashCol + stOpeningBase);
     const salidas = st ? st.salidasCount : metrics.salidasCount;
     const netDisbursed = st ? st.actualCashDisbursedTotal : metrics.disbursedToday;
     const exp = expensesToday;
     const handedOver = st ? st.cashHandedOver : cashHandedOver;
     const diff = st ? st.cashDifference : cashDifference;
     const diffJust = st?.differenceJustification || justification.trim();
+    const officeBaseTotal = metrics.totalOfficeBaseWithPaperwork ?? (metrics.cashAvailableInHand + metrics.collectedDigitalToday + (metrics.paperworkAvailableBalance || 0));
+    const officePaperwork = metrics.paperworkAvailableBalance || 0;
 
     const lines = [
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
@@ -412,10 +482,12 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
         : '',
       '━━━━━━━━━━━━━━━━━━━━━━━━━',
       '',
-      '*1. COBRADO HOY*',
-      `• *Total Cobrado:* ${formatCOP(actualCol)}`,
-      `  - Efectivo en caja: ${formatCOP(cashCol)}`,
+      '*1. COBRADO HOY Y BASE DE INICIO*',
+      `• *Cobrado Hoy (Total):* ${formatCOP(actualCol)}`,
+      `  - Efectivo cobrado hoy: ${formatCOP(cashCol)}`,
       `  - Digital / Nequi: ${formatCOP(digCol)}`,
+      `• *(+) Base de Inicio (Ruta):* ${formatCOP(stOpeningBase)}`,
+      `• *(=) Cobrado Hoy + Base:* ${formatCOP(stCollectedPlusBase)}`,
       `• *Clientes Visitados:* ${metrics.visitedCustomersCount} de ${metrics.expectedCustomersCount} (${metrics.progressPercentage}%)`,
       '',
       '*2. SALIDAS Y COLOCACIÓN*',
@@ -425,9 +497,15 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       `*3. GASTOS DE RUTA DEDUCIDOS:* ${formatCOP(exp)}`,
       '',
       '*4. ARQUEO Y RENDICIÓN DE EFECTIVO*',
-      `• Efectivo Neto Esperado: ${formatCOP(netCashExpected)}`,
+      isDeficitCoveredByBase
+        ? `• Balance Neto del Día (Cubierto por Base): ${formatCOP(signedNetCashFlow)}`
+        : '',
+      `• Efectivo Físico a Rendir: ${formatCOP(netCashExpected)}`,
       `• Efectivo Entregado a Oficina: ${formatCOP(handedOver)}`,
       `• Diferencia Arqueo: ${diff === 0 ? 'Exacto ($0)' : formatCOP(diff)}`,
+      (st?.withdrawnToOffice ?? withdrawToOfficeAmount) > 0
+        ? `• Retirado a Oficina en Cierre: ${formatCOP(st?.withdrawnToOffice ?? withdrawToOfficeAmount)}`
+        : '• Destino del Efectivo: Queda en ruta como base para mañana',
     ];
 
     if (diffJust) {
@@ -438,7 +516,9 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       '',
       `*5. ADMINISTRATIVO TOTAL:* ${formatCOP(metrics.totalAdministrativeCapital)}`,
       `• Cartera en Calle: ${formatCOP(metrics.activeCapitalInStreet)}`,
-      `• Base en Caja: ${formatCOP(metrics.cashAvailableInHand)}`,
+      `• Base en Oficina: ${formatCOP(officeBaseTotal)}`,
+      `  - Efectivo base: ${formatCOP(metrics.cashAvailableInHand)}`,
+      officePaperwork > 0 ? `  - Papelería en caja: ${formatCOP(officePaperwork)}` : '',
       '',
       '*6. ESTADO DE MORA*',
       `• Clientes en mora: ${metrics.overdueCustomersCount}`,
@@ -612,6 +692,22 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   </View>
 
                   <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>(+) Base de Inicio (Ruta):</Text>
+                    <Text style={[styles.receiptValueBold, { color: '#1D4ED8' }]}>
+                      {formatCOP(settledRecord.openingRouteBase || 0)}
+                    </Text>
+                  </View>
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>(=) Cobrado Hoy + Base:</Text>
+                    <Text style={[styles.receiptValueBold, { color: '#0F172A' }]}>
+                      {formatCOP(
+                        settledRecord.collectedPlusBase ??
+                          settledRecord.collectedCash + (settledRecord.openingRouteBase || 0)
+                      )}
+                    </Text>
+                  </View>
+
+                  <View style={styles.receiptRow}>
                     <Text style={styles.receiptLabel}>(-) Gastos Ruta Deducidos:</Text>
                     <Text style={[styles.receiptValueBold, { color: '#ea580c' }]}>
                       {formatCOP(expensesToday)}
@@ -622,6 +718,15 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                     <Text style={styles.receiptLabel}>(=) Efectivo Entregado a Oficina:</Text>
                     <Text style={[styles.receiptValueBold, { color: COLORS.primary, fontSize: 15 }]}>
                       {formatCOP(settledRecord.cashHandedOver)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Destino Base Cierre:</Text>
+                    <Text style={[styles.receiptValueBold, { color: (settledRecord.withdrawnToOffice || 0) > 0 ? '#1D4ED8' : '#15803D' }]}>
+                      {(settledRecord.withdrawnToOffice || 0) > 0
+                        ? `Retirado ${formatCOP(settledRecord.withdrawnToOffice || 0)}`
+                        : 'Queda en ruta para mañana'}
                     </Text>
                   </View>
 
@@ -731,10 +836,10 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               </View>
             ) : (
               <View>
-            {/* 1. CUADRÍCULA BENTO: COBRO EFECTIVO, GASTOS RUTA Y NETO A RENDIR */}
+            {/* 1. CUADRÍCULA BENTO: COBRADO HOY + BASE DE INICIO + DEDUCCIONES + NETO A RENDIR */}
             <View style={styles.splitRow}>
               <View style={styles.splitCard}>
-                <Text style={styles.splitLabel}>COBRADO EFECTIVO</Text>
+                <Text style={styles.splitLabel}>COBRADO HOY</Text>
                 <Text
                   style={[styles.splitValue, { color: COLORS.success }]}
                   numberOfLines={1}
@@ -743,10 +848,85 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   {formatCOP(collectedCash)}
                 </Text>
                 <Text style={styles.splitSub}>
-                  Cobrado hoy en calle
+                  {collectedDigital > 0
+                    ? `Efectivo (+${formatCOP(collectedDigital)} digital)`
+                    : 'Cobrado hoy en efectivo'}
                 </Text>
               </View>
 
+              <View
+                style={[
+                  styles.splitCard,
+                  { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
+                ]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={[styles.splitLabel, { color: '#1d4ed8', marginBottom: 0 }]}>
+                    (+) BASE DE INICIO
+                  </Text>
+                  {openingBaseSavedFlash ? (
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#15803d' }}>✓ Guardada</Text>
+                  ) : isManualOpeningOverride ? (
+                    <TouchableOpacity onPress={handleRestoreAutomaticOpeningBase} activeOpacity={0.7}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: '#1d4ed8', textDecorationLine: 'underline' }}>
+                        Auto ({formatCOP(autoOpeningRouteBase)})
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#15803d' }}>Automática</Text>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 0, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#93c5fd', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: '#1d4ed8', marginRight: 4, flexShrink: 0 }}>$</Text>
+                  <TextInput
+                    style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: '800', color: '#1e3a8a', paddingVertical: 2 }}
+                    keyboardType="numeric"
+                    value={openingRouteBase > 0 ? openingRouteBase.toLocaleString('es-CO') : ''}
+                    onChangeText={(val) => setOpeningRouteBaseStr(val.replace(/\D/g, '') || '0')}
+                    onBlur={handlePersistOpeningBase}
+                    placeholder="0"
+                    placeholderTextColor="#93c5fd"
+                  />
+                </View>
+                <Text style={[styles.splitSub, { color: '#1e40af', marginTop: 4 }]}>
+                  Efectivo base de inicio (papelería aparte)
+                </Text>
+              </View>
+            </View>
+
+            {/* SUBTOTAL DESTACADO: COBRADO HOY + BASE */}
+            <View
+              style={[
+                styles.splitCard,
+                {
+                  marginTop: 8,
+                  marginBottom: 8,
+                  backgroundColor: '#f0fdf4',
+                  borderColor: '#86efac',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                },
+              ]}
+            >
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={[styles.splitLabel, { color: '#166534', marginBottom: 2 }]}>
+                  (=) COBRADO HOY + BASE
+                </Text>
+                <Text style={[styles.splitSub, { color: '#15803d' }]}>
+                  {formatCOP(collectedCash)} cobrado + {formatCOP(openingRouteBase)} base de inicio
+                </Text>
+              </View>
+              <Text
+                style={[styles.splitValue, { color: '#15803d', fontSize: 20 }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {formatCOP(collectedPlusBase)}
+              </Text>
+            </View>
+
+            <View style={styles.splitRow}>
               <View
                 style={[
                   styles.splitCard,
@@ -767,75 +947,95 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   Pinchazo, datos, gasolina
                 </Text>
               </View>
+
+              {disbursedToday > 0 && (
+                <View
+                  style={[
+                    styles.splitCard,
+                    { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' },
+                  ]}
+                >
+                  <Text style={[styles.splitLabel, { color: '#7e22ce' }]}>
+                    (-) DESEMBOLSOS RUTA
+                  </Text>
+                  <Text
+                    style={[styles.splitValue, { color: '#7e22ce' }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {formatCOP(disbursedToday)}
+                  </Text>
+                  <Text style={[styles.splitSub, { color: '#6b21a8' }]}>
+                    {paperworkGeneratedToday > 0
+                      ? `Neto entregado (Papelería retenida: ${formatCOP(paperworkGeneratedToday)})`
+                      : 'Préstamos y renovaciones hoy'}
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {(disbursedToday > 0 || recaudoRetiradoToday > 0) && (
-              <View style={styles.splitRow}>
-                {disbursedToday > 0 && (
-                  <View
-                    style={[
-                      styles.splitCard,
-                      { backgroundColor: '#faf5ff', borderColor: '#e9d5ff' },
-                    ]}
+            {recaudoRetiradoToday > 0 && (
+              <View style={[styles.splitRow, { marginTop: 8 }]}>
+                <View
+                  style={[
+                    styles.splitCard,
+                    { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
+                  ]}
+                >
+                  <Text style={[styles.splitLabel, { color: '#1d4ed8' }]}>
+                    (-) AVANCES OFICINA
+                  </Text>
+                  <Text
+                    style={[styles.splitValue, { color: '#1d4ed8' }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
                   >
-                    <Text style={[styles.splitLabel, { color: '#7e22ce' }]}>
-                      (-) DESEMBOLSOS RUTA
-                    </Text>
-                    <Text
-                      style={[styles.splitValue, { color: '#7e22ce' }]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                    >
-                      {formatCOP(disbursedToday)}
-                    </Text>
-                    <Text style={[styles.splitSub, { color: '#6b21a8' }]}>
-                      Préstamos y renovaciones hoy
-                    </Text>
-                  </View>
-                )}
-                {recaudoRetiradoToday > 0 && (
-                  <View
-                    style={[
-                      styles.splitCard,
-                      { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
-                    ]}
-                  >
-                    <Text style={[styles.splitLabel, { color: '#1d4ed8' }]}>
-                      (-) AVANCES OFICINA
-                    </Text>
-                    <Text
-                      style={[styles.splitValue, { color: '#1d4ed8' }]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                    >
-                      {formatCOP(recaudoRetiradoToday)}
-                    </Text>
-                    <Text style={[styles.splitSub, { color: '#1e40af' }]}>
-                      Entregado antes del cierre
-                    </Text>
-                  </View>
-                )}
+                    {formatCOP(recaudoRetiradoToday)}
+                  </Text>
+                  <Text style={[styles.splitSub, { color: '#1e40af' }]}>
+                    Entregado antes del cierre
+                  </Text>
+                </View>
               </View>
             )}
 
             <View
               style={[
                 styles.splitCard,
-                { marginTop: 8, backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder },
+                isDeficitCoveredByBase
+                  ? { marginTop: 8, backgroundColor: '#fffbeb', borderColor: '#fcd34d' }
+                  : { marginTop: 8, backgroundColor: COLORS.primaryLight, borderColor: COLORS.primaryBorder },
               ]}
             >
-              <Text style={[styles.splitLabel, { color: COLORS.primary }]}>
-                (=) EFECTIVO NETO A RENDIR (CAJA OFICINA)
+              <Text
+                style={[
+                  styles.splitLabel,
+                  { color: isDeficitCoveredByBase ? '#b45309' : COLORS.primary },
+                ]}
+              >
+                {isDeficitCoveredByBase
+                  ? '(=) BALANCE NETO DEL DÍA (CUBIERTO POR BASE)'
+                  : '(=) EFECTIVO NETO A RENDIR (CAJA OFICINA)'}
               </Text>
               <Text
-                style={[styles.splitValue, { color: COLORS.primary, fontSize: 22 }]}
+                style={[
+                  styles.splitValue,
+                  { color: isDeficitCoveredByBase ? '#b45309' : COLORS.primary, fontSize: 22 },
+                ]}
                 numberOfLines={1}
                 adjustsFontSizeToFit
               >
-                {formatCOP(netCashExpected)}
+                {formatCOP(signedNetCashFlow)}
               </Text>
-              <Text style={[styles.splitSub, { color: COLORS.textSecondary }]}>
-                Monto que el cobrador debe entregar físicamente a la oficina
+              <Text
+                style={[
+                  styles.splitSub,
+                  { color: isDeficitCoveredByBase ? '#92400e' : COLORS.textSecondary },
+                ]}
+              >
+                {isDeficitCoveredByBase
+                  ? `Hoy salió más en préstamos que Cobrado + Base (${formatCOP(collectedPlusBase)}) • Efectivo físico a entregar: ${formatCOP(netCashExpected)}`
+                  : 'Monto total que el cobrador debe entregar físicamente a la oficina'}
               </Text>
             </View>
 
@@ -1051,6 +1251,175 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
               )}
             </View>
 
+            {/* 3B. DESTINO DEL EFECTIVO BASE AL CERRAR (DEJAR PARA MAÑANA / SÁBADO VS RETIRAR A OFICINA) */}
+            <View style={[styles.reconciliationCard, { marginTop: 12 }]}>
+              <Text style={styles.cardHeaderTitle}>Destino del Efectivo al Cerrar</Text>
+              <Text style={{ fontSize: 11.5, color: COLORS.textSecondary, marginBottom: 10, lineHeight: 16 }}>
+                Elige si la plata queda en la ruta como base de mañana (o acumulada hasta el sábado) o si retiras todo o una parte a la oficina.
+              </Text>
+
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    paddingHorizontal: 10,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: closingDisposition === 'KEEP_IN_ROUTE' ? '#16A34A' : '#CBD5E1',
+                    backgroundColor: closingDisposition === 'KEEP_IN_ROUTE' ? '#F0FDF4' : '#F8FAFC',
+                  }}
+                  activeOpacity={0.8}
+                  onPress={() => setClosingDisposition('KEEP_IN_ROUTE')}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '800',
+                      color: closingDisposition === 'KEEP_IN_ROUTE' ? '#166534' : '#475569',
+                    }}
+                  >
+                    Dejar en la ruta
+                  </Text>
+                  <Text style={{ fontSize: 10.5, color: '#64748B', marginTop: 2 }}>
+                    Queda de base mañana / sábado
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    paddingHorizontal: 10,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor: closingDisposition === 'WITHDRAW_TO_OFFICE' ? '#2563EB' : '#CBD5E1',
+                    backgroundColor: closingDisposition === 'WITHDRAW_TO_OFFICE' ? '#EFF6FF' : '#F8FAFC',
+                  }}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setClosingDisposition('WITHDRAW_TO_OFFICE');
+                    if (!withdrawAmountStr && maxOperationalWithdraw > 0) {
+                      setWithdrawAmountStr(String(maxOperationalWithdraw));
+                    }
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: '800',
+                      color: closingDisposition === 'WITHDRAW_TO_OFFICE' ? '#1D4ED8' : '#475569',
+                    }}
+                  >
+                    Retirar a oficina
+                  </Text>
+                  <Text style={{ fontSize: 10.5, color: '#64748B', marginTop: 2 }}>
+                    Retiro diario o corte semanal
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {closingDisposition === 'WITHDRAW_TO_OFFICE' && (
+                <View style={{ marginBottom: 10 }}>
+                  <View style={styles.filledAmountBlock}>
+                    <Text style={styles.floatingInternalLabel}>
+                      VALOR A RETIRAR A OFICINA CENTRAL ($ COP)
+                    </Text>
+                    <TextInput
+                      style={styles.input}
+                      keyboardType="numeric"
+                      value={withdrawToOfficeAmount > 0 ? withdrawToOfficeAmount.toLocaleString('es-CO') : ''}
+                      onChangeText={(val) => setWithdrawAmountStr(val.replace(/\D/g, ''))}
+                      placeholder="0"
+                      placeholderTextColor={COLORS.textMuted}
+                    />
+                  </View>
+
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                    <TouchableOpacity
+                      style={{
+                        paddingHorizontal: 10,
+                        paddingVertical: 6,
+                        borderRadius: 999,
+                        backgroundColor: '#EFF6FF',
+                        borderWidth: 1,
+                        borderColor: '#93C5FD',
+                      }}
+                      onPress={() => setWithdrawAmountStr(String(maxOperationalWithdraw))}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: '#1D4ED8' }}>
+                        Retirar todo ({formatCOP(maxOperationalWithdraw)})
+                      </Text>
+                    </TouchableOpacity>
+                    {maxOperationalWithdraw > 50000 && (
+                      <TouchableOpacity
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 999,
+                          backgroundColor: '#F8FAFC',
+                          borderWidth: 1,
+                          borderColor: '#CBD5E1',
+                        }}
+                        onPress={() => setWithdrawAmountStr(String(maxOperationalWithdraw - 50000))}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
+                          Dejar $50.000
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    {maxOperationalWithdraw > 100000 && (
+                      <TouchableOpacity
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                          borderRadius: 999,
+                          backgroundColor: '#F8FAFC',
+                          borderWidth: 1,
+                          borderColor: '#CBD5E1',
+                        }}
+                        onPress={() => setWithdrawAmountStr(String(maxOperationalWithdraw - 100000))}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
+                          Dejar $100.000
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {isWithdrawOverBase && (
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: COLORS.danger, marginTop: 6 }}>
+                      El monto supera el efectivo base disponible ({formatCOP(maxOperationalWithdraw)}).
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              <View
+                style={{
+                  backgroundColor: '#F8FAFC',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  padding: 10,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#334155' }}>
+                    Base de inicio automática para mañana:
+                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: '900', color: '#15803D' }}>
+                    {formatCOP(remainingBaseForTomorrow)}
+                  </Text>
+                </View>
+                {paperworkAvailableBalance > 0 && (
+                  <Text style={{ fontSize: 10.5, color: '#6D28D9', marginTop: 4 }}>
+                    La papelería disponible ({formatCOP(paperworkAvailableBalance)}) se mantiene aparte en Mis Recaudos → Papelería.
+                  </Text>
+                )}
+              </View>
+            </View>
+
             {/* 4. TICKET DE CIERRE DIARIO Y PUENTE OFFLINE-FIRST */}
             <View style={styles.syncTicketCard}>
               <View style={styles.syncHeaderRow}>
@@ -1067,7 +1436,9 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
 
               {/* Desglose Térmico de Operaciones de Calle */}
               <View style={styles.ticketLineRow}>
-                <Text style={styles.ticketLabel}>Cobro Pleno ({payments.length} cuotas cobradas):</Text>
+                <Text style={styles.ticketLabel}>
+                  Cobro Pleno ({sessionDayPayments.length} {sessionDayPayments.length === 1 ? 'cobro hoy' : 'cobros hoy'}):
+                </Text>
                 <Text style={[styles.ticketValue, { color: COLORS.success }]}>
                   +{formatCOP(totalCollected)}
                 </Text>
@@ -1250,6 +1621,7 @@ const styles = StyleSheet.create({
   },
   splitCard: {
     flex: 1,
+    minWidth: 0,
     backgroundColor: COLORS.surfaceSoft,
     borderRadius: 20,
     padding: 13,
@@ -1266,9 +1638,10 @@ const styles = StyleSheet.create({
   },
   splitValue: {
     fontFamily: FONT_FAMILY,
-    fontSize: 19,
+    fontSize: 16.5,
     fontWeight: '900',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
+    fontVariant: ['tabular-nums'],
     marginTop: 4,
   },
   splitSub: {

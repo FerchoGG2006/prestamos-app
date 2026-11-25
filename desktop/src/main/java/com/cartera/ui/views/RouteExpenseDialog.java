@@ -12,8 +12,8 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 
 import java.math.BigDecimal;
-import java.text.NumberFormat;
-import java.util.Locale;
+import java.time.LocalDate;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -21,11 +21,6 @@ import java.util.function.Consumer;
  * Estos gastos se cargan a la ruta y se descuentan de la entrega de efectivo de la liquidación diaria.
  */
 public class RouteExpenseDialog {
-
-    private static final NumberFormat CURRENCY = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-CO"));
-    static {
-        CURRENCY.setMaximumFractionDigits(0);
-    }
 
     public record ExpenseCategoryOption(String code, String displayName) {
         @Override
@@ -41,6 +36,19 @@ public class RouteExpenseDialog {
             SettlementUseCase settlementUseCase,
             Consumer<Boolean> onFinished
     ) {
+        show(parentStage, collectorId, routeId, LocalDate.now(), settlementUseCase, onFinished);
+    }
+
+    public static void show(
+            Stage parentStage,
+            String collectorId,
+            String routeId,
+            LocalDate expenseDate,
+            SettlementUseCase settlementUseCase,
+            Consumer<Boolean> onFinished
+    ) {
+        final String movementId = UUID.randomUUID().toString();
+        final LocalDate targetDate = expenseDate != null ? expenseDate : LocalDate.now();
         Stage dialog = new Stage();
         dialog.initModality(Modality.WINDOW_MODAL);
         if (parentStage != null) {
@@ -114,23 +122,21 @@ public class RouteExpenseDialog {
         Button btnSave = new Button("Guardar Gasto");
         btnSave.getStyleClass().add("btn-primary");
         btnSave.setOnAction(e -> {
+            btnSave.setDisable(true);
             try {
-                BigDecimal amount = CurrencyInputUtil.parseAmount(txtAmount.getText());
+                BigDecimal amount;
+                try {
+                    amount = CurrencyInputUtil.parseAmount(txtAmount.getText());
+                } catch (Exception parseEx) {
+                    throw new IllegalArgumentException("Ingrese un monto numérico válido en pesos enteros.");
+                }
                 if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                    lblFeedback.setText("El monto debe ser mayor a cero.");
-                    lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.12); -fx-padding: 8; -fx-background-radius: 6;");
-                    lblFeedback.setVisible(true);
-                    lblFeedback.setManaged(true);
-                    return;
+                    throw new IllegalArgumentException("El monto debe ser mayor a cero.");
                 }
 
                 String desc = txtDesc.getText() != null ? txtDesc.getText().trim() : "";
                 if (desc.isEmpty()) {
-                    lblFeedback.setText("Ingresa una breve descripción o detalle del gasto.");
-                    lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.12); -fx-padding: 8; -fx-background-radius: 6;");
-                    lblFeedback.setVisible(true);
-                    lblFeedback.setManaged(true);
-                    return;
+                    throw new IllegalArgumentException("Ingresa una breve descripción o detalle del gasto.");
                 }
 
                 ExpenseCategoryOption opt = cmbCategory.getValue();
@@ -142,13 +148,16 @@ public class RouteExpenseDialog {
                         categoryCode,
                         amount,
                         desc,
-                        collectorId
+                        collectorId,
+                        targetDate,
+                        movementId
                 );
 
                 dialog.close();
                 if (onFinished != null) onFinished.accept(true);
             } catch (Exception ex) {
-                lblFeedback.setText("Error: " + ex.getMessage());
+                btnSave.setDisable(false);
+                lblFeedback.setText("Error: " + (ex.getMessage() != null ? ex.getMessage() : "No se pudo registrar el gasto."));
                 lblFeedback.setStyle("-fx-text-fill: #ef4444; -fx-background-color: rgba(239, 68, 68, 0.12); -fx-padding: 8; -fx-background-radius: 6;");
                 lblFeedback.setVisible(true);
                 lblFeedback.setManaged(true);

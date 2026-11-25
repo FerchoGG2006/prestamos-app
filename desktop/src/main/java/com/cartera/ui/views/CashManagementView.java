@@ -65,11 +65,13 @@ public class CashManagementView extends VBox {
 
     private final Label lblScope = new Label();
     private final Label lblBalance = new Label("$ 0");
+    private final Label lblPaperwork = new Label("$ 0");
     private final Label lblInflow = new Label("$ 0");
     private final Label lblOutflow = new Label("$ 0");
     private final Label lblCount = new Label("0");
     private final ObservableList<CashMovementEntity> movementsList = FXCollections.observableArrayList();
     private final TableView<CashMovementEntity> table = new TableView<>();
+    private Map<String, String> routeNameCache = new LinkedHashMap<>();
 
     public CashManagementView(CashMovementRepository cashMovementRepository,
                               CashMovementUseCase cashMovementUseCase,
@@ -87,11 +89,10 @@ public class CashManagementView extends VBox {
         buildHeader();
         buildMetrics();
         buildTableCard();
-        refresh();
     }
 
     private void buildHeader() {
-        HBox top = new HBox(12);
+        HBox top = new HBox(10);
         top.setAlignment(Pos.CENTER_LEFT);
 
         VBox titleBox = new VBox(4);
@@ -109,22 +110,32 @@ public class CashManagementView extends VBox {
         btnOut.getStyleClass().add("btn-secondary");
         btnOut.setOnAction(e -> openMovementDialog(CashMovementUseCase.TYPE_OUTFLOW));
 
-        Button btnRecaudo = new Button("Entregar recaudo a oficina");
+        Button btnPaperwork = new Button("Retirar Papelería");
+        btnPaperwork.setStyle("-fx-background-color: #f59e0b; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 8 12; -fx-cursor: hand;");
+        btnPaperwork.setOnAction(e -> openPaperworkWithdrawalDialog());
+
+        Button btnRecaudo = new Button("Entregar recaudo / Traslado");
         btnRecaudo.getStyleClass().add("btn-primary");
         btnRecaudo.setOnAction(e -> openRecaudoDialog());
 
-        top.getChildren().addAll(titleBox, btnIn, btnOut, btnRecaudo);
+        Button btnRefresh = new Button("Actualizar");
+        btnRefresh.getStyleClass().add("btn-secondary");
+        btnRefresh.setOnAction(e -> refresh());
+
+        top.getChildren().addAll(titleBox, btnIn, btnOut, btnPaperwork, btnRecaudo, btnRefresh);
         getChildren().add(top);
     }
 
     private void buildMetrics() {
-        HBox metrics = new HBox(14);
+        HBox metrics = new HBox(12);
         lblBalance.getStyleClass().add("metric-value-green");
+        lblPaperwork.setStyle("-fx-text-fill: #d97706; -fx-font-size: 20px; -fx-font-weight: bold;");
         lblInflow.getStyleClass().add("metric-value");
         lblOutflow.getStyleClass().add("metric-value-red");
         lblCount.getStyleClass().add("metric-value");
         metrics.getChildren().addAll(
-                metricCard("SALDO DISPONIBLE", lblBalance),
+                metricCard("BASE OPERATIVA EN CAJA", lblBalance),
+                metricCard("PAPELERÍA DISPONIBLE", lblPaperwork),
                 metricCard("TOTAL ENTRADAS", lblInflow),
                 metricCard("TOTAL SALIDAS", lblOutflow),
                 metricCard("MOVIMIENTOS", lblCount)
@@ -188,6 +199,7 @@ public class CashManagementView extends VBox {
 
         TableColumn<CashMovementEntity, CashMovementEntity> colAmount = new TableColumn<>("MONTO");
         colAmount.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
+        colAmount.setComparator(Comparator.comparing(CashManagementView::signedAmount));
         colAmount.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(CashMovementEntity m, boolean empty) {
@@ -219,34 +231,52 @@ public class CashManagementView extends VBox {
         return UserSessionContext.getSelectedRouteId();
     }
 
+    private static BigDecimal signedAmount(CashMovementEntity m) {
+        if (m == null || m.getAmount() == null) return BigDecimal.ZERO;
+        return CashMovementUseCase.isInflow(m.getMovementType()) ? m.getAmount() : m.getAmount().negate();
+    }
+
     private String routeName(String routeId) {
         String normalized = SettlementUseCase.normalizeRouteId(routeId);
-        if (routeRepository == null) return normalized;
-        return routeRepository.findById(normalized).map(RouteEntity::getName).orElse("Ruta sin nombre");
+        if (normalized.isBlank()) return "Sin ruta";
+        return routeNameCache.getOrDefault(normalized, normalized);
     }
 
     public void refresh() {
+        routeNameCache.clear();
+        if (routeRepository != null) {
+            for (RouteEntity r : routeRepository.findAll()) {
+                routeNameCache.put(r.getId(), r.getName() != null ? r.getName() : r.getId());
+            }
+        }
+
         String route = selectedRoute();
         boolean all = UserSessionContext.isAllRoutesSelected();
         lblScope.setText(all
                 ? "Consolidado de todas las rutas • Seleccione una ruta para registrar movimientos"
                 : "Movimientos de efectivo de " + routeName(route));
 
-        List<CashMovementEntity> list = cashMovementRepository.findAll().stream()
-                .filter(m -> all || route.equalsIgnoreCase(SettlementUseCase.normalizeRouteId(m.getRouteId())))
-                .filter(cashMovementUseCase::isPhysical)
-                .sorted(Comparator.comparing(CashMovementEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .toList();
+        List<CashMovementEntity> list = cashMovementUseCase.listPhysicalMovements(all ? "ALL" : route);
         movementsList.setAll(list);
 
-        BigDecimal inflow = list.stream().filter(m -> CashMovementUseCase.isInflow(m.getMovementType()))
+        BigDecimal inflow = list.stream()
+                .filter(m -> !"RETIRO_PAPELERIA".equalsIgnoreCase(m.getCategory()))
+                .filter(m -> CashMovementUseCase.isInflow(m.getMovementType()))
                 .map(CashMovementEntity::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal outflow = list.stream().filter(m -> CashMovementUseCase.isOutflow(m.getMovementType()))
+        BigDecimal outflow = list.stream()
+                .filter(m -> !"RETIRO_PAPELERIA".equalsIgnoreCase(m.getCategory()))
+                .filter(m -> CashMovementUseCase.isOutflow(m.getMovementType()))
                 .map(CashMovementEntity::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal operationalBalance = cashMovementUseCase.availableBalance(all ? "ALL" : route);
+        BigDecimal paperworkBalance = cashMovementUseCase.paperworkAvailableBalance(all ? "ALL" : route);
 
         lblInflow.setText(CURRENCY.format(inflow));
         lblOutflow.setText(CURRENCY.format(outflow));
-        lblBalance.setText(CURRENCY.format(inflow.subtract(outflow)));
+        lblBalance.setText(CURRENCY.format(operationalBalance));
+        lblBalance.getStyleClass().removeAll("metric-value-green", "metric-value-red");
+        lblBalance.getStyleClass().add(operationalBalance.signum() < 0 ? "metric-value-red" : "metric-value-green");
+        lblPaperwork.setText(CURRENCY.format(paperworkBalance));
         lblCount.setText(String.valueOf(list.size()));
     }
 
@@ -296,13 +326,54 @@ public class CashManagementView extends VBox {
                 });
     }
 
+    private void openPaperworkWithdrawalDialog() {
+        if (!ensureSpecificRoute()) return;
+        BigDecimal availablePaperwork = cashMovementUseCase.paperworkAvailableBalance(selectedRoute());
+
+        VBox box = new VBox(4);
+        box.getStyleClass().add("highlight-box");
+        Label lblTitle = new Label("PAPELERÍA DISPONIBLE PARA RETIRO");
+        lblTitle.getStyleClass().add("metric-title");
+        Label lblVal = new Label(CURRENCY.format(availablePaperwork));
+        lblVal.setStyle("-fx-text-fill: #d97706; -fx-font-size: 20px; -fx-font-weight: bold;");
+        Label lblHint = new Label("Retirar papelería la descuenta de la caja física sin modificar el Patrimonio Administrativo.");
+        lblHint.setWrapText(true);
+        lblHint.getStyleClass().add("muted");
+        box.getChildren().addAll(lblTitle, lblVal, lblHint);
+
+        TextField txtAmount = new TextField(availablePaperwork.compareTo(BigDecimal.ZERO) > 0
+                ? availablePaperwork.setScale(0, java.math.RoundingMode.DOWN).toPlainString() : "");
+        txtAmount.setPromptText("Ej. 15000");
+        txtAmount.getStyleClass().add("search-field");
+
+        TextField txtNotes = new TextField();
+        txtNotes.setPromptText("Ej. Retiro papelería dueño / oficina");
+        txtNotes.getStyleClass().add("search-field");
+
+        showCustomFormDialog(
+                "Retirar Papelería Disponible",
+                routeName(selectedRoute()),
+                List.of(box, field("Monto a retirar ($)", txtAmount), field("Observación", txtNotes)),
+                "Confirmar retiro de papelería",
+                movementId -> {
+                    BigDecimal amount = parseStrictAmount(txtAmount.getText());
+                    cashMovementUseCase.withdrawPaperwork(movementId, selectedRoute(), amount, txtNotes.getText());
+                }
+        );
+    }
+
+    private record RouteTargetOption(String id, String name) {
+        @Override public String toString() { return name; }
+    }
+
     private void openRecaudoDialog() {
         if (!ensureSpecificRoute()) return;
-        BigDecimal available = cashMovementUseCase.availableBalance(selectedRoute()).max(BigDecimal.ZERO);
+        String currentRouteId = selectedRoute();
+        BigDecimal available = cashMovementUseCase.availableBalance(currentRouteId).max(BigDecimal.ZERO);
 
         VBox baseBox = new VBox(4);
         baseBox.getStyleClass().add("highlight-box");
-        Label lblBaseTitle = new Label("DISPONIBLE EN CAJA DE LA RUTA");
+        Label lblBaseTitle = new Label("BASE OPERATIVA DISPONIBLE EN CAJA");
         lblBaseTitle.getStyleClass().add("metric-title");
         Label lblBaseVal = new Label(CURRENCY.format(available));
         lblBaseVal.getStyleClass().add("metric-value-green");
@@ -322,22 +393,62 @@ public class CashManagementView extends VBox {
         cmbDestination.setMaxWidth(Double.MAX_VALUE);
         cmbDestination.getStyleClass().add("search-field");
 
+        ComboBox<RouteTargetOption> cmbTargetRoute = new ComboBox<>();
+        if (routeRepository != null) {
+            routeRepository.findAll().stream()
+                    .filter(r -> r.getActive() == null || r.getActive() == 1)
+                    .filter(r -> !currentRouteId.equalsIgnoreCase(r.getId()))
+                    .forEach(r -> cmbTargetRoute.getItems().add(new RouteTargetOption(r.getId(), r.getName())));
+        }
+        if (!cmbTargetRoute.getItems().isEmpty()) {
+            cmbTargetRoute.getSelectionModel().selectFirst();
+        }
+        cmbTargetRoute.setMaxWidth(Double.MAX_VALUE);
+        cmbTargetRoute.getStyleClass().add("search-field");
+
+        VBox targetRouteField = field("Ruta Destino *", cmbTargetRoute);
+        targetRouteField.setVisible(false);
+        targetRouteField.setManaged(false);
+        cmbDestination.valueProperty().addListener((obs, old, val) -> {
+            boolean isTransfer = "Traslado a otra ruta".equals(val);
+            targetRouteField.setVisible(isTransfer);
+            targetRouteField.setManaged(isTransfer);
+        });
+
         TextField txtNotes = new TextField();
         txtNotes.setPromptText("Ej. Recibido por administración");
         txtNotes.getStyleClass().add("search-field");
 
-        showFormDialog(
-                "Entregar recaudo a oficina",
-                routeName(selectedRoute()),
-                List.of(baseBox, field("Monto a entregar ($)", txtAmount), field("Destino", cmbDestination), field("Observación", txtNotes)),
-                "Confirmar entrega",
-                () -> {
-                    String reason = cmbDestination.getValue()
-                            + (txtNotes.getText() == null || txtNotes.getText().isBlank() ? "" : " - " + txtNotes.getText().trim());
-                    return new CashMovementCommand(null, selectedRoute(), CashMovementUseCase.TYPE_OUTFLOW,
-                            "RECAUDO_OFICINA", CurrencyInputUtil.parseAmount(txtAmount.getText()),
-                            reason, "RECAUDO_OFICINA_RETIRO");
-                });
+        showCustomFormDialog(
+                "Entregar recaudo o trasladar a ruta",
+                routeName(currentRouteId),
+                List.of(baseBox, field("Monto ($)", txtAmount), field("Destino", cmbDestination), targetRouteField, field("Observación", txtNotes)),
+                "Confirmar operación",
+                movementId -> {
+                    BigDecimal amount = parseStrictAmount(txtAmount.getText());
+                    if ("Traslado a otra ruta".equals(cmbDestination.getValue())) {
+                        RouteTargetOption target = cmbTargetRoute.getValue();
+                        if (target == null) {
+                            throw new IllegalArgumentException("No hay otra ruta activa configurada para recibir el traslado.");
+                        }
+                        cashMovementUseCase.transferBetweenRoutes(movementId, currentRouteId, target.id(), amount, txtNotes.getText());
+                    } else {
+                        String reason = cmbDestination.getValue()
+                                + (txtNotes.getText() == null || txtNotes.getText().isBlank() ? "" : " - " + txtNotes.getText().trim());
+                        cashMovementUseCase.register(new CashMovementCommand(
+                                movementId, currentRouteId, CashMovementUseCase.TYPE_OUTFLOW,
+                                "RECAUDO_OFICINA", amount, reason, "RECAUDO_OFICINA_RETIRO"));
+                    }
+                }
+        );
+    }
+
+    private static BigDecimal parseStrictAmount(String raw) {
+        try {
+            return CurrencyInputUtil.parseAmount(raw);
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Ingrese un monto numérico válido en pesos enteros.");
+        }
     }
 
     private VBox field(String label, Node control) {
@@ -346,12 +457,17 @@ public class CashManagementView extends VBox {
         return new VBox(4, lbl, control);
     }
 
-    /**
-     * Diálogo de formulario común. El identificador del movimiento se genera UNA vez por diálogo,
-     * de modo que un doble clic o reintento no duplica el registro.
-     */
     private void showFormDialog(String titleText, String subtitleText, List<Node> fields, String confirmText,
                                 java.util.function.Supplier<CashMovementCommand> commandFactory) {
+        showCustomFormDialog(titleText, subtitleText, fields, confirmText, movementId -> {
+            CashMovementCommand c = commandFactory.get();
+            cashMovementUseCase.register(new CashMovementCommand(movementId, c.routeId(), c.movementType(),
+                    c.category(), c.amount(), c.description(), c.auditAction()));
+        });
+    }
+
+    private void showCustomFormDialog(String titleText, String subtitleText, List<Node> fields, String confirmText,
+                                      java.util.function.Consumer<String> executor) {
         final String movementId = UUID.randomUUID().toString();
 
         Stage dialog = new Stage();
@@ -362,7 +478,7 @@ public class CashManagementView extends VBox {
 
         VBox root = new VBox(14);
         root.getStyleClass().add("dialog-root");
-        root.setPrefWidth(440);
+        root.setPrefWidth(460);
 
         Label title = new Label(titleText);
         title.getStyleClass().add("dialog-title");
@@ -385,13 +501,15 @@ public class CashManagementView extends VBox {
         btnSave.setOnAction(e -> {
             btnSave.setDisable(true);
             try {
-                CashMovementCommand c = commandFactory.get();
-                cashMovementUseCase.register(new CashMovementCommand(movementId, c.routeId(), c.movementType(),
-                        c.category(), c.amount(), c.description(), c.auditAction()));
+                executor.accept(movementId);
                 refresh();
                 dialog.close();
             } catch (Exception ex) {
-                lblFeedback.setText(ex.getMessage() != null ? ex.getMessage() : "No se pudo guardar el movimiento.");
+                String msg = ex.getMessage();
+                if (msg != null && msg.startsWith("For input string")) {
+                    msg = "Ingrese un monto numérico válido en pesos enteros.";
+                }
+                lblFeedback.setText(msg != null && !msg.isBlank() ? msg : "No se pudo guardar el movimiento.");
                 lblFeedback.setVisible(true);
                 lblFeedback.setManaged(true);
                 btnSave.setDisable(false);

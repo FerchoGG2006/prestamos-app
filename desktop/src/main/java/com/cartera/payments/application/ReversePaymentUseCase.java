@@ -87,7 +87,9 @@ public class ReversePaymentUseCase {
         PaymentEntity payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new IllegalArgumentException("No se encontró el pago con ID: " + paymentId));
 
-        if ("ANULADO".equalsIgnoreCase(payment.getStatus())) {
+        if ("ANULADO".equalsIgnoreCase(payment.getStatus())
+                || "REVERTIDO".equalsIgnoreCase(payment.getStatus())
+                || "REVERSED".equalsIgnoreCase(payment.getStatus())) {
             throw new IllegalStateException("Este pago ya fue anulado previamente.");
         }
 
@@ -138,7 +140,10 @@ public class ReversePaymentUseCase {
                 .map(InstallmentEntity::getPendingAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        if (("FINALIZADO".equalsIgnoreCase(loan.getStatus()) || "PAGADO".equalsIgnoreCase(loan.getStatus()))
+        if (("FINALIZADO".equalsIgnoreCase(loan.getStatus())
+                || "COMPLETADO".equalsIgnoreCase(loan.getStatus())
+                || "PAGADO".equalsIgnoreCase(loan.getStatus())
+                || "PAID".equalsIgnoreCase(loan.getStatus()))
                 && updatedBalance.compareTo(BigDecimal.ZERO) > 0) {
             loan.setStatus("ACTIVO");
             loanRepository.save(loan);
@@ -155,7 +160,7 @@ public class ReversePaymentUseCase {
         // Movimiento compensatorio en caja
         CashMovementEntity reversalMovement = new CashMovementEntity(
                 UUID.randomUUID().toString(),
-                loan.getRouteId() != null ? loan.getRouteId() : "route-norte",
+                loan.getRouteId(),
                 payment.getCollectorId(),
                 payment.getSessionId(),
                 "EGRESO",

@@ -1,0 +1,10 @@
+{
+  "latest_version": "1.2.0",
+  "min_version": "1.2.0",
+  "min_shell_version": "1.2.0",
+  "release_date": "2026-11-25",
+  "core_jar_url": "https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates/kredia-app-1.2.0.jar",
+  "installer_url": "https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates/Instalador-SistemaCartera-v1.2.0.exe",
+  "download_url": "https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates/Instalador-SistemaCartera-v1.2.0.exe",
+  "release_notes": "v1.2.0 — Instalador base con motor de actualizaciones automáticas OTA (~1.6 MB) + paridad total con Móvil (sincronización bidireccional completa, Ficha 360°, cliente + cartulina física en 1 paso, campana de alertas, filtro de período y modo privacidad)."
+}

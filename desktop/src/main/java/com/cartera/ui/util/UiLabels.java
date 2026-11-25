@@ -31,10 +31,19 @@ public final class UiLabels {
             Map.entry("DESCUENTO_NOMINA_DESCUADRE", "Descuento de nómina"),
             Map.entry("DESEMBOLSO", "Desembolso de crédito"),
             Map.entry("DESEMBOLSO_CREDITO", "Desembolso de crédito"),
+            Map.entry("DESEMBOLSO_RENOVACION", "Desembolso de renovación"),
+            Map.entry("ANULACION_CREDITO", "Reintegro por anulación de crédito"),
+            Map.entry("ANULACION_PAGO", "Reverso por anulación de pago"),
             Map.entry("COBRO", "Cobro de cuota"),
             Map.entry("COBRO_CUOTA", "Cobro de cuota"),
             Map.entry("PAGO_CUOTA", "Cobro de cuota"),
             Map.entry("PAPELERIA", "Papelería"),
+            Map.entry("PAPELERIA_RENOVACION", "Papelería de renovación"),
+            Map.entry("RETIRO_PAPELERIA", "Retiro de papelería"),
+            Map.entry("TRASLADO_RUTA", "Traslado entre rutas"),
+            Map.entry("INYECCION_CAPITAL", "Inyección de capital"),
+            Map.entry("INGRESO_MANUAL", "Ingreso manual"),
+            Map.entry("EGRESO_MANUAL", "Egreso manual"),
             Map.entry("OTRO", "Otro")
     );
 
@@ -51,6 +60,12 @@ public final class UiLabels {
         if (code == null || code.isBlank()) return "";
         String s = code.replace('_', ' ').replace('-', ' ').trim().toLowerCase(Locale.forLanguageTag("es-CO"));
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    /** Formato "dd/MM/yyyy" a partir de una fecha ISO "YYYY-MM-DD"; tolera valores incompletos. */
+    public static String formatDate(String iso) {
+        if (iso == null || iso.length() < 10) return "—";
+        return iso.substring(8, 10) + "/" + iso.substring(5, 7) + "/" + iso.substring(0, 4);
     }
 
     /** Formato "dd/MM/yyyy HH:mm" a partir de una marca ISO; tolera valores incompletos. */

@@ -51,6 +51,9 @@ public class CustomerEntity {
     @Column(name = "collector_id")
     private String collectorId;
 
+    @Column(name = "order_index")
+    private Integer orderIndex = 0;
+
     @Column(name = "created_at", nullable = false)
     private String createdAt;
 
@@ -104,6 +107,8 @@ public class CustomerEntity {
     public void setRouteId(String routeId) { this.routeId = routeId; }
     public String getCollectorId() { return collectorId; }
     public void setCollectorId(String collectorId) { this.collectorId = collectorId; }
+    public Integer getOrderIndex() { return orderIndex != null ? orderIndex : 0; }
+    public void setOrderIndex(Integer orderIndex) { this.orderIndex = orderIndex != null ? orderIndex : 0; }
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }

@@ -37,12 +37,36 @@ public class CustomerLifecycleService {
             "INACTIVAR_CLIENTE",before,"INACTIVO",reason.trim(),LocalDateTime.now().toString()));
         return customer;
     }
-    public record Profile(String customerId, String fullName, String phone, String address, String neighborhood,
-                          String businessName, String occupation, String routeId) { }
+    @Transactional
+    public CustomerEntity reactivate(String customerId, String reason) {
+        var actor=access.manager();
+        if (reason==null || reason.isBlank()) throw new IllegalArgumentException("El motivo de reactivación es obligatorio.");
+        var customer=customers.findById(customerId).orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado."));
+        if ("ACTIVO".equalsIgnoreCase(customer.getStatus())) return customer;
+        String before=customer.getStatus();
+        customer.setStatus("ACTIVO");
+        customers.save(customer);
+        audit.save(new AuditLogEntity(UUID.randomUUID().toString(),actor.userId(),"CUSTOMER",customerId,
+            "REACTIVAR_CLIENTE",before,"ACTIVO",reason.trim(),LocalDateTime.now().toString()));
+        return customer;
+    }
+    public record Profile(String customerId, String fullName, String phone, String altPhone, String address, String neighborhood,
+                          String city, String businessName, String occupation, String notes, String routeId) {
+        public Profile(String customerId, String fullName, String phone, String address, String neighborhood,
+                       String businessName, String occupation, String routeId) {
+            this(customerId, fullName, phone, null, address, neighborhood, null, businessName, occupation, null, routeId);
+        }
+    }
     @Transactional
     public CustomerEntity update(Profile command) {
         var customer=customers.findById(command.customerId()).orElseThrow(() -> new IllegalArgumentException("Cliente no encontrado."));
-        var actor=access.collector(customer.getCollectorId());
+        String ownerCollector = customer.getCollectorId();
+        if ((ownerCollector == null || ownerCollector.isBlank()) && customer.getRouteId() != null) {
+            ownerCollector = routes.findById(customer.getRouteId()).map(RouteEntity::getCollectorId).orElse(null);
+        }
+        var actor = (ownerCollector != null && !ownerCollector.isBlank())
+                ? access.collector(ownerCollector)
+                : access.manager();
         if (command.fullName()==null || command.fullName().isBlank() || command.phone()==null || command.phone().isBlank())
             throw new IllegalArgumentException("Nombre y teléfono son obligatorios.");
         String route=command.routeId()==null ? customer.getRouteId() : command.routeId();
@@ -56,8 +80,12 @@ public class CustomerLifecycleService {
         }
         String before=describe(customer);
         customer.setFullName(command.fullName().trim()); customer.setPhone(command.phone().trim());
+        if (command.altPhone() != null) customer.setAltPhone(command.altPhone().trim());
         customer.setAddress(command.address()); customer.setNeighborhood(command.neighborhood());
-        customer.setBusinessName(command.businessName()); customer.setOccupation(command.occupation()); customer.setRouteId(route);
+        if (command.city() != null) customer.setCity(command.city().trim());
+        customer.setBusinessName(command.businessName()); customer.setOccupation(command.occupation());
+        if (command.notes() != null) customer.setNotes(command.notes().trim());
+        customer.setRouteId(route);
         String after=describe(customer);
         if (!before.equals(after)) {
             customers.save(customer);
@@ -67,7 +95,8 @@ public class CustomerLifecycleService {
         return customer;
     }
     private String describe(CustomerEntity c) {
-        return String.join("|",Objects.toString(c.getFullName(),""),Objects.toString(c.getPhone(),""),Objects.toString(c.getAddress(),""),
-            Objects.toString(c.getNeighborhood(),""),Objects.toString(c.getBusinessName(),""),Objects.toString(c.getOccupation(),""),Objects.toString(c.getRouteId(),""));
+        return String.join("|",Objects.toString(c.getFullName(),""),Objects.toString(c.getPhone(),""),Objects.toString(c.getAltPhone(),""),
+            Objects.toString(c.getAddress(),""),Objects.toString(c.getNeighborhood(),""),Objects.toString(c.getCity(),""),
+            Objects.toString(c.getBusinessName(),""),Objects.toString(c.getOccupation(),""),Objects.toString(c.getNotes(),""),Objects.toString(c.getRouteId(),""));
     }
 }

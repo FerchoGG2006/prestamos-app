@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface CashMovementRepository extends JpaRepository<CashMovementEntity, String> {
     List<CashMovementEntity> findByCreatedAtStartingWith(String datePrefix);
+    List<CashMovementEntity> findByRouteId(String routeId);
 }

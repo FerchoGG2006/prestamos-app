@@ -263,9 +263,18 @@ export default function App() {
         body, input, textarea, button, select, option {
           font-family: 'Manrope', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         }
-        /* Regla crítica iOS Safari: cualquier input/textarea/select < 16px provoca zoom automático en iPhone */
+        /* Regla crítica iOS Safari: cualquier input/textarea/select < 16px provoca zoom automático en iPhone.
+           Contención global flexbox: impide que inputs en columnas dobles se desborden ni muestren outline azul fuera de su caja. */
         input, textarea, select {
           font-size: 16px !important;
+          min-width: 0 !important;
+          max-width: 100% !important;
+          box-sizing: border-box !important;
+          outline: none !important;
+        }
+        input:focus, textarea:focus, select:focus {
+          outline: none !important;
+          box-shadow: none !important;
         }
       `;
     }
@@ -481,6 +490,7 @@ function MainApp({
   const [recaudoModalTab, setRecaudoModalTab] = useState<RecaudoModalTab>('RETIRO');
 
   const openRecaudoModal = (tab: RecaudoModalTab = 'RETIRO') => {
+    if (userRole !== 'ADMIN') return;
     setRecaudoModalTab(tab);
     setRecaudoModalVisible(true);
   };
@@ -627,8 +637,9 @@ function MainApp({
           backgroundTimestamp = null;
         }
         resetTimer();
-        // Verificación silenciosa en segundo plano (OTA + APK) al regresar a la aplicación
+        // Verificación silenciosa en segundo plano (OTA + APK + nube) al regresar a la aplicación
         performAppUpdatesCheck(true);
+        cloudSyncEngine.syncNowIfAutoEnabled().catch(() => {});
       }
     };
 
@@ -988,7 +999,7 @@ function MainApp({
     onViewCustomerDetail: (customer: Customer) => setDetailCustomer(customer),
     onOpenNewLoan: () => setNewLoanModalVisible(true),
     onOpenExpense: () => setExpenseModalVisible(true),
-    onOpenRecaudo: () => openRecaudoModal('RETIRO'),
+    onOpenRecaudo: userRole === 'ADMIN' ? () => openRecaudoModal('RETIRO') : undefined,
     onOpenSettlement: userRole === 'ADMIN' ? () => setSettlementModalVisible(true) : undefined,
     onOpenDailyReport: () => setCollectorCuadreModalVisible(true),
     onNonPaymentCustomer: (customer: Customer, loan: Loan) =>
@@ -1043,7 +1054,7 @@ function MainApp({
       {!detailCustomer && (
         <View style={styles.topBar}>
           <TouchableOpacity
-            style={[styles.brandRow, { flex: 1, marginRight: 8 }]}
+            style={[styles.brandRow, { flex: 1, minWidth: 0, marginRight: 6 }]}
             activeOpacity={userRole === 'ADMIN' ? 0.7 : 1}
             onPress={() => {
               if (userRole === 'ADMIN') {
@@ -1061,7 +1072,7 @@ function MainApp({
                 <Store size={18} color="#FFFFFF" />
               )}
             </View>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={styles.brandTitle} numberOfLines={1}>
                   {userRole === 'ADMIN' ? 'Centro Gerencial' : 'Ruta de Cobro'}
@@ -2001,24 +2012,6 @@ function MainApp({
                   </View>
                   <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.operationMenuItem}
-                  onPress={() => {
-                    setOperationsMenuVisible(false);
-                    setTimeout(() => {
-                      openRecaudoModal('HISTORIAL_PAPELERIA');
-                    }, Platform.OS === 'ios' ? 250 : 50);
-                  }}
-                >
-                  <View style={[styles.operationMenuIcon, { backgroundColor: '#ECFDF5' }]}>
-                    <FileText size={18} color="#059669" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.operationMenuTitle}>Recaudo y Gestión de Papelerías</Text>
-                    <Text style={styles.operationMenuSubtitle}>Adelantos a oficina, saldo e historial de papelería</Text>
-                  </View>
-                  <ChevronDown size={16} color={COLORS.textMuted} style={{ transform: [{ rotate: '-90deg' }] }} />
-                </TouchableOpacity>
 
                 <TouchableOpacity
                   style={styles.operationMenuItem}
@@ -2126,7 +2119,6 @@ function MainApp({
         collectorId={currentUser?.id}
         onClose={() => setCollectorCuadreModalVisible(false)}
         onSuccess={syncFromStore}
-        onOpenRecaudo={() => openRecaudoModal('RETIRO')}
       />
 
       <SettlementModal
@@ -2245,16 +2237,18 @@ function MainApp({
         onSuccess={syncFromStore}
       />
 
-      <RecaudoModal
-        visible={recaudoModalVisible}
-        baseDisponible={routeMetrics.cashAvailableInHand}
-        todayStr={todayStr}
-        routeId={effectiveRouteFilter}
-        authorizedBy={currentUser?.id}
-        initialTab={recaudoModalTab}
-        onClose={() => setRecaudoModalVisible(false)}
-        onSuccess={syncFromStore}
-      />
+      {userRole === 'ADMIN' && (
+        <RecaudoModal
+          visible={recaudoModalVisible}
+          baseDisponible={routeMetrics.cashAvailableInHand}
+          todayStr={todayStr}
+          routeId={effectiveRouteFilter}
+          authorizedBy={currentUser?.id}
+          initialTab={recaudoModalTab}
+          onClose={() => setRecaudoModalVisible(false)}
+          onSuccess={syncFromStore}
+        />
+      )}
 
       {userRole === 'ADMIN' && (
         <OfficeConfigModal

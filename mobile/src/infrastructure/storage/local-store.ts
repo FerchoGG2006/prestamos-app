@@ -40,10 +40,12 @@ import {
 } from './initial-data';
 import {
   applyPaymentToLoan,
+  calculateDailyCashReconciliation,
   calculateDelinquencyMetrics,
   calculateLoanSummary,
   calculatePaperworkFee,
   calculateRenewalDisbursement,
+  generateAnchoredMigrationSchedule,
   generateInstallments,
   getLocalTodayStr,
   addDaysToDate,
@@ -844,9 +846,13 @@ class LocalStore {
     };
     preserveLocalPortfolio?: boolean;
   }): Promise<void> {
+    const isSwitchingOffice =
+      Boolean(this.officeConfig.officeId && this.officeConfig.officeId !== params.officeId) ||
+      !params.preserveLocalPortfolio;
+
     this.officeConfig = {
       ...DEFAULT_OFFICE_CONFIG,
-      ...this.officeConfig,
+      ...(isSwitchingOffice ? {} : this.officeConfig),
       ...(params.settings || {}),
       officeId: params.officeId,
       activationCode: params.activationCode,
@@ -854,14 +860,15 @@ class LocalStore {
       licenseStatus: params.licenseStatus,
       licensePlan: params.licensePlan || 'LIFETIME',
       licenseExpiresAt: params.licenseExpiresAt ?? null,
-      cloudSessionToken: params.cloudSessionToken || this.officeConfig.cloudSessionToken || '',
+      cloudSessionToken:
+        params.cloudSessionToken || (isSwitchingOffice ? '' : this.officeConfig.cloudSessionToken || ''),
       isSetupCompleted: true,
     };
 
-    if (params.users.length > 0) {
+    if (params.users.length > 0 || isSwitchingOffice) {
       this.users = params.users;
     }
-    if (params.routes.length > 0) {
+    if (params.routes.length > 0 || isSwitchingOffice) {
       this.routes = params.routes;
     }
 
@@ -870,9 +877,12 @@ class LocalStore {
       this.loans = params.portfolio.loans;
       this.installments = params.portfolio.installments;
       this.payments = params.portfolio.payments;
-      if (params.portfolio.renewals) this.renewals = params.portfolio.renewals;
-      if (params.portfolio.settlements) this.settlements = params.portfolio.settlements;
+      this.renewals = params.portfolio.renewals || [];
+      this.settlements = params.portfolio.settlements || [];
       this.cashMovements = params.portfolio.cashMovements;
+      this.promises = [];
+      this.nonPaymentVisits = [];
+      this.activeSession = null;
     }
 
     this.rebuildIndexes();
@@ -887,11 +897,17 @@ class LocalStore {
       safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify(this.renewals)),
       safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(this.settlements)),
       safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
+      safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
+      safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify(this.nonPaymentVisits)),
+      this.activeSession
+        ? safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession))
+        : safeStorage.removeItem(STORAGE_KEYS.SESSION),
     ]);
     this.notify();
   }
 
   public async mergeCloudPortfolio(remote: {
+    office?: any;
     users: User[];
     routes: Route[];
     customers: Customer[];
@@ -909,18 +925,136 @@ class LocalStore {
       return Array.from(map.values());
     };
 
+    if (remote.office?.settings && typeof remote.office.settings === 'object') {
+      const rSettings = remote.office.settings;
+      const rMap: Record<string, number> =
+        rSettings.dailyOpeningBaseByRouteDate &&
+        typeof rSettings.dailyOpeningBaseByRouteDate === 'object'
+          ? rSettings.dailyOpeningBaseByRouteDate
+          : {};
+      const rMeta: Record<string, { amount: number; updatedAt: string }> =
+        rSettings.dailyOpeningBaseMeta && typeof rSettings.dailyOpeningBaseMeta === 'object'
+          ? rSettings.dailyOpeningBaseMeta
+          : {};
+      const lMap = this.officeConfig.dailyOpeningBaseByRouteDate || {};
+      const lMeta = this.officeConfig.dailyOpeningBaseMeta || {};
+
+      const mergedMap: Record<string, number> = { ...lMap };
+      const mergedMeta: Record<string, { amount: number; updatedAt: string }> = { ...lMeta };
+      const keys = new Set([
+        ...Object.keys(rMap),
+        ...Object.keys(rMeta),
+        ...Object.keys(lMap),
+        ...Object.keys(lMeta),
+      ]);
+      for (const key of keys) {
+        const re = rMeta[key];
+        const le = lMeta[key];
+        if (re && le) {
+          if (re.updatedAt > le.updatedAt) {
+            mergedMeta[key] = re;
+            mergedMap[key] = Math.max(0, Number(re.amount) || 0);
+          } else {
+            mergedMeta[key] = le;
+            mergedMap[key] = Math.max(0, Number(le.amount) || 0);
+          }
+        } else if (re) {
+          mergedMeta[key] = re;
+          mergedMap[key] = Math.max(0, Number(re.amount) || 0);
+        } else if (!le && typeof rMap[key] === 'number' && typeof lMap[key] !== 'number') {
+          mergedMap[key] = Math.max(0, Number(rMap[key]) || 0);
+        }
+      }
+
+      this.officeConfig = {
+        ...this.officeConfig,
+        ...(typeof rSettings.paperworkFeeEnabled === 'boolean'
+          ? { paperworkFeeEnabled: rSettings.paperworkFeeEnabled }
+          : {}),
+        ...(typeof rSettings.paperworkRate === 'number'
+          ? { paperworkRate: rSettings.paperworkRate }
+          : {}),
+        dailyOpeningBaseByRouteDate: mergedMap,
+        dailyOpeningBaseMeta: mergedMeta,
+      };
+    }
+
+    const isTerminalLoanStatus = (status?: string): boolean =>
+      status === 'PAID' || status === 'RENEWED' || status === 'CANCELLED';
+
+    const loansWithRemoteReversal = new Set(
+      remote.payments
+        .filter((p) => p.status === 'REVERSED')
+        .map((p) => p.loanId)
+    );
+
     if (remote.users.length > 0) this.users = mergeById(this.users, remote.users);
     if (remote.routes.length > 0) this.routes = mergeById(this.routes, remote.routes);
     if (remote.customers.length > 0) this.customers = mergeById(this.customers, remote.customers);
-    if (remote.loans.length > 0) this.loans = mergeById(this.loans, remote.loans);
-    if (remote.installments.length > 0) this.installments = mergeById(this.installments, remote.installments);
+    if (remote.loans.length > 0) {
+      const loanMap = new Map<string, Loan>();
+      for (const localLoan of this.loans) loanMap.set(localLoan.id, localLoan);
+      for (const remoteLoan of remote.loans) {
+        const localLoan = loanMap.get(remoteLoan.id);
+        if (localLoan && isTerminalLoanStatus(localLoan.status) && !isTerminalLoanStatus(remoteLoan.status)) {
+          // Proteger estado terminal local (ej. renovado/pagado/anulado recientemente)
+          loanMap.set(remoteLoan.id, { ...remoteLoan, status: localLoan.status });
+        } else {
+          loanMap.set(remoteLoan.id, remoteLoan);
+        }
+      }
+      this.loans = Array.from(loanMap.values());
+    }
+    if (remote.installments.length > 0) {
+      const instMap = new Map<string, Installment>();
+      for (const localInst of this.installments) instMap.set(localInst.id, localInst);
+      for (const remoteInst of remote.installments) {
+        const localInst = instMap.get(remoteInst.id);
+        if (
+          localInst &&
+          !loansWithRemoteReversal.has(remoteInst.loanId) &&
+          (localInst.paidAmount || 0) > (remoteInst.paidAmount || 0)
+        ) {
+          // Preservar cuota local más adelantada si no hubo reverso remoto
+          continue;
+        }
+        instMap.set(remoteInst.id, remoteInst);
+      }
+      this.installments = Array.from(instMap.values());
+    }
     if (remote.payments.length > 0) this.payments = mergeById(this.payments, remote.payments);
     if (remote.renewals.length > 0) this.renewals = mergeById(this.renewals, remote.renewals);
     if (remote.settlements.length > 0) this.settlements = mergeById(this.settlements, remote.settlements);
     if (remote.cashMovements.length > 0) this.cashMovements = mergeById(this.cashMovements, remote.cashMovements);
 
+    // Invariante relacional: todo crédito referenciado en renewals.previousLoanId SIEMPRE permanece RENEWED
+    // con todas sus cuotas liquidadas (pendingAmount = 0), evitando regresiones por sincronización antigua.
+    if (this.renewals.length > 0) {
+      const renewedPrevLoanIds = new Set(
+        this.renewals.map((r) => r.previousLoanId).filter(Boolean)
+      );
+      if (renewedPrevLoanIds.size > 0) {
+        this.loans = this.loans.map((l) =>
+          renewedPrevLoanIds.has(l.id) && l.status !== 'RENEWED'
+            ? { ...l, status: 'RENEWED' }
+            : l
+        );
+        this.installments = this.installments.map((inst) =>
+          renewedPrevLoanIds.has(inst.loanId) && (inst.pendingAmount > 0 || inst.status !== 'PAGADA')
+            ? {
+                ...inst,
+                paidAmount: inst.expectedAmount,
+                pendingAmount: 0,
+                status: 'PAGADA',
+              }
+            : inst
+        );
+      }
+    }
+
     this.rebuildIndexes();
     await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig)),
       safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
       safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
       safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
@@ -1804,6 +1938,7 @@ class LocalStore {
 
     let runningBaselineCash = manualBaseCapital + totalCapitalInjectedAllTime;
     let fixedHistoricalCapitalDisbursed = 0;
+    let regularCapitalOutToday = 0;
     const consumedPayments = new Array<boolean>(sortedInAppCashPayments.length).fill(false);
 
     for (let idx = 0; idx < chronologicalLoans.length; idx++) {
@@ -1847,6 +1982,9 @@ class LocalStore {
 
         const deducted = Math.min(Math.max(0, runningBaselineCash), l.principal);
         fixedHistoricalCapitalDisbursed += deducted;
+        if (l.createdAt.startsWith(todayStr)) {
+          regularCapitalOutToday += deducted;
+        }
         runningBaselineCash -= deducted;
         runningBaselineCash += initialCollected;
       }
@@ -1859,6 +1997,10 @@ class LocalStore {
     const totalRenewalCapitalOut = this.renewals
       .filter((r) => validLoanIds.has(r.newLoanId))
       .reduce((sum, r) => sum + Math.max(0, r.newPrincipal - r.previousBalanceDeducted), 0);
+    const renewalCapitalOutToday = this.renewals
+      .filter((r) => validLoanIds.has(r.newLoanId) && r.createdAt.startsWith(todayStr))
+      .reduce((sum, r) => sum + Math.max(0, r.newPrincipal - r.previousBalanceDeducted), 0);
+    const capitalOutToday = regularCapitalOutToday + renewalCapitalOutToday;
 
     const totalCapitalOut = fixedHistoricalCapitalDisbursed + totalRenewalCapitalOut;
 
@@ -1875,12 +2017,40 @@ class LocalStore {
       collectedDigitalToday;
 
     // Administrativo / Patrimonio operativo total:
-    // Siempre cumple la identidad contable exacta:
-    // Administrativo = Cartera en Calle + Base en Oficina + Recaudo Digital
+    // Siempre cumple la identidad contable exacta (la papelería NUNCA infla el Administrativo):
+    // Administrativo = Cartera en Calle + Efectivo Base + Recaudo Digital
     const totalAdministrativeCapital = Math.max(
       0,
       activeCapitalInStreet + cashAvailableInHand + collectedDigitalToday
     );
+
+    // Papelería disponible en caja (físicamente dentro de Base en oficina, sin inflar el Administrativo)
+    const paperworkAvailableBalance = this.getPaperworkAvailableBalance(
+      filterByRoute ? routeIdFilter : undefined
+    );
+    const paperworkGeneratedToday =
+      todayNewLoans.reduce((sum, l) => sum + this.getPaperworkFeeForLoan(l), 0) +
+      todayRenewals
+        .filter((r) => validLoanIds.has(r.newLoanId))
+        .reduce((sum, r) => sum + Math.max(0, r.paperworkDeducted || 0), 0);
+    const totalOfficeBaseWithPaperwork =
+      cashAvailableInHand + collectedDigitalToday + paperworkAvailableBalance;
+    // Base de inicio automática del día (SOLO efectivo base, dejando la papelería aparte):
+    // Saldo de efectivo base con el que amaneció la ruta hoy + inyecciones de capital de hoy.
+    const autoOpeningRouteBase = Math.max(
+      0,
+      cashAvailableInHand -
+        collectedCashToday +
+        capitalOutToday +
+        expensesToday +
+        recaudoRetiradoToday
+    );
+    const manualOpeningBase = this.getManualSessionOpeningBase(
+      todayStr,
+      filterByRoute ? routeIdFilter : undefined
+    );
+    const openingRouteBase =
+      manualOpeningBase !== null ? manualOpeningBase : autoOpeningRouteBase;
 
     const visitedCustomerIds = new Set(todayPayments.map((p) => p.customerId));
 
@@ -1900,6 +2070,11 @@ class LocalStore {
       recaudoRetiradoToday,
       capitalInjectedToday,
       paperworkRetiradoToday,
+      paperworkGeneratedToday,
+      paperworkAvailableBalance,
+      totalOfficeBaseWithPaperwork,
+      autoOpeningRouteBase,
+      openingRouteBase,
       cashAvailableInHand,
       totalAdministrativeCapital,
       visitedCustomersCount: visitedCustomerIds.size,
@@ -2280,6 +2455,7 @@ class LocalStore {
     installmentCount?: number;
     frequency?: LoanFrequency;
     fixedDueDate?: string;
+    nextDueDate?: string;
     collectorId?: string;
     routeId?: string;
     todayStr: string;
@@ -2354,33 +2530,62 @@ class LocalStore {
       return `${yyyy}-${mm}-${dd}`;
     };
 
-    const effectiveStartDate =
-      params.startDate ||
-      (isMigration && paidSet.size > 0
-        ? computeBackwardStartDate(params.todayStr, paidSet.size, params.frequency || 'DAILY')
-        : params.todayStr);
+    let effectiveStartDate: string;
+    let generatedInstallments: Installment[];
 
-    const rawInstallments = generateInstallments(
-      loanId,
-      summary,
-      effectiveStartDate,
-      params.frequency || 'DAILY',
-      undefined,
-      params.fixedDueDate
-    );
+    const normalizedNextDueDate = params.nextDueDate?.trim();
+    if (isMigration && !isFixedDate && normalizedNextDueDate && /^\d{4}-\d{2}-\d{2}$/.test(normalizedNextDueDate)) {
+      const anchored = generateAnchoredMigrationSchedule({
+        loanId,
+        summary,
+        frequency: params.frequency || 'DAILY',
+        nextDueDateStr: normalizedNextDueDate,
+        paidInstallmentNumbers: Array.from(paidSet),
+        config: {
+          defaultInterestRate: summary.interestRate,
+          defaultInstallmentsCount: summary.installmentCount,
+          defaultFrequency: params.frequency || 'DAILY',
+          excludeSundays: this.officeConfig.excludeSundays ?? true,
+          interestType: 'FLAT_INITIAL_CAPITAL',
+        },
+      });
+      effectiveStartDate = params.startDate || anchored.startDate;
+      generatedInstallments = anchored.installments;
+    } else {
+      effectiveStartDate =
+        params.startDate ||
+        (isMigration && paidSet.size > 0
+          ? computeBackwardStartDate(params.todayStr, paidSet.size, params.frequency || 'DAILY')
+          : params.todayStr);
 
-    const generatedInstallments: Installment[] = rawInstallments.map((inst) => {
-      if (isMigration && paidSet.has(inst.installmentNumber)) {
-        return {
-          ...inst,
-          paidAmount: inst.expectedAmount,
-          pendingAmount: 0,
-          status: 'PAGADA',
-          lastPaymentDate: inst.dueDate,
-        };
-      }
-      return inst;
-    });
+      const rawInstallments = generateInstallments(
+        loanId,
+        summary,
+        effectiveStartDate,
+        params.frequency || 'DAILY',
+        {
+          defaultInterestRate: summary.interestRate,
+          defaultInstallmentsCount: summary.installmentCount,
+          defaultFrequency: params.frequency || 'DAILY',
+          excludeSundays: this.officeConfig.excludeSundays ?? true,
+          interestType: 'FLAT_INITIAL_CAPITAL',
+        },
+        params.fixedDueDate
+      );
+
+      generatedInstallments = rawInstallments.map((inst) => {
+        if (isMigration && paidSet.has(inst.installmentNumber)) {
+          return {
+            ...inst,
+            paidAmount: inst.expectedAmount,
+            pendingAmount: 0,
+            status: 'PAGADA',
+            lastPaymentDate: inst.dueDate,
+          };
+        }
+        return inst;
+      });
+    }
 
     const endDate =
       isFixedDate && params.fixedDueDate
@@ -2479,6 +2684,7 @@ class LocalStore {
     interestRate?: number;
     installmentCount?: number;
     frequency?: LoanFrequency;
+    fixedDueDate?: string;
     collectorId: string;
     todayStr: string;
     paperworkFee?: number;
@@ -2490,6 +2696,13 @@ class LocalStore {
     const isFixedDate = effectiveFrequency === 'FIXED_DATE';
     const effectiveInstallmentCount = isFixedDate ? 1 : (params.installmentCount ?? prevLoan.installmentCount);
     const effectiveRate = params.interestRate ?? prevLoan.interestRate;
+    const rawFixedDueDate = params.fixedDueDate?.trim();
+    if (isFixedDate && rawFixedDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(rawFixedDueDate)) {
+      throw new Error('Seleccione una fecha fija de pago válida (YYYY-MM-DD).');
+    }
+    const effectiveFixedDueDate = isFixedDate
+      ? (rawFixedDueDate || prevLoan.fixedDueDate?.trim() || params.todayStr)
+      : undefined;
     if (!Number.isFinite(params.newPrincipal) || params.newPrincipal <= 0 ||
         !Number.isFinite(effectiveRate) || effectiveRate < 0 ||
         !Number.isInteger(effectiveInstallmentCount) || effectiveInstallmentCount <= 0) {
@@ -2519,7 +2732,9 @@ class LocalStore {
       if (prevLoan.status === 'RENEWED' && next &&
           existing.newPrincipal === params.newPrincipal && existing.paperworkDeducted === effectivePaperworkFee &&
           next.interestRate === effectiveRate && next.installmentCount === effectiveInstallmentCount &&
-          next.frequency === effectiveFrequency && next.startDate === params.todayStr && next.collectorId === params.collectorId) {
+          next.frequency === effectiveFrequency &&
+          (!isFixedDate || next.fixedDueDate === effectiveFixedDueDate) &&
+          next.startDate === params.todayStr && next.collectorId === params.collectorId) {
         return { renewal: existing, newLoan: next };
       }
       throw new Error('El crédito ya fue renovado con otras condiciones; no se duplicará la operación.');
@@ -2564,10 +2779,12 @@ class LocalStore {
       params.todayStr,
       effectiveFrequency,
       undefined,
-      prevLoan.fixedDueDate
+      effectiveFixedDueDate
     );
     const endDate =
-      newInstallments.length > 0
+      isFixedDate && effectiveFixedDueDate
+        ? effectiveFixedDueDate
+        : newInstallments.length > 0
         ? newInstallments[newInstallments.length - 1].dueDate
         : addDaysToDate(params.todayStr, 30);
 
@@ -2585,7 +2802,7 @@ class LocalStore {
       installmentCount: summary.installmentCount,
       installmentAmount: summary.installmentAmount,
       frequency: effectiveFrequency,
-      fixedDueDate: prevLoan.fixedDueDate,
+      fixedDueDate: effectiveFixedDueDate,
       startDate: params.todayStr,
       endDate,
       status: 'ACTIVE',
@@ -2810,6 +3027,250 @@ class LocalStore {
     return movement;
   }
 
+  private isMigratedCardLoan(l: Loan): boolean {
+    return Boolean(
+      l.notes?.startsWith('Migrado de cartulina física') ||
+      l.notes?.startsWith('Migrado de cartulina fisica')
+    );
+  }
+
+  /**
+   * Obtiene la papelería retenida para un préstamo nuevo regular (no renovación, no anulado, no cartulina migrada).
+   * Lee el movimiento inmutable LOAN_DISBURSEMENT (principal - neto entregado) cuando existe,
+   * garantizando precisión histórica incluso si la oficina cambia después la configuración de papelería.
+   */
+  private getPaperworkFeeForLoan(l: Loan): number {
+    if (l.status === 'CANCELLED' || l.previousLoanId || this.isMigratedCardLoan(l)) {
+      return 0;
+    }
+    const disbMov = this.cashMovements.find(
+      (cm) =>
+        cm.type === 'EXPENSE' &&
+        cm.category === 'LOAN_DISBURSEMENT' &&
+        cm.referenceId === l.id
+    );
+    if (disbMov) {
+      return Math.max(0, l.principal - disbMov.amount);
+    }
+    const isPaperworkEnabled = this.officeConfig.paperworkFeeEnabled ?? true;
+    if (!isPaperworkEnabled) return 0;
+    return calculatePaperworkFee(l.principal, {
+      rate: this.officeConfig.paperworkRate || 5000,
+      base: 100000,
+      calculationMode: 'PROPORTIONAL',
+    });
+  }
+
+  /**
+   * Saldo real de papelería disponible en caja (físicamente en Base en oficina sin inflar Administrativo).
+   */
+  public getPaperworkAvailableBalance(routeId?: string): number {
+    const isFilter = Boolean(routeId && routeId !== 'ALL');
+    const scopedLoans = isFilter
+      ? this.loans.filter((l) => l.routeId === routeId)
+      : this.loans;
+    const validLoanIds = new Set(
+      scopedLoans
+        .filter((l) => l.status !== 'CANCELLED')
+        .map((l) => l.id)
+    );
+
+    const fromNewLoans = scopedLoans.reduce(
+      (sum, l) => sum + this.getPaperworkFeeForLoan(l),
+      0
+    );
+
+    const fromRenewals = this.renewals
+      .filter((r) => validLoanIds.has(r.newLoanId))
+      .reduce((sum, r) => sum + Math.max(0, r.paperworkDeducted || 0), 0);
+
+    const withdrawn = this.cashMovements
+      .filter(
+        (cm) =>
+          cm.type === 'EXPENSE' &&
+          cm.category === 'RETIRO_PAPELERIA' &&
+          (!isFilter || cm.routeId === routeId)
+      )
+      .reduce((sum, cm) => sum + Math.max(0, cm.amount || 0), 0);
+
+    return Math.max(0, fromNewLoans + fromRenewals - withdrawn);
+  }
+
+  /**
+   * Devuelve el ajuste manual explícito de Base de inicio para la fecha/ruta, o null si debe usarse la automática.
+   */
+  public getManualSessionOpeningBase(todayStr: string, routeId?: string): number | null {
+    const map = this.officeConfig.dailyOpeningBaseByRouteDate || {};
+    const isSpecificRoute = Boolean(routeId && routeId !== 'ALL');
+
+    if (isSpecificRoute) {
+      const exactKey = `${routeId}::${todayStr}`;
+      if (typeof map[exactKey] === 'number' && Number.isFinite(map[exactKey])) {
+        return Math.max(0, map[exactKey]);
+      }
+      const allKey = `ALL::${todayStr}`;
+      if (
+        this.routes.length <= 1 &&
+        typeof map[allKey] === 'number' &&
+        Number.isFinite(map[allKey])
+      ) {
+        return Math.max(0, map[allKey]);
+      }
+      if (
+        this.activeSession?.date === todayStr &&
+        this.activeSession.routeId === routeId &&
+        typeof this.activeSession.openingRouteBase === 'number'
+      ) {
+        return Math.max(0, this.activeSession.openingRouteBase);
+      }
+      return null;
+    }
+
+    const suffix = `::${todayStr}`;
+    let perRouteSum = 0;
+    let hasPerRouteEntry = false;
+    for (const [k, v] of Object.entries(map)) {
+      if (
+        k.endsWith(suffix) &&
+        k !== `ALL${suffix}` &&
+        typeof v === 'number' &&
+        Number.isFinite(v)
+      ) {
+        perRouteSum += Math.max(0, v);
+        hasPerRouteEntry = true;
+      }
+    }
+    if (hasPerRouteEntry) {
+      return perRouteSum;
+    }
+    const allKey = `ALL::${todayStr}`;
+    if (typeof map[allKey] === 'number' && Number.isFinite(map[allKey])) {
+      return Math.max(0, map[allKey]);
+    }
+    if (
+      this.activeSession?.date === todayStr &&
+      typeof this.activeSession.openingRouteBase === 'number'
+    ) {
+      return Math.max(0, this.activeSession.openingRouteBase);
+    }
+    return null;
+  }
+
+  /**
+   * Obtiene la base de inicio efectiva de la ruta para la fecha indicada:
+   * usa el ajuste manual si el Admin definió uno para ese día; en caso contrario,
+   * devuelve automáticamente el efectivo base real de arranque (excluyendo papelería).
+   */
+  public getSessionOpeningBase(todayStr: string, routeId?: string): number {
+    const manual = this.getManualSessionOpeningBase(todayStr, routeId);
+    if (manual !== null) return manual;
+    const metrics = this.getDailyRouteMetrics(todayStr, routeId);
+    return metrics.autoOpeningRouteBase || 0;
+  }
+
+  /**
+   * Elimina el ajuste manual de Base de inicio para volver al cálculo automático.
+   */
+  public async clearSessionOpeningBaseOverride(
+    todayStr: string,
+    routeId?: string
+  ): Promise<void> {
+    const targetRoute =
+      routeId && routeId !== 'ALL'
+        ? routeId
+        : this.routes.length === 1
+        ? this.routes[0].id
+        : 'ALL';
+    const nextMap = { ...(this.officeConfig.dailyOpeningBaseByRouteDate || {}) };
+    const nextMeta = { ...(this.officeConfig.dailyOpeningBaseMeta || {}) };
+    delete nextMap[`${targetRoute}::${todayStr}`];
+    delete nextMeta[`${targetRoute}::${todayStr}`];
+    delete nextMap[`ALL::${todayStr}`];
+    delete nextMeta[`ALL::${todayStr}`];
+
+    this.officeConfig = {
+      ...this.officeConfig,
+      dailyOpeningBaseByRouteDate: nextMap,
+      dailyOpeningBaseMeta: nextMeta,
+    };
+
+    if (
+      this.activeSession &&
+      this.activeSession.date === todayStr &&
+      (targetRoute === 'ALL' || this.activeSession.routeId === targetRoute)
+    ) {
+      const { openingRouteBase: _removed, ...restSession } = this.activeSession;
+      this.activeSession = restSession;
+    }
+
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig)),
+      this.activeSession
+        ? safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession))
+        : Promise.resolve(),
+    ]);
+    this.notify();
+  }
+
+  /**
+   * Define la base de inicio entregada al cobrador para la jornada actual (sin afectar Cartera ni Administrativo).
+   */
+  public async setSessionOpeningBase(
+    amount: number,
+    todayStr: string,
+    routeId?: string
+  ): Promise<number> {
+    const sanitized = Math.max(0, Math.round(Number(amount) || 0));
+    const nowIso = new Date().toISOString();
+    const targetRoute =
+      routeId && routeId !== 'ALL'
+        ? routeId
+        : this.routes.length === 1
+        ? this.routes[0].id
+        : 'ALL';
+    const key = `${targetRoute}::${todayStr}`;
+
+    const nextMap = {
+      ...(this.officeConfig.dailyOpeningBaseByRouteDate || {}),
+      [key]: sanitized,
+    };
+    const nextMeta = {
+      ...(this.officeConfig.dailyOpeningBaseMeta || {}),
+      [key]: { amount: sanitized, updatedAt: nowIso },
+    };
+
+    if (targetRoute !== 'ALL' && `ALL::${todayStr}` in nextMap) {
+      delete nextMap[`ALL::${todayStr}`];
+      nextMeta[`ALL::${todayStr}`] = { amount: 0, updatedAt: nowIso };
+    }
+
+    this.officeConfig = {
+      ...this.officeConfig,
+      dailyOpeningBaseByRouteDate: nextMap,
+      dailyOpeningBaseMeta: nextMeta,
+    };
+
+    if (
+      this.activeSession &&
+      this.activeSession.date === todayStr &&
+      (targetRoute === 'ALL' || this.activeSession.routeId === targetRoute)
+    ) {
+      this.activeSession = {
+        ...this.activeSession,
+        openingRouteBase: sanitized,
+      };
+    }
+
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig)),
+      this.activeSession
+        ? safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession))
+        : Promise.resolve(),
+    ]);
+    this.notify();
+    return sanitized;
+  }
+
   /**
    * Obtener Historial de Papelería (Cobrada en préstamos/renovaciones y retirada con fecha)
    */
@@ -2835,18 +3296,12 @@ class LocalStore {
       routeId: string;
     }> = [];
 
-    const isPaperworkEnabled = this.officeConfig.paperworkFeeEnabled ?? true;
-    const pRate = this.officeConfig.paperworkRate || 5000;
-
-    // 1. Préstamos nuevos y cartulinas del taco digitalizadas con papelería
+    // 1. Préstamos nuevos regulares con papelería retenida (excluye cartulinas físicas migradas y anulados)
     this.loans.forEach((l) => {
       if (isFilter && l.routeId !== routeId) return;
-      if (l.status === 'CANCELLED') return;
-      if (l.previousLoanId) return; // Las renovaciones se contabilizan en el bloque 2
-      const fee = isPaperworkEnabled ? calculatePaperworkFee(l.principal, { rate: pRate, base: 100000, calculationMode: 'PROPORTIONAL' }) : 0;
+      const fee = this.getPaperworkFeeForLoan(l);
       if (fee > 0) {
         const cust = this.customers.find((c) => c.id === l.customerId);
-        const isTaco = Boolean(l.notes && l.notes.startsWith('Migrado de cartulina'));
         items.push({
           id: "pap-loan-" + l.id,
           date: l.createdAt,
@@ -2854,17 +3309,16 @@ class LocalStore {
           customerName: cust ? cust.fullName : 'Cliente',
           loanNumber: l.loanNumber,
           amount: fee,
-          notes: isTaco
-            ? "Papelería de cartulina del taco ($" + l.principal.toLocaleString('es-CO') + ")"
-            : "Papelería en crédito nuevo de $" + l.principal.toLocaleString('es-CO'),
+          notes: "Papelería en crédito nuevo de $" + l.principal.toLocaleString('es-CO'),
           routeId: l.routeId,
         });
       }
     });
 
-    // 2. Renovaciones con papelería
+    // 2. Renovaciones con papelería (excluye renovaciones cuyo crédito nuevo fue anulado)
     this.renewals.forEach((r) => {
       const assocLoan = this.loans.find((l) => l.id === r.newLoanId);
+      if (assocLoan && assocLoan.status === 'CANCELLED') return;
       const rRouteId = assocLoan ? assocLoan.routeId : (this.routes[0] ? this.routes[0].id : 'route-norte');
       if (isFilter && rRouteId !== routeId) return;
       if (r.paperworkDeducted > 0) {
@@ -2922,6 +3376,8 @@ class LocalStore {
    */
   public async closeDailySettlement(params: {
     cashHandedOver: number;
+    openingRouteBase?: number;
+    withdrawToOfficeAmount?: number;
     differenceJustification?: string;
     auditedBy?: string;
     payrollDeductionAmount?: number;
@@ -2937,6 +3393,14 @@ class LocalStore {
     const targetCollectorId =
       params.collectorId || targetRouteObj?.collectorId || session.collectorId || 'usr-col-1';
 
+    if (params.openingRouteBase !== undefined) {
+      await this.setSessionOpeningBase(
+        params.openingRouteBase,
+        session.date,
+        effectiveRouteFilter || targetRouteId
+      );
+    }
+
     const metrics = this.getDailyRouteMetrics(session.date, effectiveRouteFilter);
     const collectedCash = metrics.collectedCashToday;
     const collectedTransfers = metrics.collectedDigitalToday;
@@ -2947,11 +3411,27 @@ class LocalStore {
     const sessionExpenses = metrics.expensesToday || 0;
     const disbursedToday = metrics.disbursedToday || 0;
     const recaudoRetiradoToday = metrics.recaudoRetiradoToday || 0;
+    const openingRouteBase =
+      params.openingRouteBase !== undefined
+        ? Math.max(0, Math.round(params.openingRouteBase))
+        : (metrics.openingRouteBase || 0);
 
-    const netCashExpected = Math.max(
-      0,
-      collectedCash - sessionExpenses - disbursedToday - recaudoRetiradoToday
-    );
+    const requestedWithdraw = Math.max(0, Math.round(params.withdrawToOfficeAmount || 0));
+    const maxOperationalWithdraw = Math.max(0, metrics.cashAvailableInHand);
+    if (requestedWithdraw > maxOperationalWithdraw) {
+      throw new Error(
+        `El retiro a oficina ($${requestedWithdraw.toLocaleString('es-CO')}) supera el efectivo base disponible en la ruta ($${maxOperationalWithdraw.toLocaleString('es-CO')}).`
+      );
+    }
+
+    const reconciliation = calculateDailyCashReconciliation({
+      collectedCash,
+      openingRouteBase,
+      expensesToday: sessionExpenses,
+      disbursedToday,
+      recaudoRetiradoToday,
+    });
+    const netCashExpected = reconciliation.cashToHandOver;
     const cashDifference = netCashExpected - params.cashHandedOver;
     if (cashDifference !== 0 && !params.differenceJustification) {
       throw new Error('Es obligatoria una justificación cuando existe diferencia en el arqueo de caja');
@@ -3024,8 +3504,25 @@ class LocalStore {
       this.cashMovements.unshift(payrollMov);
     }
 
+    const settlementId = `set-${Date.now()}`;
+    if (requestedWithdraw > 0) {
+      const closingWithdrawMov: CashMovement = {
+        id: `csm-rec-close-${Date.now()}`,
+        routeId: targetRouteId,
+        collectorId: params.auditedBy || targetCollectorId,
+        sessionId: session.id,
+        type: 'EXPENSE',
+        category: 'RECAUDO_OFICINA',
+        amount: requestedWithdraw,
+        referenceId: settlementId,
+        description: `Retiro a oficina al cierre de liquidación (${session.date})`,
+        createdAt: `${session.date}T23:59:00`,
+      };
+      this.cashMovements.unshift(closingWithdrawMov);
+    }
+
     const settlement: DailySettlement = {
-      id: `set-${Date.now()}`,
+      id: settlementId,
       sessionId: session.id,
       date: session.date,
       routeId: targetRouteId,
@@ -3044,11 +3541,15 @@ class LocalStore {
       renewalsCapitalPlaced: todayRenewals.reduce((sum, r) => sum + r.newPrincipal, 0),
       actualCashDisbursedTotal: salidasNetCashDisbursed,
       recoveredDelinquency: 0,
+      openingRouteBase: reconciliation.openingRouteBase,
+      collectedPlusBase: reconciliation.collectedPlusBase,
       collectedCash,
       collectedTransfers,
       cashHandedOver: params.cashHandedOver,
       cashDifference,
       differenceJustification: justificationText.trim() || undefined,
+      closingDisposition: requestedWithdraw > 0 ? 'WITHDRAW_TO_OFFICE' : 'KEEP_IN_ROUTE',
+      withdrawnToOffice: requestedWithdraw,
       status: 'SETTLED',
       settledAt: new Date().toISOString(),
       auditedBy: params.auditedBy,
@@ -3071,6 +3572,7 @@ class LocalStore {
 
     await Promise.all([
       safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(this.settlements)),
+      safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
       safeStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(this.auditLogs)),
     ]);
 

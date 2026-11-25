@@ -101,18 +101,21 @@ public class CancelLoanUseCase {
         }
 
         // Determinar el monto neto desembolsado originalmente para revertirlo a la caja
-        BigDecimal disbursedToRestore = cashMovementRepository.findAll().stream()
+        BigDecimal disbursedToRestore = cashMovementRepository.findByRouteId(loan.getRouteId()).stream()
                 .filter(m -> loanId.equals(m.getReferenceId()) && ("EGRESO".equalsIgnoreCase(m.getMovementType()) || "SALIDA".equalsIgnoreCase(m.getMovementType())))
                 .filter(m -> ("DESEMBOLSO".equals(m.getCategory()) || "DESEMBOLSO_CREDITO".equals(m.getCategory())) || "LOAN_DISBURSEMENT".equals(m.getCategory()))
                 .map(CashMovementEntity::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         String nowStr = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        String routeCollectorId = (loan.getCollectorId() != null && !loan.getCollectorId().isBlank())
+                ? loan.getCollectorId()
+                : session.userId();
 
         CashMovementEntity compensatingInflow = new CashMovementEntity(
                 UUID.randomUUID().toString(),
-                loan.getRouteId() != null ? loan.getRouteId() : "route-norte",
-                session.userId(),
+                loan.getRouteId(),
+                routeCollectorId,
                 null,
                 "INGRESO",
                 "ANULACION_CREDITO",

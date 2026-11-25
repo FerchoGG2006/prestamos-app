@@ -2,6 +2,7 @@ package com.cartera.ui.views;
 
 import com.cartera.infrastructure.licensing.OfficeLicensingService;
 import com.cartera.infrastructure.licensing.SupabaseRegistryClient.RemoteOffice;
+import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -27,6 +28,7 @@ public class VendorLicensingDialog {
 
     private final OfficeLicensingService licensingService;
     private final Stage owner;
+    private Stage activeModal;
 
     private final ObservableList<RemoteOffice> offices = FXCollections.observableArrayList();
     private final TableView<RemoteOffice> table = new TableView<>();
@@ -43,9 +45,12 @@ public class VendorLicensingDialog {
         }
 
         Stage modal = new Stage();
-        modal.initOwner(owner);
+        if (owner != null) {
+            modal.initOwner(owner);
+        }
         modal.initModality(Modality.APPLICATION_MODAL);
         modal.setTitle("Panel Comercial — Registro de Oficinas y Licencias");
+        this.activeModal = modal;
 
         VBox root = new VBox(14);
         root.setPadding(new Insets(20));
@@ -80,19 +85,52 @@ public class VendorLicensingDialog {
 
         Scene scene = new Scene(scroll, 860, 720);
         modal.setScene(scene);
-        refreshOffices();
-        modal.showAndWait();
+        modal.setOnShown(ev -> {
+            modal.toFront();
+            modal.requestFocus();
+            refreshOffices();
+        });
+        try {
+            modal.showAndWait();
+        } finally {
+            this.activeModal = null;
+        }
     }
+
+    private Label lblLocalOfficeInfo;
 
     private boolean promptVendorAccess() {
         if (!licensingService.hasVendorPinConfigured()) {
-            TextInputDialog setupPin = new TextInputDialog();
-            setupPin.setTitle("Configurar PIN Maestro de Vendedor");
-            setupPin.setHeaderText("Primera vez en el Panel Comercial");
-            setupPin.setContentText("Crea un PIN maestro de vendedor (mín. 4 caracteres):");
-            return setupPin.showAndWait().map(pin -> {
+            Dialog<String[]> setupDlg = new Dialog<>();
+            if (owner != null) {
+                setupDlg.initOwner(owner);
+            }
+            setupDlg.initModality(Modality.APPLICATION_MODAL);
+            setupDlg.setTitle("Configurar PIN Maestro de Vendedor");
+            setupDlg.setHeaderText("Primera vez en el Panel Comercial (uso exclusivo del distribuidor)");
+            ButtonType okBtn = new ButtonType("Configurar PIN", ButtonBar.ButtonData.OK_DONE);
+            setupDlg.getDialogPane().getButtonTypes().addAll(okBtn, ButtonType.CANCEL);
+
+            PasswordField pf1 = new PasswordField();
+            pf1.setPromptText("Nuevo PIN maestro (mín. 4 caracteres)");
+            PasswordField pf2 = new PasswordField();
+            pf2.setPromptText("Confirmar PIN maestro");
+            GridPane g = new GridPane();
+            g.setHgap(10);
+            g.setVgap(8);
+            g.addRow(0, new Label("PIN Maestro:"), pf1);
+            g.addRow(1, new Label("Confirmar:"), pf2);
+            setupDlg.getDialogPane().setContent(g);
+            setupDlg.setOnShown(ev -> Platform.runLater(pf1::requestFocus));
+            setupDlg.setResultConverter(btn -> btn == okBtn ? new String[]{pf1.getText(), pf2.getText()} : null);
+
+            return setupDlg.showAndWait().map(pins -> {
+                if (pins[0] == null || !pins[0].equals(pins[1])) {
+                    showError("Los PIN ingresados no coinciden.");
+                    return false;
+                }
                 try {
-                    licensingService.configureVendorPin(pin);
+                    licensingService.configureVendorPin(pins[0]);
                     return true;
                 } catch (Exception ex) {
                     showError(ex.getMessage());
@@ -102,6 +140,10 @@ public class VendorLicensingDialog {
         }
 
         Dialog<String> dialog = new Dialog<>();
+        if (owner != null) {
+            dialog.initOwner(owner);
+        }
+        dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.setTitle("Acceso Comercial Protegido");
         dialog.setHeaderText("Ingresa el PIN maestro de vendedor");
         ButtonType okBtn = new ButtonType("Desbloquear", ButtonBar.ButtonData.OK_DONE);
@@ -110,6 +152,7 @@ public class VendorLicensingDialog {
         PasswordField pf = new PasswordField();
         pf.setPromptText("PIN maestro");
         dialog.getDialogPane().setContent(pf);
+        dialog.setOnShown(ev -> Platform.runLater(pf::requestFocus));
 
         dialog.setResultConverter(btn -> btn == okBtn ? pf.getText() : null);
         return dialog.showAndWait().map(pin -> {
@@ -134,9 +177,13 @@ public class VendorLicensingDialog {
         Button btnSaveCloud = new Button("Guardar Conexión");
         btnSaveCloud.setStyle("-fx-background-color: #0f172a; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8;");
         btnSaveCloud.setOnAction(e -> {
-            licensingService.saveCloudConnection(txtUrl.getText(), txtKey.getText(), txtVendorSecret.getText());
-            lblStatus.setText("Conexión y clave de distribuidor guardadas.");
-            refreshOffices();
+            try {
+                licensingService.saveCloudConnection(txtUrl.getText(), txtKey.getText(), txtVendorSecret.getText());
+                lblStatus.setText("Conexión y clave de distribuidor guardadas.");
+                refreshOffices();
+            } catch (Exception ex) {
+                showError("No se pudo guardar la conexión: " + ex.getMessage());
+            }
         });
 
         GridPane grid = new GridPane();
@@ -181,32 +228,53 @@ public class VendorLicensingDialog {
         Button btnCreate = new Button("Registrar Oficina y Generar Código");
         btnCreate.setStyle("-fx-background-color: #0d9488; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 8 16;");
         btnCreate.setOnAction(e -> {
-            try {
-                RemoteOffice created = licensingService.registerCommercialOffice(
-                        txtCompany.getText(),
-                        txtOwner.getText(),
-                        txtCity.getText(),
-                        txtPhone.getText(),
-                        txtAdminName.getText(),
-                        txtAdminUser.getText(),
-                        txtAdminPass.getText(),
-                        cmbPlan.getValue(),
-                        txtExpires.getText().isBlank() ? null : txtExpires.getText().trim(),
-                        ""
-                );
-                copyToClipboard(created.activationCode());
-                lblStatus.setText("Oficina creada: " + created.companyName()
-                        + " | ID: " + created.id()
-                        + " | Código: " + created.activationCode() + " (copiado al portapapeles)");
-                txtCompany.clear();
-                txtOwner.clear();
-                txtAdminName.clear();
-                txtAdminUser.clear();
-                txtAdminPass.clear();
-                refreshOffices();
-            } catch (Exception ex) {
-                showError(ex.getMessage());
-            }
+            String company = txtCompany.getText();
+            String ownerName = txtOwner.getText();
+            String city = txtCity.getText();
+            String phone = txtPhone.getText();
+            String adminName = txtAdminName.getText();
+            String adminUser = txtAdminUser.getText();
+            String adminPass = txtAdminPass.getText();
+            String plan = cmbPlan.getValue();
+            String expires = txtExpires.getText().isBlank() ? null : txtExpires.getText().trim();
+
+            btnCreate.setDisable(true);
+            btnCreate.setText("Registrando...");
+            lblStatus.setText("Registrando oficina en servidor...");
+
+            Thread worker = new Thread(() -> {
+                try {
+                    RemoteOffice created = licensingService.registerCommercialOffice(
+                            company, ownerName, city, phone, adminName, adminUser, adminPass, plan, expires, ""
+                    );
+                    Platform.runLater(() -> {
+                        btnCreate.setDisable(false);
+                        btnCreate.setText("Registrar Oficina y Generar Código");
+                        copyToClipboard(created.activationCode());
+                        lblStatus.setText("Oficina creada: " + created.companyName()
+                                + " | ID: " + created.id()
+                                + " | Código: " + created.activationCode() + " (copiado al portapapeles)");
+                        txtCompany.clear();
+                        txtOwner.clear();
+                        txtCity.clear();
+                        txtPhone.clear();
+                        txtAdminName.clear();
+                        txtAdminUser.clear();
+                        txtAdminPass.clear();
+                        txtExpires.clear();
+                        refreshOffices();
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        btnCreate.setDisable(false);
+                        btnCreate.setText("Registrar Oficina y Generar Código");
+                        lblStatus.setText("Error al registrar oficina.");
+                        showError(ex.getMessage());
+                    });
+                }
+            }, "kredia-vendor-create-office");
+            worker.setDaemon(true);
+            worker.start();
         });
 
         GridPane grid = new GridPane();
@@ -228,30 +296,53 @@ public class VendorLicensingDialog {
     }
 
     private HBox buildLocalProtectionBar() {
-        Button btnProtectFbv = new Button("Respaldar BD Local y Registrar esta Oficina");
-        btnProtectFbv.setStyle("-fx-background-color: #1d4ed8; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8;");
-        btnProtectFbv.setOnAction(e -> {
-            TextInputDialog dlg = new TextInputDialog("Inversiones FBV");
+        Button btnProtectLocal = new Button("Respaldar BD Local y Registrar esta Oficina");
+        btnProtectLocal.setStyle("-fx-background-color: #1d4ed8; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8;");
+        lblLocalOfficeInfo = new Label("Oficina local actual: " + licensingService.getLinkedOfficeId().orElse("Sin vincular"));
+        lblLocalOfficeInfo.setStyle("-fx-font-weight: bold; -fx-text-fill: #334155;");
+
+        btnProtectLocal.setOnAction(e -> {
+            TextInputDialog dlg = new TextInputDialog("");
+            dlg.getEditor().setPromptText("Ej. Mi Oficina de Crédito");
+            Stage parent = activeModal != null ? activeModal : owner;
+            if (parent != null) {
+                dlg.initOwner(parent);
+            }
+            dlg.initModality(Modality.APPLICATION_MODAL);
             dlg.setTitle("Proteger y Vincular Oficina Local");
             dlg.setHeaderText("Se creará un respaldo automático antes de registrar la oficina.");
             dlg.setContentText("Nombre oficial de esta oficina:");
             dlg.showAndWait().ifPresent(name -> {
-                try {
-                    RemoteOffice office = licensingService.backupAndLinkExistingLocalOffice(name, "");
-                    copyToClipboard(office.activationCode());
-                    lblStatus.setText("Respaldo creado y oficina vinculada: " + office.id()
-                            + " | Código: " + office.activationCode() + " (copiado)");
-                    refreshOffices();
-                } catch (Exception ex) {
-                    showError(ex.getMessage());
+                if (name == null || name.isBlank()) {
+                    showError("Ingresa el nombre comercial de la oficina.");
+                    return;
                 }
+                btnProtectLocal.setDisable(true);
+                lblStatus.setText("Respaldando y vinculando oficina local...");
+                Thread worker = new Thread(() -> {
+                    try {
+                        RemoteOffice office = licensingService.backupAndLinkExistingLocalOffice(name.trim(), "");
+                        Platform.runLater(() -> {
+                            btnProtectLocal.setDisable(false);
+                            copyToClipboard(office.activationCode());
+                            lblLocalOfficeInfo.setText("Oficina local actual: " + office.id());
+                            lblStatus.setText("Respaldo creado y oficina vinculada: " + office.id()
+                                    + " | Código: " + office.activationCode() + " (copiado)");
+                            refreshOffices();
+                        });
+                    } catch (Exception ex) {
+                        Platform.runLater(() -> {
+                            btnProtectLocal.setDisable(false);
+                            showError(ex.getMessage());
+                        });
+                    }
+                }, "kredia-vendor-protect-local");
+                worker.setDaemon(true);
+                worker.start();
             });
         });
 
-        Label info = new Label("Oficina local actual: " + licensingService.getLinkedOfficeId().orElse("Sin vincular"));
-        info.setStyle("-fx-font-weight: bold; -fx-text-fill: #334155;");
-
-        HBox bar = new HBox(12, btnProtectFbv, info);
+        HBox bar = new HBox(12, btnProtectLocal, lblLocalOfficeInfo);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.setPadding(new Insets(10));
         bar.setStyle("-fx-background-color: #eff6ff; -fx-border-color: #bfdbfe; -fx-border-radius: 10; -fx-background-radius: 10;");
@@ -289,38 +380,80 @@ public class VendorLicensingDialog {
         Button btnCopy = new Button("Copiar Código");
         btnCopy.setOnAction(e -> {
             RemoteOffice sel = table.getSelectionModel().getSelectedItem();
-            if (sel != null) {
-                copyToClipboard(sel.activationCode());
-                lblStatus.setText("Código copiado: " + sel.activationCode());
+            if (sel == null) {
+                showError("Selecciona primero una oficina en la tabla.");
+                return;
             }
+            copyToClipboard(sel.activationCode());
+            lblStatus.setText("Código copiado: " + sel.activationCode());
         });
 
         Button btnSuspend = new Button("Suspender / Activar");
         btnSuspend.setOnAction(e -> {
             RemoteOffice sel = table.getSelectionModel().getSelectedItem();
-            if (sel == null) return;
-            String next = "ACTIVE".equalsIgnoreCase(sel.licenseStatus()) ? "SUSPENDED" : "ACTIVE";
-            try {
-                licensingService.setOfficeLicenseStatus(sel.id(), next);
-                lblStatus.setText("Licencia de " + sel.companyName() + " actualizada a " + next);
-                refreshOffices();
-            } catch (Exception ex) {
-                showError(ex.getMessage());
+            if (sel == null) {
+                showError("Selecciona primero una oficina en la tabla.");
+                return;
             }
+            String next = "ACTIVE".equalsIgnoreCase(sel.licenseStatus()) ? "SUSPENDED" : "ACTIVE";
+            String verb = "SUSPENDED".equals(next) ? "suspender" : "reactivar";
+            if (!confirmAction("Confirmar cambio de licencia",
+                    "¿Deseas " + verb + " la licencia de \"" + sel.companyName() + "\" (" + sel.id() + ")?")) {
+                return;
+            }
+            btnSuspend.setDisable(true);
+            lblStatus.setText("Actualizando licencia...");
+            Thread worker = new Thread(() -> {
+                try {
+                    licensingService.setOfficeLicenseStatus(sel.id(), next);
+                    Platform.runLater(() -> {
+                        btnSuspend.setDisable(false);
+                        lblStatus.setText("Licencia de " + sel.companyName() + " actualizada a " + next);
+                        refreshOffices();
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        btnSuspend.setDisable(false);
+                        showError(ex.getMessage());
+                    });
+                }
+            }, "kredia-vendor-license-status");
+            worker.setDaemon(true);
+            worker.start();
         });
 
         Button btnRegen = new Button("Regenerar Código");
         btnRegen.setOnAction(e -> {
             RemoteOffice sel = table.getSelectionModel().getSelectedItem();
-            if (sel == null) return;
-            try {
-                String code = licensingService.regenerateActivationCode(sel.id());
-                copyToClipboard(code);
-                lblStatus.setText("Nuevo código para " + sel.companyName() + ": " + code + " (copiado)");
-                refreshOffices();
-            } catch (Exception ex) {
-                showError(ex.getMessage());
+            if (sel == null) {
+                showError("Selecciona primero una oficina en la tabla.");
+                return;
             }
+            if (!confirmAction("Confirmar regeneración de código",
+                    "El código actual (" + sel.activationCode() + ") de \"" + sel.companyName()
+                            + "\" dejará de funcionar. ¿Deseas regenerarlo?")) {
+                return;
+            }
+            btnRegen.setDisable(true);
+            lblStatus.setText("Regenerando código...");
+            Thread worker = new Thread(() -> {
+                try {
+                    String code = licensingService.regenerateActivationCode(sel.id());
+                    Platform.runLater(() -> {
+                        btnRegen.setDisable(false);
+                        copyToClipboard(code);
+                        lblStatus.setText("Nuevo código para " + sel.companyName() + ": " + code + " (copiado)");
+                        refreshOffices();
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        btnRegen.setDisable(false);
+                        showError(ex.getMessage());
+                    });
+                }
+            }, "kredia-vendor-regen-code");
+            worker.setDaemon(true);
+            worker.start();
         });
 
         Button btnAddCollector = new Button("Crear Cobrador / Ruta");
@@ -346,6 +479,11 @@ public class VendorLicensingDialog {
 
     private void openAddCollectorDialog(RemoteOffice office) {
         Dialog<Boolean> dlg = new Dialog<>();
+        Stage parent = activeModal != null ? activeModal : owner;
+        if (parent != null) {
+            dlg.initOwner(parent);
+        }
+        dlg.initModality(Modality.APPLICATION_MODAL);
         dlg.setTitle("Crear Ruta y Cobrador — " + office.companyName());
         dlg.setHeaderText("Crea credenciales únicas de cobrador para " + office.companyName());
         ButtonType okBtn = new ButtonType("Crear Credencial", ButtonBar.ButtonData.OK_DONE);
@@ -370,40 +508,84 @@ public class VendorLicensingDialog {
         g.addRow(2, new Label("Usuario único:"), txtUser);
         g.addRow(3, new Label("Contraseña:"), txtPass);
         g.addRow(4, new Label("Teléfono:"), txtPhone);
-        dlg.getDialogPane().setContent(g);
+        Label lblDlgFeedback = new Label();
+        lblDlgFeedback.setWrapText(true);
+        lblDlgFeedback.setStyle("-fx-text-fill: #dc2626; -fx-font-weight: bold; -fx-font-size: 11.5px;");
+        lblDlgFeedback.setVisible(false);
+        lblDlgFeedback.setManaged(false);
 
-        dlg.setResultConverter(btn -> {
-            if (btn != okBtn) return false;
-            try {
-                licensingService.registerCollectorForOffice(
-                        office.id(),
-                        txtRouteName.getText(),
-                        txtColName.getText(),
-                        txtUser.getText(),
-                        txtPass.getText(),
-                        txtPhone.getText()
-                );
-                lblStatus.setText("Cobrador '" + txtUser.getText().trim().toLowerCase()
-                        + "' creado en " + office.companyName() + " (" + txtRouteName.getText().trim() + ")");
-                return true;
-            } catch (Exception ex) {
-                showError(ex.getMessage());
-                return false;
+        VBox content = new VBox(10, g, lblDlgFeedback);
+        dlg.getDialogPane().setContent(content);
+
+        Button okNode = (Button) dlg.getDialogPane().lookupButton(okBtn);
+        okNode.addEventFilter(javafx.event.ActionEvent.ACTION, ev -> {
+            ev.consume(); // No cerrar el diálogo hasta validar y guardar en segundo plano
+            String rName = txtRouteName.getText();
+            String cName = txtColName.getText();
+            String user = txtUser.getText();
+            String pass = txtPass.getText();
+            String phone = txtPhone.getText();
+
+            if (rName == null || rName.isBlank() || user == null || user.isBlank() || pass == null || pass.length() < 6) {
+                lblDlgFeedback.setText("Completa nombre de ruta, usuario único y contraseña (mín. 6 caracteres).");
+                lblDlgFeedback.setVisible(true);
+                lblDlgFeedback.setManaged(true);
+                return;
             }
+
+            okNode.setDisable(true);
+            okNode.setText("Creando...");
+            lblDlgFeedback.setVisible(false);
+            lblDlgFeedback.setManaged(false);
+
+            Thread worker = new Thread(() -> {
+                try {
+                    licensingService.registerCollectorForOffice(office.id(), rName, cName, user, pass, phone);
+                    Platform.runLater(() -> {
+                        lblStatus.setText("Cobrador '" + user.trim().toLowerCase()
+                                + "' creado en " + office.companyName() + " (" + rName.trim() + ")");
+                        dlg.setResult(Boolean.TRUE);
+                        dlg.close();
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        okNode.setDisable(false);
+                        okNode.setText("Crear Credencial");
+                        lblDlgFeedback.setText(ex.getMessage() != null ? ex.getMessage() : "Error creando credencial.");
+                        lblDlgFeedback.setVisible(true);
+                        lblDlgFeedback.setManaged(true);
+                    });
+                }
+            }, "kredia-vendor-add-collector");
+            worker.setDaemon(true);
+            worker.start();
         });
         dlg.showAndWait();
     }
 
     private void refreshOffices() {
         if (licensingService.getSupabaseUrl().isBlank() || licensingService.getSupabaseKey().isBlank()) {
+            lblStatus.setText("Configura la conexión en la sección 1 y haz clic en Guardar Conexión.");
             return;
         }
-        try {
-            List<RemoteOffice> list = licensingService.listRegisteredOffices();
-            offices.setAll(list);
-        } catch (Exception ex) {
-            lblStatus.setText("No se pudo cargar lista remota: " + ex.getMessage());
+        if (licensingService.getVendorSecretKey().isBlank()) {
+            lblStatus.setText("Ingresa tu Clave Maestra de Distribuidor en la sección 1 y haz clic en Guardar Conexión.");
+            return;
         }
+        lblStatus.setText("Consultando oficinas registradas...");
+        Thread worker = new Thread(() -> {
+            try {
+                List<RemoteOffice> list = licensingService.listRegisteredOffices();
+                Platform.runLater(() -> {
+                    offices.setAll(list);
+                    lblStatus.setText("Oficinas sincronizadas: " + list.size());
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> lblStatus.setText("No se pudo cargar lista remota: " + ex.getMessage()));
+            }
+        }, "kredia-vendor-offices-refresh");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private static void copyToClipboard(String text) {
@@ -413,8 +595,25 @@ public class VendorLicensingDialog {
         Clipboard.getSystemClipboard().setContent(cc);
     }
 
-    private static void showError(String msg) {
+    private boolean confirmAction(String title, String message) {
+        Alert a = new Alert(Alert.AlertType.CONFIRMATION, message, ButtonType.OK, ButtonType.CANCEL);
+        Stage parent = activeModal != null ? activeModal : owner;
+        if (parent != null) {
+            a.initOwner(parent);
+        }
+        a.initModality(Modality.APPLICATION_MODAL);
+        a.setTitle(title);
+        a.setHeaderText(title);
+        return a.showAndWait().filter(b -> b == ButtonType.OK).isPresent();
+    }
+
+    private void showError(String msg) {
         Alert a = new Alert(Alert.AlertType.ERROR, msg, ButtonType.OK);
+        Stage parent = activeModal != null ? activeModal : owner;
+        if (parent != null) {
+            a.initOwner(parent);
+        }
+        a.initModality(Modality.APPLICATION_MODAL);
         a.setHeaderText("Error");
         a.showAndWait();
     }

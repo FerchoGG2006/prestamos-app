@@ -184,6 +184,7 @@ export interface CollectionSession {
   collectedAmount: number;    // Total efectivamente recaudado
   expectedCustomersCount: number;
   visitedCustomersCount: number;
+  openingRouteBase?: number;  // Base de efectivo con la que salió el cobrador hoy
   notes?: string;
 }
 
@@ -217,11 +218,15 @@ export interface DailySettlement {
   recoveredDelinquency: number;
 
   // Arqueo físico de caja
+  openingRouteBase?: number;        // Base de inicio con la que arrancó el cobrador hoy (solo efectivo base)
+  collectedPlusBase?: number;       // Cobrado efectivo hoy + Base de inicio
   collectedCash: number;
   collectedTransfers: number;       // Incluye NEQUI y TRANSFER
   cashHandedOver: number;           // Efectivo físicamente entregado en caja
   cashDifference: number;           // collectedCash - cashHandedOver
   differenceJustification?: string; // Obligatoria si cashDifference != 0
+  closingDisposition?: 'KEEP_IN_ROUTE' | 'WITHDRAW_TO_OFFICE'; // Destino del efectivo al cerrar
+  withdrawnToOffice?: number;       // Monto retirado a oficina central al cerrar (baja base de mañana)
 
   status: 'SETTLED' | 'ADJUSTED';
   settledAt: string;
@@ -295,6 +300,11 @@ export interface DailyRouteMetrics {
   recaudoRetiradoToday: number;  // Retiros de recaudo de la base a oficina hoy (Audio 3)
   capitalInjectedToday?: number; // Inyecciones de capital registradas hoy
   paperworkRetiradoToday?: number; // Retiros de papelería registrados hoy
+  paperworkGeneratedToday?: number; // Papelería retenida en créditos/renovaciones de hoy
+  paperworkAvailableBalance?: number; // Saldo disponible de papelería en caja (se muestra bajo Base, NO suma al Administrativo)
+  totalOfficeBaseWithPaperwork?: number; // Dinero total en caja: Efectivo base + Papelería disponible + Transf/Nequi
+  autoOpeningRouteBase?: number; // Base de inicio calculada automáticamente (solo efectivo base, excluye papelería)
+  openingRouteBase?: number; // Base de inicio efectiva de la jornada actual (manual si existe, si no automática)
   cashAvailableInHand: number;   // Base en efectivo físico disponible en la ruta (Audio 3)
   totalAdministrativeCapital: number; // Administrativo de la ruta: Cartera en Calle + Base en Caja (Audio 3)
   visitedCustomersCount: number;
@@ -392,6 +402,8 @@ export interface OfficeCompanyConfig {
   allowPartialPayments?: boolean;   // ¿Permitir abonos parciales?
   maxNewLoanLimit: number;          // Límite de crédito inicial para nuevos clientes
   routeInitialCashBase: number;     // Base de efectivo entregada al cobrador en la mañana
+  dailyOpeningBaseByRouteDate?: Record<string, number>; // Base de inicio por ruta y fecha ("routeId::YYYY-MM-DD")
+  dailyOpeningBaseMeta?: Record<string, { amount: number; updatedAt: string }>; // Control LWW para sincronización multi-dispositivo
   officeServerUrl?: string;         // URL del servidor Desktop en Red Local Wi-Fi o Nube (ej. http://192.168.1.10:8765)
   recoveryPin?: string;             // PIN maestro de recuperación de contraseña de Admin (sin perder cartera)
   autoCloudSyncEnabled?: boolean;   // Sincronización automática en segundo plano cuando hay conexión

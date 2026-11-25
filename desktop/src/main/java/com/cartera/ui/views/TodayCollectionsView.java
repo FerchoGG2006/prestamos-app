@@ -2,12 +2,21 @@ package com.cartera.ui.views;
 
 import com.cartera.collections.application.TodayCollectionsService;
 import com.cartera.collections.application.TodayCollectionsService.CollectionItem;
+import com.cartera.infrastructure.persistence.entity.AppUserEntity;
+import com.cartera.infrastructure.persistence.entity.CustomerEntity;
+import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
+import com.cartera.infrastructure.persistence.entity.PaymentEntity;
+import com.cartera.infrastructure.persistence.entity.RouteEntity;
+import com.cartera.infrastructure.persistence.entity.SystemSettingEntity;
 import com.cartera.infrastructure.persistence.repository.*;
+import com.cartera.infrastructure.security.UserSession;
+import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.application.CreateLoanUseCase;
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.settlement.application.SettlementUseCase;
 import com.cartera.sync.application.MobileSyncProcessorService;
 import com.cartera.sync.infrastructure.LanSyncServerService;
+import com.cartera.ui.util.UiLabels;
 import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
@@ -27,8 +36,11 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Vista de Ruta y Cobros de Hoy.
@@ -66,9 +78,48 @@ public class TodayCollectionsView extends VBox {
     private final Stage primaryStage;
     private final Runnable onDataUpdated;
 
+    private PaymentRepository paymentRepository;
+    private PaymentAllocationRepository paymentAllocationRepository;
+    private RouteRepository routeRepository;
+    private AppUserRepository appUserRepository;
+    private Map<String, String> routeNameCache = new HashMap<>();
+    private java.util.function.Consumer<String> onOpenCustomer360;
+
+    public void setOnOpenCustomer360(java.util.function.Consumer<String> onOpenCustomer360) {
+        this.onOpenCustomer360 = onOpenCustomer360;
+    }
+
+    public void setSupplementalRepositories(
+            PaymentRepository paymentRepository,
+            PaymentAllocationRepository paymentAllocationRepository,
+            RouteRepository routeRepository,
+            AppUserRepository appUserRepository
+    ) {
+        this.paymentRepository = paymentRepository;
+        this.paymentAllocationRepository = paymentAllocationRepository;
+        this.routeRepository = routeRepository;
+        this.appUserRepository = appUserRepository;
+    }
+
     private final ObservableList<CollectionItem> masterData = FXCollections.observableArrayList();
     private FilteredList<CollectionItem> filteredData;
     private final TableView<CollectionItem> table = new TableView<>();
+
+    private Button btnReportExpense;
+    private Button btnSyncMobile;
+    private Button btnAutoSort;
+    private Button btnMoveUp;
+    private Button btnMoveDown;
+    private TextField searchField;
+    private ComboBox<String> cmbFreqFilter;
+
+    public void clearFilters() {
+        currentFilter = FilterPillType.TODOS;
+        updatePillStyles();
+        if (searchField != null) searchField.clear();
+        if (cmbFreqFilter != null) cmbFreqFilter.setValue("TODAS");
+        if (applyFiltersTrigger != null) applyFiltersTrigger.run();
+    }
 
     // Contadores y KPIs del Mini Bento Strip
     private final Label lblCounter = new Label();
@@ -172,7 +223,6 @@ public class TodayCollectionsView extends VBox {
         buildKpiStrip();
         buildFilterPills();
         buildContentArea();
-        refreshData();
     }
 
     private void buildHeader() {
@@ -188,13 +238,13 @@ public class TodayCollectionsView extends VBox {
         HBox.setHgrow(titleBox, Priority.ALWAYS);
 
         // Botón Registrar Gasto
-        Button btnReportExpense = new Button("Gasto de Ruta");
+        btnReportExpense = new Button("Gasto de Ruta");
         btnReportExpense.getStyleClass().add("btn-secondary");
         btnReportExpense.setStyle("-fx-font-size: 12px; -fx-padding: 7 12;");
         btnReportExpense.setOnAction(e -> openReportExpenseDialog());
 
-        // Botón Sincronizar Móvil
-        Button btnSyncMobile = new Button("Sincronizar Móvil");
+        // Botón Sincronizar Móvil (Solo ADMIN / SUPERVISOR)
+        btnSyncMobile = new Button("Sincronizar Móvil");
         btnSyncMobile.getStyleClass().add("btn-primary");
         btnSyncMobile.setStyle("-fx-font-size: 12px; -fx-padding: 7 14;");
         btnSyncMobile.setOnAction(e -> openSyncMobileDialog());
@@ -295,7 +345,7 @@ public class TodayCollectionsView extends VBox {
         HBox searchRow = new HBox(10);
         searchRow.setAlignment(Pos.CENTER_LEFT);
 
-        TextField searchField = new TextField();
+        searchField = new TextField();
         searchField.setPromptText("Buscar cliente por nombre, cédula, dirección o barrio...");
         searchField.getStyleClass().add("search-field");
         searchField.setPrefWidth(340);
@@ -303,16 +353,17 @@ public class TodayCollectionsView extends VBox {
         Label lblFreq = new Label("Modalidad:");
         lblFreq.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px; -fx-font-weight: bold;");
 
-        ComboBox<String> cmbFreqFilter = new ComboBox<>();
-        cmbFreqFilter.getItems().addAll("TODAS", "DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL");
+        cmbFreqFilter = new ComboBox<>();
+        cmbFreqFilter.getItems().addAll("TODAS", "DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL", "FECHA FIJA");
         cmbFreqFilter.setValue("TODAS");
         cmbFreqFilter.getStyleClass().add("search-field");
-        cmbFreqFilter.setPrefWidth(120);
+        cmbFreqFilter.setPrefWidth(130);
 
         filteredData = new FilteredList<>(masterData, p -> true);
         SortedList<CollectionItem> sortedData = new SortedList<>(filteredData);
         sortedData.comparatorProperty().bind(table.comparatorProperty());
         table.setItems(sortedData);
+        table.setPlaceholder(UiLabels.emptyState("Sin cobros en vista", "No hay clientes que coincidan con la ruta o los filtros seleccionados."));
 
         applyFiltersTrigger = () -> {
             String q = searchField.getText() != null ? searchField.getText().toLowerCase().trim() : "";
@@ -325,9 +376,8 @@ public class TodayCollectionsView extends VBox {
                 if (!matchesFreq) return false;
 
                 // 2. Filtro de píldora de estado (idéntico a móvil)
+                boolean hasOverdue = isOverdueItem(item);
                 String st = item.statusText() != null ? item.statusText().toUpperCase() : "";
-                boolean hasOverdue = (item.overdueTotal() != null && item.overdueTotal().compareTo(BigDecimal.ZERO) > 0)
-                        || st.contains("MORA") || st.contains("VENCID");
 
                 switch (currentFilter) {
                     case COBRAR_HOY:
@@ -350,13 +400,13 @@ public class TodayCollectionsView extends VBox {
                         break;
                 }
 
-                // 3. Filtro de texto
+                // 3. Filtro de texto (null-safe)
                 if (q.isBlank()) return true;
-                return item.fullName().toLowerCase().contains(q)
-                        || item.documentNumber().toLowerCase().contains(q)
-                        || item.address().toLowerCase().contains(q)
-                        || item.neighborhood().toLowerCase().contains(q)
-                        || item.businessName().toLowerCase().contains(q);
+                return safeLower(item.fullName()).contains(q)
+                        || safeLower(item.documentNumber()).contains(q)
+                        || safeLower(item.address()).contains(q)
+                        || safeLower(item.neighborhood()).contains(q)
+                        || safeLower(item.businessName()).contains(q);
             });
 
             updateStats(filteredData);
@@ -366,20 +416,20 @@ public class TodayCollectionsView extends VBox {
         cmbFreqFilter.valueProperty().addListener((obs, oldVal, newVal) -> applyFiltersTrigger.run());
 
         // Botón Auto-Ordenar
-        Button btnAutoSort = new Button("Auto-Ordenar Ruta");
+        btnAutoSort = new Button("Auto-Ordenar Ruta");
         btnAutoSort.getStyleClass().add("btn-secondary");
         btnAutoSort.setStyle("-fx-font-size: 11px; -fx-padding: 6 12; -fx-font-weight: bold;");
         btnAutoSort.setTooltip(new Tooltip("Organizar clientes automáticamente: Mora → Cobro Hoy → Promesas → Pagados"));
         btnAutoSort.setOnAction(e -> autoSortByPriority());
 
         // Controles de mover manual
-        Button btnMoveUp = new Button("Subir");
+        btnMoveUp = new Button("Subir");
         btnMoveUp.getStyleClass().add("btn-secondary");
         btnMoveUp.setStyle("-fx-font-size: 11px; -fx-padding: 6 10;");
         btnMoveUp.setTooltip(new Tooltip("Subir cliente en el orden de visita"));
         btnMoveUp.setOnAction(e -> moveSelectedRow(-1));
 
-        Button btnMoveDown = new Button("Bajar");
+        btnMoveDown = new Button("Bajar");
         btnMoveDown.getStyleClass().add("btn-secondary");
         btnMoveDown.setStyle("-fx-font-size: 11px; -fx-padding: 6 10;");
         btnMoveDown.setTooltip(new Tooltip("Bajar cliente en el orden de visita"));
@@ -394,17 +444,47 @@ public class TodayCollectionsView extends VBox {
         getChildren().add(routeContainer);
     }
 
+    private static String safeLower(String s) {
+        return s != null ? s.toLowerCase(Locale.ROOT) : "";
+    }
+
+    private static boolean isOverdueItem(CollectionItem item) {
+        String st = item.statusText() != null ? item.statusText().toUpperCase() : "";
+        return (item.overdueTotal() != null && item.overdueTotal().compareTo(BigDecimal.ZERO) > 0)
+                || st.contains("MORA")
+                || st.contains("VENCID");
+    }
+
     private void moveSelectedRow(int delta) {
         CollectionItem selected = table.getSelectionModel().getSelectedItem();
         if (selected == null) return;
         table.getSortOrder().clear();
-        int idx = masterData.indexOf(selected);
-        int targetIdx = idx + delta;
-        if (idx >= 0 && targetIdx >= 0 && targetIdx < masterData.size()) {
-            masterData.remove(idx);
-            masterData.add(targetIdx, selected);
+        // Intercambiar con el elemento adyacente VISIBLE en la lista filtrada actual
+        List<CollectionItem> visible = new ArrayList<>(filteredData);
+        int visibleIdx = visible.indexOf(selected);
+        int targetVisibleIdx = visibleIdx + delta;
+        if (visibleIdx < 0 || targetVisibleIdx < 0 || targetVisibleIdx >= visible.size()) return;
+
+        CollectionItem neighbor = visible.get(targetVisibleIdx);
+        int masterIdx = masterData.indexOf(selected);
+        int neighborMasterIdx = masterData.indexOf(neighbor);
+        if (masterIdx >= 0 && neighborMasterIdx >= 0 && masterIdx != neighborMasterIdx) {
+            masterData.set(masterIdx, neighbor);
+            masterData.set(neighborMasterIdx, selected);
             table.getSelectionModel().select(selected);
+            persistCurrentRouteOrder();
         }
+    }
+
+    private void persistCurrentRouteOrder() {
+        if (collectionsService == null || masterData.isEmpty()) return;
+        try {
+            List<String> orderedCustomerIds = masterData.stream()
+                    .map(CollectionItem::customerId)
+                    .distinct()
+                    .toList();
+            collectionsService.saveCustomerRouteOrder(orderedCustomerIds);
+        } catch (Exception ignored) {}
     }
 
     private void autoSortByPriority() {
@@ -417,6 +497,7 @@ public class TodayCollectionsView extends VBox {
                 .thenComparing(CollectionItem::neighborhood, Comparator.nullsLast(String::compareToIgnoreCase))
                 .thenComparing(CollectionItem::fullName, Comparator.nullsLast(String::compareToIgnoreCase)));
         masterData.setAll(sorted);
+        persistCurrentRouteOrder();
     }
 
     private int priorityRank(CollectionItem item) {
@@ -460,14 +541,22 @@ public class TodayCollectionsView extends VBox {
                     avatar.setStyle("-fx-background-color: #2563eb; -fx-background-radius: 16;");
 
                     VBox textGroup = new VBox(2);
+                    HBox nameLine = new HBox(6);
+                    nameLine.setAlignment(Pos.CENTER_LEFT);
+                    if (item.orderIndex() > 0) {
+                        Label ordBadge = new Label("#" + item.orderIndex());
+                        ordBadge.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #475569; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 1 5; -fx-background-radius: 5;");
+                        nameLine.getChildren().add(ordBadge);
+                    }
                     Label name = new Label(item.fullName());
                     name.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 13px;");
+                    nameLine.getChildren().add(name);
 
                     String sub = (item.businessName().isBlank() ? "" : item.businessName() + " • ") + item.phone();
                     Label subtitle = new Label(sub);
                     subtitle.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
-                    textGroup.getChildren().addAll(name, subtitle);
+                    textGroup.getChildren().addAll(nameLine, subtitle);
                     box.getChildren().addAll(avatar, textGroup);
                     setGraphic(box);
                     setText(null);
@@ -501,7 +590,7 @@ public class TodayCollectionsView extends VBox {
                     btnMap.setOnAction(e -> openMap(item.address(), item.neighborhood()));
                     addrRow.getChildren().addAll(address, btnMap);
 
-                    Label neighborhood = new Label(item.neighborhood() + " • Ruta " + item.routeId());
+                    Label neighborhood = new Label(item.neighborhood() + " • " + resolveRouteName(item.routeId()));
                     neighborhood.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
 
                     box.getChildren().addAll(addrRow, neighborhood);
@@ -622,12 +711,19 @@ public class TodayCollectionsView extends VBox {
             @Override
             protected void updateItem(Void val, boolean empty) {
                 super.updateItem(val, empty);
-                if (empty) {
+                if (empty || getIndex() < 0 || getIndex() >= getTableView().getItems().size()) {
                     setGraphic(null);
                 } else {
                     CollectionItem item = getTableView().getItems().get(getIndex());
                     HBox actBox = new HBox(6);
                     actBox.setAlignment(Pos.CENTER_LEFT);
+
+                    Button btnFicha = new Button("360°");
+                    btnFicha.setTooltip(new Tooltip("Abrir Ficha 360° completa del cliente"));
+                    btnFicha.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #0f172a; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-cursor: hand;");
+                    btnFicha.setOnAction(e -> {
+                        if (onOpenCustomer360 != null) onOpenCustomer360.accept(item.customerId());
+                    });
 
                     Button btnWhatsApp = new Button("WhatsApp");
                     btnWhatsApp.setStyle("-fx-background-color: #dcfce7; -fx-text-fill: #15803d; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #86efac; -fx-border-radius: 6; -fx-cursor: hand;");
@@ -637,7 +733,7 @@ public class TodayCollectionsView extends VBox {
                         Button btnExtra = new Button("Abonar +");
                         btnExtra.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #059669; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-cursor: hand;");
                         btnExtra.setOnAction(e -> {
-                            PaymentDialog.show(primaryStage, item, paymentUseCase, systemSettingRepository, success -> {
+                            PaymentDialog.show(primaryStage, item, paymentUseCase, systemSettingRepository, loanRepository, success -> {
                                 if (success) {
                                     refreshData();
                                     if (onDataUpdated != null) onDataUpdated.run();
@@ -649,12 +745,12 @@ public class TodayCollectionsView extends VBox {
                         btnReceipt.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-cursor: hand;");
                         btnReceipt.setOnAction(e -> showReceiptFor(item));
 
-                        actBox.getChildren().addAll(btnExtra, btnReceipt, btnWhatsApp);
+                        actBox.getChildren().addAll(btnExtra, btnReceipt, btnFicha, btnWhatsApp);
                     } else {
                         Button btnPay = new Button("Cobrar");
                         btnPay.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 5 14; -fx-background-radius: 6; -fx-cursor: hand;");
                         btnPay.setOnAction(e -> {
-                            PaymentDialog.show(primaryStage, item, paymentUseCase, systemSettingRepository, success -> {
+                            PaymentDialog.show(primaryStage, item, paymentUseCase, systemSettingRepository, loanRepository, success -> {
                                 if (success) {
                                     refreshData();
                                     if (onDataUpdated != null) onDataUpdated.run();
@@ -662,13 +758,23 @@ public class TodayCollectionsView extends VBox {
                             });
                         });
 
-                        actBox.getChildren().addAll(btnPay, btnWhatsApp);
+                        actBox.getChildren().addAll(btnPay, btnFicha, btnWhatsApp);
                     }
                     setGraphic(actBox);
                 }
             }
         });
-        colAction.setPrefWidth(210);
+        colAction.setPrefWidth(250);
+
+        table.setRowFactory(tv -> {
+            TableRow<CollectionItem> row = new TableRow<>();
+            row.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && !row.isEmpty() && onOpenCustomer360 != null) {
+                    onOpenCustomer360.accept(row.getItem().customerId());
+                }
+            });
+            return row;
+        });
 
         table.getColumns().addAll(colCustomer, colAddress, colCuota, colBalance, colStatus, colAction);
 
@@ -691,21 +797,57 @@ public class TodayCollectionsView extends VBox {
         return tableCard;
     }
 
+    private boolean isPolicyEnabled(String key) {
+        if (systemSettingRepository == null) return true;
+        return systemSettingRepository.findById(key)
+                .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
+                .orElse(true);
+    }
+
+    private String resolveRouteName(String routeId) {
+        if (routeId == null || routeId.isBlank()) return "Sin Ruta";
+        return routeNameCache.getOrDefault(routeId, routeId);
+    }
+
+    private void showAlert(Alert.AlertType type, String title, String message) {
+        Alert alert = new Alert(type, message);
+        alert.initOwner(primaryStage);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.showAndWait();
+    }
+
     private void openReportExpenseDialog() {
-        String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
-                .map(com.cartera.infrastructure.security.UserSession::userId)
-                .orElse("admin");
-        String routeId = com.cartera.infrastructure.security.UserSessionContext.getSelectedRouteId();
-        if (routeId == null || "ALL".equalsIgnoreCase(routeId)) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.initOwner(primaryStage);
-            alert.setTitle("Selección de Ruta Requerida");
-            alert.setHeaderText("Ruta no seleccionada");
-            alert.setContentText("Seleccione una ruta específica en la barra superior antes de registrar un gasto operativo.");
-            alert.showAndWait();
+        boolean isCollector = UserSessionContext.getSession().map(UserSession::isCollector).orElse(false);
+        if (isCollector && !isPolicyEnabled("route_allow_expenses")) {
+            showAlert(Alert.AlertType.WARNING, "Política de Oficina",
+                    "La oficina deshabilitó el registro de gastos desde la vista de cobrador.");
             return;
         }
-        RouteExpenseDialog.show(primaryStage, collectorId, routeId, settlementUseCase, saved -> {
+        String routeId = UserSessionContext.getSelectedRouteId();
+        if (routeId == null || "ALL".equalsIgnoreCase(routeId) || "NONE".equalsIgnoreCase(routeId)) {
+            showAlert(Alert.AlertType.WARNING, "Selección de Ruta Requerida",
+                    "Seleccione una ruta específica en la barra superior antes de registrar un gasto operativo.");
+            return;
+        }
+        String collectorId = null;
+        if (routeRepository != null) {
+            collectorId = routeRepository.findById(routeId)
+                    .map(RouteEntity::getCollectorId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .orElse(null);
+        }
+        if (collectorId == null || collectorId.isBlank()) {
+            collectorId = UserSessionContext.getSession()
+                    .map(UserSession::userId)
+                    .orElse(null);
+        }
+        if (collectorId == null || collectorId.isBlank()) {
+            showAlert(Alert.AlertType.WARNING, "Sesión Requerida",
+                    "No se pudo determinar el cobrador titular de la ruta seleccionada.");
+            return;
+        }
+        RouteExpenseDialog.show(primaryStage, collectorId, routeId, LocalDate.now(), settlementUseCase, saved -> {
             if (saved) {
                 refreshData();
                 if (onDataUpdated != null) onDataUpdated.run();
@@ -714,6 +856,11 @@ public class TodayCollectionsView extends VBox {
     }
 
     private void openSyncMobileDialog() {
+        if (!UserSessionContext.canCurrentUserReverseOrCancel()) {
+            showAlert(Alert.AlertType.WARNING, "Acceso Restringido",
+                    "La sincronización de oficina con dispositivos móviles está reservada para Administradores y Supervisores.");
+            return;
+        }
         new ImportMobileSyncDialog(
                 primaryStage,
                 paymentUseCase,
@@ -735,14 +882,37 @@ public class TodayCollectionsView extends VBox {
     }
 
     public void refreshData() {
+        boolean isCollector = UserSessionContext.getSession().map(UserSession::isCollector).orElse(false);
+        if (btnSyncMobile != null) {
+            btnSyncMobile.setVisible(!isCollector);
+            btnSyncMobile.setManaged(!isCollector);
+        }
+        if (btnReportExpense != null) {
+            boolean allowExp = !isCollector || isPolicyEnabled("route_allow_expenses");
+            btnReportExpense.setVisible(allowExp);
+            btnReportExpense.setManaged(allowExp);
+        }
+        boolean allowReorder = !isCollector || isPolicyEnabled("route_allow_reorder");
+        if (btnAutoSort != null) btnAutoSort.setDisable(!allowReorder);
+        if (btnMoveUp != null) btnMoveUp.setDisable(!allowReorder);
+        if (btnMoveDown != null) btnMoveDown.setDisable(!allowReorder);
+
+        Map<String, String> freshRoutes = new HashMap<>();
+        if (routeRepository != null) {
+            for (RouteEntity r : routeRepository.findAll()) {
+                freshRoutes.put(r.getId(), r.getName() != null ? r.getName() : r.getId());
+            }
+        }
+        routeNameCache = freshRoutes;
+
         var items = collectionsService.getTodayCollectionItems(LocalDate.now());
         masterData.setAll(items);
 
-        // Actualizar contadores de píldoras
+        // Actualizar contadores de píldoras (100% alineados con el predicado de filtrado)
         long totalCount = items.size();
         long cobrarHoyCount = items.stream().filter(i -> !i.isPaidToday() && (i.statusText() == null || !i.statusText().toUpperCase().contains("PRÓXIMA CUOTA"))).count();
-        long moraCount = items.stream().filter(i -> (i.overdueTotal() != null && i.overdueTotal().compareTo(BigDecimal.ZERO) > 0) || (i.statusText() != null && (i.statusText().toUpperCase().contains("MORA") || i.statusText().toUpperCase().contains("VENCID")))).count();
-        long alDiaCount = items.stream().filter(i -> (i.overdueTotal() == null || i.overdueTotal().compareTo(BigDecimal.ZERO) <= 0) && (i.statusText() == null || !i.statusText().toUpperCase().contains("MORA"))).count();
+        long moraCount = items.stream().filter(TodayCollectionsView::isOverdueItem).count();
+        long alDiaCount = items.stream().filter(i -> !isOverdueItem(i)).count();
         long pagadosCount = items.stream().filter(CollectionItem::isPaidToday).count();
         long promesasCount = items.stream().filter(i -> i.statusText() != null && i.statusText().toUpperCase().contains("PROMESA")).count();
 
@@ -799,38 +969,122 @@ public class TodayCollectionsView extends VBox {
 
     private void openMap(String address, String neighborhood) {
         try {
-            String query = java.net.URLEncoder.encode(address + ", " + neighborhood + ", Colombia", java.nio.charset.StandardCharsets.UTF_8);
+            String city = systemSettingRepository != null
+                    ? systemSettingRepository.findById("company_city").map(SystemSettingEntity::getSettingValue).orElse("")
+                    : "";
+            String combined = ((address != null ? address : "") + ", " + (neighborhood != null ? neighborhood : "")
+                    + (city.isBlank() ? "" : ", " + city) + ", Colombia").replaceAll("^[,\\s]+", "");
+            if (combined.equalsIgnoreCase("Colombia")) {
+                showAlert(Alert.AlertType.WARNING, "Dirección Incompleta", "El cliente no tiene dirección registrada.");
+                return;
+            }
+            String query = java.net.URLEncoder.encode(combined, java.nio.charset.StandardCharsets.UTF_8);
             if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
                 java.awt.Desktop.getDesktop().browse(new java.net.URI("https://www.google.com/maps/search/?api=1&query=" + query));
+            } else {
+                showAlert(Alert.AlertType.WARNING, "Navegador no disponible", "No se pudo abrir Google Maps automáticamente en este equipo.");
             }
-        } catch (Exception ignored) {}
+        } catch (Exception ex) {
+            showAlert(Alert.AlertType.ERROR, "Error al abrir mapa", "No se pudo abrir Google Maps: " + ex.getMessage());
+        }
+    }
+
+    private Optional<PaymentEntity> findLatestValidPayment(String loanId) {
+        if (paymentRepository == null || loanId == null) return Optional.empty();
+        String todayPrefix = LocalDate.now().toString();
+        List<PaymentEntity> valid = paymentRepository.findByLoanId(loanId).stream()
+                .filter(p -> !"ANULADO".equalsIgnoreCase(p.getStatus())
+                        && !"REVERTIDO".equalsIgnoreCase(p.getStatus())
+                        && !"REVERSED".equalsIgnoreCase(p.getStatus()))
+                .sorted(Comparator.comparing((PaymentEntity p) -> p.getCreatedAt() != null ? p.getCreatedAt() : "").reversed())
+                .toList();
+        return valid.stream()
+                .filter(p -> p.getCreatedAt() != null && p.getCreatedAt().startsWith(todayPrefix))
+                .findFirst()
+                .or(() -> valid.stream().findFirst());
+    }
+
+    private String resolveTargetWhatsAppPhone(CollectionItem item) {
+        if (customerRepository != null && item.customerId() != null) {
+            Optional<CustomerEntity> cust = customerRepository.findById(item.customerId());
+            if (cust.isPresent() && cust.get().getAltPhone() != null && !cust.get().getAltPhone().isBlank()) {
+                return cust.get().getAltPhone();
+            }
+        }
+        return item.phone();
+    }
+
+    private String resolveCollectorDisplayName(String collectorId) {
+        if (collectorId != null && !collectorId.isBlank() && appUserRepository != null) {
+            Optional<String> name = appUserRepository.findById(collectorId).map(AppUserEntity::getFullName);
+            if (name.isPresent() && !name.get().isBlank()) {
+                return name.get();
+            }
+        }
+        return UserSessionContext.getSession().map(UserSession::fullName).orElse("Cobrador de Ruta");
+    }
+
+    private String formatPaymentTimestamp(String createdAt) {
+        if (createdAt == null || createdAt.isBlank()) {
+            return LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        }
+        try {
+            LocalDateTime dt = LocalDateTime.parse(createdAt.length() >= 19 ? createdAt.substring(0, 19) : createdAt);
+            return dt.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        } catch (Exception ex) {
+            return createdAt.replace("T", " ");
+        }
     }
 
     private void sendQuickWhatsAppFor(CollectionItem item) {
         String companyName = systemSettingRepository != null
-                ? systemSettingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("SISTEMA DE CARTERA")
+                ? systemSettingRepository.findById("company_name").map(SystemSettingEntity::getSettingValue).orElse("SISTEMA DE CARTERA")
                 : "SISTEMA DE CARTERA";
-        String collectorName = com.cartera.infrastructure.security.UserSessionContext.getSession()
-                .map(com.cartera.infrastructure.security.UserSession::fullName)
-                .orElse("Cobrador de Ruta");
+        String targetPhone = resolveTargetWhatsAppPhone(item);
 
         String msg;
         if (item.isPaidToday()) {
+            Optional<PaymentEntity> realPayment = findLatestValidPayment(item.loanId());
+            String receiptId = realPayment.map(PaymentEntity::getId).orElse("REC-" + item.loanId());
+            BigDecimal paidAmt = realPayment.map(PaymentEntity::getAmount).orElse(item.installmentAmount());
+            String method = realPayment.map(PaymentEntity::getMethod).orElse("EFECTIVO");
+            String collectorName = resolveCollectorDisplayName(realPayment.map(PaymentEntity::getCollectorId).orElse(null));
+            int instCount = realPayment
+                    .map(p -> paymentAllocationRepository != null ? Math.max(1, paymentAllocationRepository.findByPaymentId(p.getId()).size()) : 1)
+                    .orElse(1);
+            String ts = realPayment.map(p -> formatPaymentTimestamp(p.getCreatedAt()))
+                    .orElse(LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+
             msg = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
                     companyName,
-                    "REC-" + item.loanId(),
+                    receiptId,
                     item.fullName(),
                     item.documentNumber(),
-                    item.installmentAmount(),
+                    paidAmt,
                     item.loanBalance(),
-                    1,
-                    "EFECTIVO",
+                    instCount,
+                    method,
                     collectorName,
-                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                    ts
             );
         } else {
             BigDecimal paid = item.loanTotal().subtract(item.loanBalance()).max(BigDecimal.ZERO);
+            String todayStr = LocalDate.now().toString();
             int overdueCount = (item.overdueTotal() != null && item.overdueTotal().compareTo(BigDecimal.ZERO) > 0) ? 1 : 0;
+            String nextDue = todayStr;
+            if (installmentRepository != null) {
+                List<InstallmentEntity> insts = installmentRepository.findByLoanId(item.loanId());
+                overdueCount = (int) insts.stream().filter(i ->
+                        i.getPendingAmount() != null && i.getPendingAmount().compareTo(BigDecimal.ZERO) > 0
+                        && i.getDueDate() != null && i.getDueDate().compareTo(todayStr) < 0
+                ).count();
+                nextDue = insts.stream()
+                        .filter(i -> i.getPendingAmount() != null && i.getPendingAmount().compareTo(BigDecimal.ZERO) > 0 && i.getDueDate() != null)
+                        .map(InstallmentEntity::getDueDate)
+                        .sorted()
+                        .findFirst()
+                        .orElse(todayStr);
+            }
             msg = WhatsAppReceiptUtil.generateAccountStatementMessage(
                     companyName,
                     item.fullName(),
@@ -840,29 +1094,45 @@ public class TodayCollectionsView extends VBox {
                     item.loanBalance(),
                     overdueCount,
                     item.installmentPending(),
-                    LocalDate.now().toString()
+                    nextDue
             );
         }
-        WhatsAppReceiptUtil.sendViaWhatsApp(item.phone(), msg);
+        if (!WhatsAppReceiptUtil.sendViaWhatsApp(targetPhone, msg)) {
+            showAlert(Alert.AlertType.WARNING, "WhatsApp",
+                    "El mensaje se copió al portapapeles, pero no se pudo abrir WhatsApp automáticamente. Verifique el número (" + targetPhone + ").");
+        }
     }
 
     private void showReceiptFor(CollectionItem item) {
         String companyName = systemSettingRepository != null
-                ? systemSettingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("SISTEMA DE CARTERA")
+                ? systemSettingRepository.findById("company_name").map(SystemSettingEntity::getSettingValue).orElse("SISTEMA DE CARTERA")
                 : "SISTEMA DE CARTERA";
+        String targetPhone = resolveTargetWhatsAppPhone(item);
+        Optional<PaymentEntity> realPayment = findLatestValidPayment(item.loanId());
+
+        String receiptId = realPayment.map(PaymentEntity::getId)
+                .orElse("REC-" + (item.loanId().length() > 8 ? item.loanId().substring(0, 8) : item.loanId()));
+        BigDecimal paidAmt = realPayment.map(PaymentEntity::getAmount).orElse(item.installmentAmount());
+        String method = realPayment.map(PaymentEntity::getMethod).orElse("EFECTIVO");
+        String collectorName = resolveCollectorDisplayName(realPayment.map(PaymentEntity::getCollectorId).orElse(null));
+        int instCount = realPayment
+                .map(p -> paymentAllocationRepository != null ? Math.max(1, paymentAllocationRepository.findByPaymentId(p.getId()).size()) : 1)
+                .orElse(1);
+        String ts = realPayment.map(p -> formatPaymentTimestamp(p.getCreatedAt())).orElse(null);
+
         ReceiptDialog.ReceiptData rData = new ReceiptDialog.ReceiptData(
-                "REC-" + (item.loanId().length() > 8 ? item.loanId().substring(0, 8) : item.loanId()),
+                receiptId,
                 item.fullName(),
                 item.documentNumber(),
                 item.loanId(),
-                item.installmentAmount(),
+                paidAmt,
                 item.loanBalance(),
-                1,
-                "Cobrador de Ruta",
-                "EFECTIVO",
+                instCount,
+                collectorName,
+                method,
                 companyName,
-                item.phone()
+                targetPhone
         );
-        new ReceiptDialog(rData, primaryStage).show();
+        new ReceiptDialog(rData, ts, primaryStage).show();
     }
 }

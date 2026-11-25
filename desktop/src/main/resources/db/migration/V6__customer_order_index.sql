@@ -1,0 +1,1 @@
+ALTER TABLE customer ADD COLUMN order_index INTEGER DEFAULT 0;

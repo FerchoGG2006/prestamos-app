@@ -36,4 +36,7 @@ require(path.join(__dirname, '../src/core/domain/__tests__/calculator.test.ts'))
   await require(path.join(__dirname, '../src/infrastructure/storage/__tests__/renewal-metrics.test.ts')).renewalMetricsTests;
   await require(path.join(__dirname, '../src/infrastructure/storage/__tests__/renewal-matrix.test.ts')).renewalMatrixTests;
   await require(path.join(__dirname, '../src/infrastructure/storage/__tests__/backup-and-newloan.test.ts')).backupAndNewLoanTests;
+  await require(path.join(__dirname, '../src/infrastructure/storage/__tests__/paperwork-and-settlement.test.ts')).paperworkAndSettlementTests;
+  await require(path.join(__dirname, '../src/infrastructure/sync/__tests__/cloud-sync-safety.test.ts')).cloudSyncSafetyTests;
+  await require(path.join(__dirname, '../src/core/domain/__tests__/migration-and-renewal-fixed.test.ts')).migrationAndRenewalFixedTests;
 })().catch(error => { console.error(error); process.exitCode = 1; });

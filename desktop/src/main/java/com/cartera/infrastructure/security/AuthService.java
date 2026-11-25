@@ -9,6 +9,7 @@ import com.cartera.infrastructure.persistence.repository.AuditLogRepository;
 import com.cartera.infrastructure.persistence.repository.RouteRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,20 +39,30 @@ public class AuthService {
     private final AuditLogRepository auditLogRepository;
     private final RouteRepository routeRepository;
     private final SystemSettingRepository settingRepository;
+    private JdbcTemplate jdbcTemplate;
 
     public AuthService(AppUserRepository userRepository, AuditLogRepository auditLogRepository) {
-        this(userRepository, auditLogRepository, null, null);
+        this(userRepository, auditLogRepository, null, null, null);
+    }
+
+    public AuthService(AppUserRepository userRepository,
+                       AuditLogRepository auditLogRepository,
+                       RouteRepository routeRepository,
+                       SystemSettingRepository settingRepository) {
+        this(userRepository, auditLogRepository, routeRepository, settingRepository, null);
     }
 
     @Autowired
     public AuthService(AppUserRepository userRepository,
                        AuditLogRepository auditLogRepository,
                        RouteRepository routeRepository,
-                       SystemSettingRepository settingRepository) {
+                       SystemSettingRepository settingRepository,
+                       @Autowired(required = false) JdbcTemplate jdbcTemplate) {
         this.userRepository = userRepository;
         this.auditLogRepository = auditLogRepository;
         this.routeRepository = routeRepository;
         this.settingRepository = settingRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     /**
@@ -77,17 +88,14 @@ public class AuthService {
             return Optional.empty();
         }
 
-        if (!PasswordHasher.verify(rawPassword, user.getPasswordHash())) {
+        boolean validPassword = PasswordHasher.verify(rawPassword, user.getPasswordHash())
+                || (!rawPassword.equals(rawPassword.trim()) && PasswordHasher.verify(rawPassword.trim(), user.getPasswordHash()));
+        if (!validPassword) {
+            recordFailedLogin(user.getId(), username.trim());
             return Optional.empty();
         }
 
-        // Si la contraseña guardada no estaba hasheada con PBKDF2, actualizarla transparentemente
-        if (!user.getPasswordHash().contains("$")) {
-            user.setPasswordHash(PasswordHasher.hash(rawPassword));
-            userRepository.save(user);
-        }
-
-        String role = determineRole(user);
+        String role = resolveRole(user);
         UserSession session = new UserSession(user.getId(), user.getUsername(), user.getFullName(), role);
         UserSessionContext.setSession(session);
 
@@ -173,11 +181,11 @@ public class AuthService {
 
         String now = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
 
-        // 1. Crear o actualizar usuario Administrador (id con prefijo usr-admin-)
-        AppUserEntity adminEntity = userRepository.findById("usr-admin-1")
-                .or(() -> userRepository.findByUsername(cleanAdminUser))
+        // 1. Crear o actualizar usuario Administrador con ID único (sin hardcodes globales)
+        String newAdminId = "usr-adm-" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        AppUserEntity adminEntity = userRepository.findByUsername(cleanAdminUser)
                 .orElseGet(() -> new AppUserEntity(
-                        "usr-admin-1",
+                        newAdminId,
                         cleanAdminUser,
                         PasswordHasher.hash(cleanAdminPass),
                         adminFullName == null || adminFullName.isBlank() ? "Administrador General" : adminFullName.trim(),
@@ -185,10 +193,11 @@ public class AuthService {
                         now
                 ));
 
-        // Si otro usuario tenía ese username pero distinto ID, liberar o reutilizar
+        // Si otro usuario tenía ese username pero distinto ID, renombrarlo y desactivarlo
         userRepository.findByUsername(cleanAdminUser).ifPresent(other -> {
             if (!other.getId().equals(adminEntity.getId())) {
                 other.setUsername(other.getUsername() + "_old_" + UUID.randomUUID().toString().substring(0, 4));
+                other.setActive(0);
                 userRepository.saveAndFlush(other);
             }
         });
@@ -198,37 +207,33 @@ public class AuthService {
         adminEntity.setFullName(adminFullName == null || adminFullName.isBlank() ? "Administrador General" : adminFullName.trim());
         adminEntity.setActive(1);
         userRepository.saveAndFlush(adminEntity);
+        assignRole(adminEntity.getId(), "ADMIN");
 
         // 2. Configurar las N rutas y sus cobradores
         for (int i = 0; i < routesConfig.size(); i++) {
             RouteSetupItem item = routesConfig.get(i);
-            String colId = "usr-col-" + (i + 1);
+            String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            String colUser = item.username().trim().toLowerCase();
+            String colPass = item.password().trim();
             String rId = (item.routeId() != null && !item.routeId().isBlank())
                     ? item.routeId().trim()
-                    : (i == 0 ? "route-norte" : "route-" + (i + 1));
+                    : "rt-" + suffix;
             String rName = (item.routeName() != null && !item.routeName().isBlank())
                     ? item.routeName().trim()
                     : "Ruta " + (i + 1);
             String colName = (item.collectorName() != null && !item.collectorName().isBlank())
                     ? item.collectorName().trim()
                     : "Cobrador Ruta " + (i + 1);
-            String colUser = item.username().trim().toLowerCase();
-            String colPass = item.password().trim();
 
-            userRepository.findByUsername(colUser).ifPresent(other -> {
-                if (!other.getId().equals(colId)) {
-                    other.setUsername(other.getUsername() + "_old_" + UUID.randomUUID().toString().substring(0, 4));
-                    userRepository.saveAndFlush(other);
-                }
-            });
-
-            AppUserEntity collector = userRepository.findById(colId)
-                    .orElseGet(() -> new AppUserEntity(colId, colUser, PasswordHasher.hash(colPass), colName, 1, now));
+            AppUserEntity collector = userRepository.findByUsername(colUser)
+                    .orElseGet(() -> new AppUserEntity("usr-col-" + suffix, colUser, PasswordHasher.hash(colPass), colName, 1, now));
+            String colId = collector.getId();
             collector.setUsername(colUser);
             collector.setPasswordHash(PasswordHasher.hash(colPass));
             collector.setFullName(colName);
             collector.setActive(1);
             userRepository.saveAndFlush(collector);
+            assignRole(colId, "COBRADOR");
 
             if (routeRepository != null) {
                 RouteEntity route = routeRepository.findById(rId)
@@ -312,15 +317,85 @@ public class AuthService {
         return isOfficeSetupCompleted();
     }
 
-    private String determineRole(AppUserEntity user) {
+    /**
+     * Persiste explícitamente el rol de un usuario en las tablas `role` y `user_role` de SQLite.
+     */
+    @Transactional
+    public void assignRole(String userId, String roleCode) {
+        if (jdbcTemplate == null || userId == null || userId.isBlank()) {
+            return;
+        }
+        String normalized = normalizeRoleCode(roleCode);
+        String roleId = "role-" + normalized.toLowerCase();
+        jdbcTemplate.update("INSERT OR IGNORE INTO role (id, code) VALUES (?, ?)", roleId, normalized);
+        String resolvedRoleId = jdbcTemplate.query(
+                "SELECT id FROM role WHERE UPPER(code) = ? LIMIT 1",
+                rs -> rs.next() ? rs.getString(1) : roleId,
+                normalized
+        );
+        jdbcTemplate.update("DELETE FROM user_role WHERE user_id = ?", userId);
+        jdbcTemplate.update("INSERT OR REPLACE INTO user_role (user_id, role_id) VALUES (?, ?)", userId, resolvedRoleId);
+    }
+
+    /**
+     * Resuelve el rol real del usuario desde `user_role`/`role`; solo cae a heurística si es un registro legado sin rol asignado.
+     */
+    public String resolveRole(AppUserEntity user) {
+        if (user == null) {
+            return "COBRADOR";
+        }
+        if (jdbcTemplate != null && user.getId() != null && !user.getId().isBlank()) {
+            try {
+                List<String> codes = jdbcTemplate.query(
+                        "SELECT r.code FROM user_role ur JOIN role r ON r.id = ur.role_id WHERE ur.user_id = ? LIMIT 1",
+                        (rs, rowNum) -> rs.getString(1),
+                        user.getId()
+                );
+                if (!codes.isEmpty() && codes.get(0) != null && !codes.get(0).isBlank()) {
+                    return normalizeRoleCode(codes.get(0));
+                }
+            } catch (Exception ignored) {
+                // Fallback seguro solo si la tabla aún no está disponible en un test unitario aislado
+            }
+        }
+        return determineLegacyRole(user);
+    }
+
+    public static String normalizeRoleCode(String role) {
+        if (role == null) return "COBRADOR";
+        String u = role.trim().toUpperCase();
+        if ("ADMIN".equals(u) || "SUPER_ADMIN".equals(u) || "ADMINISTRADOR".equals(u)) return "ADMIN";
+        if ("SUPERVISOR".equals(u)) return "SUPERVISOR";
+        return "COBRADOR";
+    }
+
+    private String determineLegacyRole(AppUserEntity user) {
         String id = user.getId() != null ? user.getId().toLowerCase() : "";
         String username = user.getUsername() != null ? user.getUsername().toLowerCase() : "";
-        if (id.startsWith("usr-adm") || username.startsWith("admin") || "administrador".equals(username)) {
+        if (id.startsWith("usr-adm") || "admin".equals(username) || "administrador".equals(username)) {
             return "ADMIN";
         }
-        if (id.startsWith("usr-sup") || username.contains("superv")) {
+        if (id.startsWith("usr-sup") || "supervisor".equals(username)) {
             return "SUPERVISOR";
         }
         return "COBRADOR";
+    }
+
+    private void recordFailedLogin(String userId, String attemptedUsername) {
+        try {
+            if (auditLogRepository != null) {
+                auditLogRepository.save(new AuditLogEntity(
+                        UUID.randomUUID().toString(),
+                        userId,
+                        "APP_USER",
+                        userId != null ? userId : attemptedUsername,
+                        "LOGIN_FALLIDO",
+                        null,
+                        "Intento de inicio de sesión rechazado para " + attemptedUsername,
+                        "Credenciales incorrectas",
+                        LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                ));
+            }
+        } catch (Exception ignored) {}
     }
 }

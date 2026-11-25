@@ -117,14 +117,23 @@ public class RenewLoanUseCase {
         if (!"ACTIVO".equalsIgnoreCase(loan.getStatus())) {
             throw new IllegalStateException("Solo se pueden renovar créditos en estado ACTIVO.");
         }
+        String normalizedFreq = cmd.frequency() == null ? "" : cmd.frequency().trim().toUpperCase();
+        if ("FECHA_FIJA".equals(normalizedFreq) || "FIXED_DATE".equals(normalizedFreq)) {
+            normalizedFreq = "FECHA FIJA";
+        }
         if (cmd.installmentCount() < 1 || cmd.startDate() == null
-                || !List.of("DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL").contains(cmd.frequency())) {
+                || !List.of("DIARIO", "SEMANAL", "QUINCENAL", "MENSUAL", "FECHA FIJA").contains(normalizedFreq)) {
             throw new IllegalArgumentException("Revise cuotas, modalidad y fecha de inicio.");
         }
         var principal = new Money(cmd.newPrincipal());
-        var paperwork = new Money(cmd.paperworkFee() == null ? BigDecimal.ZERO : cmd.paperworkFee());
+        BigDecimal requestedPaperwork = cmd.paperworkFee() == null ? BigDecimal.ZERO : cmd.paperworkFee();
+        if (!createLoanUseCase.isPaperworkEnabled()) {
+            requestedPaperwork = BigDecimal.ZERO;
+        }
+        var paperwork = new Money(requestedPaperwork);
         if (principal.amount().compareTo(cmd.newPrincipal()) != 0
-                || (cmd.paperworkFee() != null && paperwork.amount().compareTo(cmd.paperworkFee()) != 0)) {
+                || (cmd.paperworkFee() != null && createLoanUseCase.isPaperworkEnabled()
+                && paperwork.amount().compareTo(cmd.paperworkFee()) != 0)) {
             throw new IllegalArgumentException("Ingrese los montos en pesos enteros.");
         }
         String route = TodayCollectionsService.normalizeRouteId(loan.getRouteId());

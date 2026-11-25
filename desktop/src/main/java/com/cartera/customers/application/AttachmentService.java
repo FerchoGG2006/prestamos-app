@@ -153,11 +153,12 @@ public class AttachmentService {
 
     @Transactional(readOnly = true)
     public Path openPath(String id) {
-        var saved = files.findById(id).orElseThrow();
+        var saved = files.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("El archivo adjunto ya no existe."));
         authorize(saved.getCustomerId());
         Path path = directory().resolve(saved.getStoredName()).normalize();
         if (!path.startsWith(directory()) || !Files.isRegularFile(path)) {
-            throw new IllegalStateException("Adjunto no disponible.");
+            throw new IllegalStateException("Adjunto no disponible en disco.");
         }
         try {
             if (!saved.getSha256().equals(hash(path))) {
@@ -169,5 +170,44 @@ public class AttachmentService {
             throw new IllegalStateException(ex);
         }
         return path;
+    }
+
+    @Transactional
+    public void delete(String id, String reason) {
+        var actor = access.manager();
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Seleccione un adjunto para eliminar.");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("Debe indicar un motivo para eliminar el adjunto.");
+        }
+        var saved = files.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("El archivo adjunto no existe."));
+        Path target = directory().resolve(saved.getStoredName()).normalize();
+        files.delete(saved);
+        audit.save(new AuditLogEntity(
+                UUID.randomUUID().toString(),
+                actor.userId(),
+                "CUSTOMER_ATTACHMENT",
+                id,
+                "ELIMINAR_ADJUNTO",
+                saved.getOriginalName() + "|" + saved.getSha256(),
+                null,
+                reason.trim(),
+                LocalDateTime.now().toString()
+        ));
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    if (target.startsWith(directory())) {
+                        Files.deleteIfExists(target);
+                    }
+                } catch (Exception ex) {
+                    LoggerFactory.getLogger(AttachmentService.class)
+                            .warn("No se pudo borrar el archivo físico del adjunto eliminado", ex);
+                }
+            }
+        });
     }
 }

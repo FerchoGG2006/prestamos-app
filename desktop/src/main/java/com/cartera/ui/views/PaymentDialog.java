@@ -1,7 +1,11 @@
 package com.cartera.ui.views;
 
 import com.cartera.collections.application.TodayCollectionsService.CollectionItem;
+import com.cartera.infrastructure.persistence.entity.LoanEntity;
+import com.cartera.infrastructure.persistence.repository.LoanRepository;
 import com.cartera.infrastructure.persistence.repository.SystemSettingRepository;
+import com.cartera.infrastructure.security.UserSession;
+import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.payments.application.RecordPaymentUseCase.RecordPaymentCommand;
 import com.cartera.ui.util.CurrencyInputUtil;
@@ -30,13 +34,22 @@ public class PaymentDialog {
     }
 
     public static void show(Stage parentStage, CollectionItem item, RecordPaymentUseCase useCase, Consumer<Boolean> onFinished) {
-        show(parentStage, item, useCase, null, onFinished);
+        show(parentStage, item, useCase, null, null, onFinished);
     }
 
     public static void show(Stage parentStage,
                             CollectionItem item,
                             RecordPaymentUseCase useCase,
                             SystemSettingRepository settingRepository,
+                            Consumer<Boolean> onFinished) {
+        show(parentStage, item, useCase, settingRepository, null, onFinished);
+    }
+
+    public static void show(Stage parentStage,
+                            CollectionItem item,
+                            RecordPaymentUseCase useCase,
+                            SystemSettingRepository settingRepository,
+                            LoanRepository loanRepository,
                             Consumer<Boolean> onFinished) {
         Stage dialog = new Stage();
         dialog.initModality(Modality.WINDOW_MODAL);
@@ -46,11 +59,25 @@ public class PaymentDialog {
         // Una sola clave por apertura del diálogo: reintentar tras un fallo no puede duplicar el cobro.
         final String idempotencyKey = UUID.randomUUID().toString();
 
+        BigDecimal loanBalance = item.loanBalance() != null ? item.loanBalance().max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal installmentPending = item.installmentPending() != null ? item.installmentPending().max(BigDecimal.ZERO) : BigDecimal.ZERO;
+        BigDecimal installmentAmount = item.installmentAmount() != null ? item.installmentAmount().max(BigDecimal.ZERO) : BigDecimal.ZERO;
+
+        // Para "Abonar +" (cuando hoy ya está pago), precargar el valor de la siguiente cuota o el saldo restante (nunca 0)
+        BigDecimal suggestedAmount;
+        if (installmentPending.compareTo(BigDecimal.ZERO) > 0) {
+            suggestedAmount = installmentPending.min(loanBalance);
+        } else if (installmentAmount.compareTo(BigDecimal.ZERO) > 0) {
+            suggestedAmount = installmentAmount.min(loanBalance);
+        } else {
+            suggestedAmount = loanBalance;
+        }
+
         VBox root = new VBox(16);
         root.setStyle("-fx-background-color: #ffffff; -fx-padding: 24;");
-        root.setPrefWidth(480);
+        root.setPrefWidth(500);
 
-        Label title = new Label("Registrar Cobro");
+        Label title = new Label(item.isPaidToday() ? "Registrar Abono Adicional" : "Registrar Cobro");
         title.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 18px; -fx-font-weight: bold;");
 
         // Info Card
@@ -60,9 +87,12 @@ public class PaymentDialog {
         lblName.setStyle("-fx-text-fill: #0f172a; -fx-font-weight: bold; -fx-font-size: 14px;");
         Label lblAddress = new Label("Dirección: " + item.address() + " - " + item.neighborhood());
         lblAddress.setStyle("-fx-text-fill: #64748b;");
-        Label lblLoan = new Label("Saldo total crédito: " + CURRENCY.format(item.loanBalance()));
+        Label lblLoan = new Label("Saldo total crédito: " + CURRENCY.format(loanBalance));
         lblLoan.setStyle("-fx-text-fill: #2563eb; -fx-font-weight: bold;");
-        Label lblCuota = new Label("Cuota #" + item.installmentNumber() + " pendiente: " + CURRENCY.format(item.installmentPending()));
+        String cuotaText = installmentPending.compareTo(BigDecimal.ZERO) > 0
+                ? "Cuota #" + item.installmentNumber() + " pendiente: " + CURRENCY.format(installmentPending)
+                : "Cuota de hoy cubierta · Valor cuota sugerida: " + CURRENCY.format(suggestedAmount);
+        Label lblCuota = new Label(cuotaText);
         lblCuota.setStyle("-fx-text-fill: #d97706; -fx-font-weight: bold;");
         infoCard.getChildren().addAll(lblName, lblAddress, lblLoan, lblCuota);
 
@@ -70,20 +100,30 @@ public class PaymentDialog {
         Label lblAmount = new Label("Monto a registrar ($):");
         lblAmount.setStyle("-fx-text-fill: #334155; -fx-font-weight: bold;");
 
-        TextField txtAmount = new TextField(item.installmentPending().toPlainString());
+        TextField txtAmount = new TextField(suggestedAmount.toPlainString());
         txtAmount.setStyle("-fx-background-color: #ffffff; -fx-text-fill: #0f172a; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-padding: 10; -fx-font-size: 16px; -fx-font-weight: bold;");
 
-        // Botones de atajo
+        // Botones de atajo (con tope en el saldo real del crédito)
         HBox shortcuts = new HBox(8);
-        Button btnExact = new Button("Cuota exacta (" + CURRENCY.format(item.installmentPending()) + ")");
+        Button btnExact = new Button("Cuota (" + CURRENCY.format(suggestedAmount) + ")");
         btnExact.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand;");
-        btnExact.setOnAction(e -> txtAmount.setText(item.installmentPending().toPlainString()));
+        btnExact.setOnAction(e -> txtAmount.setText(suggestedAmount.toPlainString()));
+        shortcuts.getChildren().add(btnExact);
 
-        Button btnTwo = new Button("2 Cuotas (" + CURRENCY.format(item.installmentPending().multiply(BigDecimal.valueOf(2))) + ")");
-        btnTwo.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand;");
-        btnTwo.setOnAction(e -> txtAmount.setText(item.installmentPending().multiply(BigDecimal.valueOf(2)).toPlainString()));
+        BigDecimal twoInstallments = suggestedAmount.multiply(BigDecimal.valueOf(2)).min(loanBalance);
+        if (twoInstallments.compareTo(suggestedAmount) > 0) {
+            Button btnTwo = new Button("2 Cuotas (" + CURRENCY.format(twoInstallments) + ")");
+            btnTwo.setStyle("-fx-background-color: #f1f5f9; -fx-text-fill: #334155; -fx-border-color: #cbd5e1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand;");
+            btnTwo.setOnAction(e -> txtAmount.setText(twoInstallments.toPlainString()));
+            shortcuts.getChildren().add(btnTwo);
+        }
 
-        shortcuts.getChildren().addAll(btnExact, btnTwo);
+        if (loanBalance.compareTo(twoInstallments) > 0 || (loanBalance.compareTo(suggestedAmount) > 0 && twoInstallments.compareTo(suggestedAmount) <= 0)) {
+            Button btnFull = new Button("Saldo Total (" + CURRENCY.format(loanBalance) + ")");
+            btnFull.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 6; -fx-background-radius: 6; -fx-cursor: hand; -fx-font-weight: bold;");
+            btnFull.setOnAction(e -> txtAmount.setText(loanBalance.toPlainString()));
+            shortcuts.getChildren().add(btnFull);
+        }
 
         // Método de pago
         Label lblMethod = new Label("Método de pago:");
@@ -122,12 +162,13 @@ public class PaymentDialog {
                     return;
                 }
 
+                boolean isCollector = UserSessionContext.getSession().map(UserSession::isCollector).orElse(false);
                 boolean allowPartial = settingRepository == null || settingRepository.findById("route_allow_partial_payments")
                         .map(s -> !"false".equalsIgnoreCase(s.getSettingValue()))
                         .orElse(true);
-                BigDecimal minRequired = item.installmentPending().min(item.loanBalance());
-                if (!allowPartial && amount.compareTo(minRequired) < 0) {
-                    lblFeedback.setText("Los abonos parciales están deshabilitados en Configuración. Debe cobrar mínimo la cuota pendiente (" + CURRENCY.format(minRequired) + ").");
+                BigDecimal minRequired = suggestedAmount.min(loanBalance);
+                if (isCollector && !allowPartial && minRequired.compareTo(BigDecimal.ZERO) > 0 && amount.compareTo(minRequired) < 0) {
+                    lblFeedback.setText("Los abonos parciales están deshabilitados en Configuración. Debe cobrar mínimo la cuota (" + CURRENCY.format(minRequired) + ").");
                     lblFeedback.setStyle("-fx-text-fill: #dc2626;");
                     return;
                 }
@@ -136,9 +177,19 @@ public class PaymentDialog {
                 lblFeedback.setText("Guardando abono de cuota...");
                 lblFeedback.setStyle("-fx-text-fill: #2563eb;");
 
-                String collectorId = com.cartera.infrastructure.security.UserSessionContext.getSession()
-                        .map(com.cartera.infrastructure.security.UserSession::userId)
-                        .orElse("admin");
+                // Atribuir el pago al cobrador titular del crédito/ruta (no sobreescribir con Admin)
+                String collectorId = null;
+                if (loanRepository != null) {
+                    collectorId = loanRepository.findById(item.loanId())
+                            .map(LoanEntity::getCollectorId)
+                            .filter(id -> id != null && !id.isBlank())
+                            .orElse(null);
+                }
+                if (collectorId == null || collectorId.isBlank()) {
+                    collectorId = UserSessionContext.getSession()
+                            .map(UserSession::userId)
+                            .orElseThrow(() -> new IllegalStateException("Inicie sesión para registrar cobros."));
+                }
 
                 var cmd = new RecordPaymentCommand(
                         item.loanId(),
@@ -151,47 +202,49 @@ public class PaymentDialog {
 
                 var res = useCase.execute(cmd);
 
-                String companyName = settingRepository != null
-                        ? settingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("SISTEMA DE CARTERA")
-                        : "SISTEMA DE CARTERA";
-                String collectorName = com.cartera.infrastructure.security.UserSessionContext.getSession()
-                        .map(com.cartera.infrastructure.security.UserSession::fullName)
-                        .orElse("Administración Central");
+                try {
+                    String companyName = settingRepository != null
+                            ? settingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("SISTEMA DE CARTERA")
+                            : "SISTEMA DE CARTERA";
+                    String collectorName = UserSessionContext.getSession()
+                            .map(UserSession::fullName)
+                            .orElse("Administración Central");
 
-                var receiptData = new ReceiptDialog.ReceiptData(
-                        res.paymentId(),
-                        item.fullName(),
-                        item.documentNumber(),
-                        item.loanId(),
-                        res.allocatedAmount(),
-                        res.remainingLoanBalance(),
-                        res.installmentsAffectedCount(),
-                        collectorName,
-                        cmbMethod.getValue(),
-                        companyName,
-                        item.phone()
-                );
-
-                if (chkSendWhatsApp.isSelected()) {
-                    String msg = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
-                            companyName,
+                    var receiptData = new ReceiptDialog.ReceiptData(
                             res.paymentId(),
                             item.fullName(),
                             item.documentNumber(),
+                            item.loanId(),
                             res.allocatedAmount(),
                             res.remainingLoanBalance(),
                             res.installmentsAffectedCount(),
-                            cmbMethod.getValue(),
                             collectorName,
-                            LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                            cmbMethod.getValue(),
+                            companyName,
+                            item.phone()
                     );
-                    WhatsAppReceiptUtil.sendViaWhatsApp(item.phone(), msg);
+
+                    if (chkSendWhatsApp.isSelected()) {
+                        String msg = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
+                                companyName,
+                                res.paymentId(),
+                                item.fullName(),
+                                item.documentNumber(),
+                                res.allocatedAmount(),
+                                res.remainingLoanBalance(),
+                                res.installmentsAffectedCount(),
+                                cmbMethod.getValue(),
+                                collectorName,
+                                LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+                        );
+                        WhatsAppReceiptUtil.sendViaWhatsApp(item.phone(), msg);
+                    }
+
+                    dialog.close();
+                    new ReceiptDialog(receiptData, parentStage).showAndWait();
+                } finally {
+                    if (onFinished != null) onFinished.accept(true);
                 }
-
-                dialog.close();
-                new ReceiptDialog(receiptData, parentStage).showAndWait();
-
-                if (onFinished != null) onFinished.accept(true);
 
             } catch (NumberFormatException nfe) {
                 lblFeedback.setText("Ingrese un número válido.");

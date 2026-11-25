@@ -27,6 +27,7 @@ import { formatCOP, getFrequencyLabel, getInitials } from '../../../core/config/
 import { calculateDelinquencyMetrics } from '../../../core/domain/calculator';
 import { COLORS, TYPOGRAPHY, FONT_FAMILY } from '../../theme/colors';
 import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
+import { cloudSyncEngine, CloudSyncStatusSnapshot } from '../../../infrastructure/sync/cloud-sync';
 import {
   formatAccountStatementReminder,
   openWhatsAppReceipt,
@@ -177,17 +178,100 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   const [summaryPeriodFilter, setSummaryPeriodFilter] = useState<'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'ALL'>('TODAY');
   const [showSummaryFilterModal, setShowSummaryFilterModal] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatusSnapshot>(() => cloudSyncEngine.getStatus());
+  const [reconnectModalVisible, setReconnectModalVisible] = useState<boolean>(false);
+  const [reconnectUsername, setReconnectUsername] = useState<string>('');
+  const [reconnectPassword, setReconnectPassword] = useState<string>('');
+  const [reconnectError, setReconnectError] = useState<string>('');
+  const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
+
+  useEffect(() => {
+    setCloudStatus(cloudSyncEngine.getStatus());
+    const unsub = cloudSyncEngine.subscribe(() => {
+      setCloudStatus(cloudSyncEngine.getStatus());
+    });
+    return () => unsub();
+  }, []);
+
+  const openCloudReconnectModal = React.useCallback(() => {
+    const loggedUser = localStore.getUsers().find((u) => u.id === currentUserId);
+    if (loggedUser?.username) {
+      setReconnectUsername(loggedUser.username);
+    }
+    setReconnectPassword('');
+    setReconnectError('');
+    setReconnectModalVisible(true);
+  }, [currentUserId]);
+
+  const handleCloudStatusTap = React.useCallback(async () => {
+    const current = cloudSyncEngine.getStatus();
+    if (current.needsCloudAuth) {
+      openCloudReconnectModal();
+      return;
+    }
+    const ok = await cloudSyncEngine.syncBidirectional();
+    const after = cloudSyncEngine.getStatus();
+    if (after.needsCloudAuth) {
+      openCloudReconnectModal();
+      return;
+    }
+    if (Platform.OS === 'web') {
+      window.alert(after.message);
+    } else {
+      Alert.alert(ok ? 'Nube Sincronizada' : 'Estado de Sincronización', after.message);
+    }
+  }, [openCloudReconnectModal]);
+
+  const handleSubmitReconnect = React.useCallback(async () => {
+    const cleanU = reconnectUsername.trim().toLowerCase();
+    const cleanP = reconnectPassword.trim();
+    if (!cleanU || !cleanP) {
+      setReconnectError('Ingresa tu usuario y contraseña para reconectar la nube.');
+      return;
+    }
+    setIsReconnecting(true);
+    setReconnectError('');
+    try {
+      const res = await cloudSyncEngine.reconnectCloudSession(cleanU, cleanP);
+      if (res.ok) {
+        await safeStorage.setItem(
+          '@prestamos_remembered_credentials',
+          JSON.stringify({ username: cleanU, password: cleanP })
+        );
+        setReconnectModalVisible(false);
+        setReconnectPassword('');
+        if (Platform.OS === 'web') {
+          window.alert('¡Sincronización reactivada! Tus datos locales se subieron correctamente a la nube.');
+        } else {
+          Alert.alert('¡Sincronización Reactivada!', 'Tus datos locales se subieron correctamente a la nube.');
+        }
+      } else {
+        setReconnectError(res.message || 'No se pudo reconectar con la nube.');
+      }
+    } catch (e: any) {
+      setReconnectError(e?.message || 'Error al reconectar con la nube.');
+    } finally {
+      setIsReconnecting(false);
+    }
+  }, [reconnectUsername, reconnectPassword]);
 
   const handleRefresh = React.useCallback(async () => {
     setRefreshing(true);
     try {
+      const st = cloudSyncEngine.getStatus();
+      if (st.needsCloudAuth) {
+        setRefreshing(false);
+        openCloudReconnectModal();
+        return;
+      }
+      await cloudSyncEngine.syncBidirectional().catch(() => {});
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         await forceReloadWebBundle();
         return;
       }
     } catch {}
     setTimeout(() => setRefreshing(false), 500);
-  }, []);
+  }, [openCloudReconnectModal]);
 
   useEffect(() => {
     setVisibleLimit(35);
@@ -632,20 +716,27 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     const totalOverdueCount = metrics.overdueCustomersCount || 0;
 
     // Proporción matemática de la barra de progreso de patrimonio
+    // Regla contable absoluta: la papelería vive dentro de Base en oficina pero NUNCA sube el Administrativo.
     const totalAdmin = metrics.totalAdministrativeCapital || 0;
     const streetCapital = metrics.activeCapitalInStreet || 0;
     const officeCash = metrics.cashAvailableInHand || 0;
     const officeDigital = metrics.collectedDigitalToday || 0;
-    const officeCapital = officeCash + officeDigital;
+    const officePaperwork = metrics.paperworkAvailableBalance || 0;
+    const isPaperworkFeatureActive =
+      (localStore.getOfficeConfig().paperworkFeeEnabled ?? true) || officePaperwork > 0;
+    const officeCapital = officeCash + officeDigital + officePaperwork;
     const streetRatio = totalAdmin > 0
       ? Math.min(100, Math.max(0, Math.round((streetCapital / totalAdmin) * 100)))
       : 0;
     const officeRatio = Math.max(0, 100 - streetRatio);
 
-    // Escalado responsivo y seguro de tipografía para cifras financieras extremas
-    const heroFontSize = totalAdmin >= 1_000_000_000 ? 25 : totalAdmin >= 100_000_000 ? 28 : 34;
-    const getSubColFontSize = (val: number) => (val >= 1_000_000_000 ? 14 : val >= 100_000_000 ? 15.5 : 18);
-    const getTileFontSize = (val: number) => (val >= 1_000_000_000 ? 14 : val >= 100_000_000 ? 15.5 : 19);
+    // Escalado responsivo y seguro de tipografía para cifras financieras extremas (compatible Web + Nativo)
+    const heroFontSize =
+      totalAdmin >= 1_000_000_000 ? 23 : totalAdmin >= 100_000_000 ? 26 : totalAdmin >= 10_000_000 ? 29 : 31;
+    const getSubColFontSize = (val: number) =>
+      Math.abs(val) >= 1_000_000_000 ? 13 : Math.abs(val) >= 100_000_000 ? 14.5 : Math.abs(val) >= 10_000_000 ? 16 : 17.5;
+    const getTileFontSize = (val: number) =>
+      Math.abs(val) >= 1_000_000_000 ? 13 : Math.abs(val) >= 100_000_000 ? 14.5 : Math.abs(val) >= 10_000_000 ? 16.5 : 18;
 
     return (
       <ScrollView
@@ -683,16 +774,118 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             </View>
           )}
 
-          <View style={styles.adminLiveStatusPill}>
-            <View style={styles.adminLiveDot} />
-            <Text style={styles.adminLiveStatusText}>En línea</Text>
-          </View>
+          {(() => {
+            const isSyncing = cloudStatus.status === 'SYNCING';
+            const needsAuth = cloudStatus.needsCloudAuth;
+            const hasIssue = cloudStatus.status === 'ERROR' || cloudStatus.status === 'OFFLINE_QUEUED';
+            const dotColor = needsAuth
+              ? '#DC2626'
+              : hasIssue
+                ? '#D97706'
+                : isSyncing
+                  ? '#2563EB'
+                  : '#16A34A';
+            const pillBg = needsAuth
+              ? '#FEF2F2'
+              : hasIssue
+                ? '#FFFBEB'
+                : isSyncing
+                  ? '#EFF6FF'
+                  : '#F0FDF4';
+            const pillBorder = needsAuth
+              ? '#FECACA'
+              : hasIssue
+                ? '#FDE68A'
+                : isSyncing
+                  ? '#BFDBFE'
+                  : '#BBF7D0';
+            const textColor = needsAuth
+              ? '#B91C1C'
+              : hasIssue
+                ? '#B45309'
+                : isSyncing
+                  ? '#1D4ED8'
+                  : '#15803D';
+            const lastTime = cloudStatus.lastSyncedAt
+              ? new Date(cloudStatus.lastSyncedAt).toLocaleTimeString('es-CO', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : '';
+            const labelText = isSyncing
+              ? 'Sincronizando...'
+              : needsAuth
+                ? 'Reconectar nube'
+                : hasIssue
+                  ? 'Pendiente subir'
+                  : lastTime
+                    ? `Nube ${lastTime}`
+                    : 'Sincronizar';
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.adminLiveStatusPill,
+                  { backgroundColor: pillBg, borderColor: pillBorder, borderWidth: 1 },
+                ]}
+                activeOpacity={0.75}
+                onPress={handleCloudStatusTap}
+              >
+                <View style={[styles.adminLiveDot, { backgroundColor: dotColor }]} />
+                <Text style={[styles.adminLiveStatusText, { color: textColor }]}>{labelText}</Text>
+              </TouchableOpacity>
+            );
+          })()}
         </View>
+
+        {cloudStatus.needsCloudAuth && (
+          <TouchableOpacity
+            onPress={openCloudReconnectModal}
+            activeOpacity={0.8}
+            style={{
+              marginHorizontal: 16,
+              marginBottom: 10,
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              backgroundColor: '#FFFBEB',
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: '#F59E0B',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E' }}>
+                Sincronización con la nube en pausa
+              </Text>
+              <Text style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
+                Tus datos locales están seguros aquí. Toca para reconectar y subirlos al PC de la oficina.
+              </Text>
+            </View>
+            <View
+              style={{
+                backgroundColor: '#D97706',
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 8,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Reconectar</Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* BARRA DE ACTUALIZACIÓN EN VIVO (WEB / IPHONE) */}
         {Platform.OS === 'web' && (
           <TouchableOpacity
-            onPress={() => forceReloadWebBundle()}
+            onPress={async () => {
+              if (!cloudSyncEngine.getStatus().needsCloudAuth) {
+                await cloudSyncEngine.syncBidirectional().catch(() => {});
+              }
+              await forceReloadWebBundle();
+            }}
             activeOpacity={0.7}
             style={{
               marginHorizontal: 16,
@@ -715,7 +908,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               </Text>
             </View>
             <Text style={{ fontSize: 10, fontWeight: '800', color: '#2563EB' }}>
-              🔄 Forzar Actualización
+              🔄 Sincronizar y Actualizar
             </Text>
           </TouchableOpacity>
         )}
@@ -771,8 +964,28 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               </Text>
               <View style={styles.patrimonioBreakdownBox}>
                 <Text style={styles.patrimonioBreakdownText} numberOfLines={1} adjustsFontSizeToFit>
-                  Efectivo: <Text style={styles.patrimonioBreakdownAmount}>{maskIfPrivate(officeCash)}</Text>
+                  Efectivo base: <Text style={styles.patrimonioBreakdownAmount}>{maskIfPrivate(officeCash)}</Text>
                 </Text>
+                {isPaperworkFeatureActive && (
+                  <Text
+                    style={[
+                      styles.patrimonioBreakdownText,
+                      officePaperwork > 0 && styles.patrimonioBreakdownPaperwork,
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    Papelería:{' '}
+                    <Text
+                      style={[
+                        styles.patrimonioBreakdownAmount,
+                        officePaperwork > 0 && styles.patrimonioBreakdownPaperworkAmount,
+                      ]}
+                    >
+                      {maskIfPrivate(officePaperwork)}
+                    </Text>
+                  </Text>
+                )}
                 <Text
                   style={[styles.patrimonioBreakdownText, officeDigital > 0 && styles.patrimonioBreakdownDigital]}
                   numberOfLines={1}
@@ -1041,7 +1254,20 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     );
   };
 
-  const renderCollectorDashboard = () => (
+  const renderCollectorDashboard = () => {
+    const collectedAmt = metrics.collectedToday || 0;
+    const collectorHeroFontSize =
+      Math.abs(collectedAmt) >= 100_000_000
+        ? 22
+        : Math.abs(collectedAmt) >= 10_000_000
+          ? 24
+          : Math.abs(collectedAmt) >= 1_000_000
+            ? 26
+            : 28;
+    const getTriColFontSize = (val: number) =>
+      Math.abs(val) >= 100_000_000 ? 11 : Math.abs(val) >= 10_000_000 ? 12 : Math.abs(val) >= 1_000_000 ? 13 : 14;
+
+    return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.scrollContent, { paddingBottom: dockScrollClearance }]}
@@ -1057,6 +1283,38 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       }
     >
       {/* 1. HERO FINTECH LIMPIO: COBRO PLENO DE LA RUTA */}
+      {cloudStatus.needsCloudAuth && (
+        <TouchableOpacity
+          onPress={openCloudReconnectModal}
+          activeOpacity={0.8}
+          style={{
+            marginHorizontal: 16,
+            marginBottom: 10,
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            backgroundColor: '#FFFBEB',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#F59E0B',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E' }}>
+              Sincronización con la nube en pausa
+            </Text>
+            <Text style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
+              Tus cobros locales están seguros aquí. Toca para reconectar y subirlos.
+            </Text>
+          </View>
+          <View style={{ backgroundColor: '#D97706', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Reconectar</Text>
+          </View>
+        </TouchableOpacity>
+      )}
       <View style={styles.cleanHeroCard}>
         <View style={styles.cleanHeroTopRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1077,11 +1335,15 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         </View>
 
         <View style={styles.cleanAmountRow}>
-          <Text style={styles.cleanMainAmount} numberOfLines={1} adjustsFontSizeToFit>
+          <Text
+            style={[styles.cleanMainAmount, { fontSize: collectorHeroFontSize }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
             {maskIfPrivate(metrics.collectedToday)}
           </Text>
-          <Text style={styles.cleanGoalText}>
-            de {maskIfPrivate(metrics.expectedDailyGoal)} • {metrics.visitedCustomersCount}/{metrics.expectedCustomersCount} cobrados
+          <Text style={styles.cleanGoalText} numberOfLines={1}>
+            Meta hoy: {maskIfPrivate(metrics.expectedDailyGoal)} • {metrics.visitedCustomersCount}/{metrics.expectedCustomersCount} cobrados
           </Text>
         </View>
 
@@ -1097,11 +1359,11 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         {onOpenDailyReport && (
           <View style={styles.cleanHeroFooterLink}>
             <TouchableOpacity
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+              style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', marginRight: 8 }}
               activeOpacity={0.7}
               onPress={onOpenDailyReport}
             >
-              <Text style={styles.cleanHeroFooterText}>
+              <Text style={styles.cleanHeroFooterText} numberOfLines={1}>
                 {metrics.salidasCount > 0 ? (
                   <>
                     Salidas: <Text style={{ fontWeight: '800', color: '#F8FAFC' }}>{maskIfPrivate(metrics.disbursedToday || 0)}</Text>
@@ -1112,7 +1374,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 )}
               </Text>
             </TouchableOpacity>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               {onOpenExpense && officeConfig.allowCollectorExpenses !== false && (
                 <TouchableOpacity
                   style={styles.heroExpensePill}
@@ -1145,35 +1407,52 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
           </View>
 
           <View style={styles.collectorCapitalGrid}>
-            <View style={styles.collectorCapitalItem}>
+            <View style={[styles.collectorCapitalItem, { minWidth: 0 }]}>
               <Text style={styles.collectorCapitalItemLabel}>Administrativo</Text>
-              <Text style={styles.collectorCapitalItemVal} numberOfLines={1} adjustsFontSizeToFit>
+              <Text
+                style={[styles.collectorCapitalItemVal, { fontSize: getTriColFontSize(metrics.totalAdministrativeCapital) }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
                 {maskIfPrivate(metrics.totalAdministrativeCapital)}
               </Text>
             </View>
 
             <View style={styles.collectorCapitalDivider} />
 
-            <View style={styles.collectorCapitalItem}>
+            <View style={[styles.collectorCapitalItem, { minWidth: 0 }]}>
               <Text style={styles.collectorCapitalItemLabel}>Cartera en Calle</Text>
-              <Text style={[styles.collectorCapitalItemVal, { color: '#0F766E' }]} numberOfLines={1} adjustsFontSizeToFit>
+              <Text
+                style={[styles.collectorCapitalItemVal, { color: '#0F766E', fontSize: getTriColFontSize(metrics.activeCapitalInStreet) }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
                 {maskIfPrivate(metrics.activeCapitalInStreet)}
               </Text>
             </View>
 
             <View style={styles.collectorCapitalDivider} />
 
-            <View style={styles.collectorCapitalItem}>
-              <Text style={styles.collectorCapitalItemLabel}>Base en Mano</Text>
-              <Text style={[styles.collectorCapitalItemVal, { color: '#1D4ED8' }]} numberOfLines={1} adjustsFontSizeToFit>
-                {maskIfPrivate(metrics.cashAvailableInHand)}
+            <View style={[styles.collectorCapitalItem, { minWidth: 0 }]}>
+              <Text style={styles.collectorCapitalItemLabel}>Base en Caja</Text>
+              <Text
+                style={[styles.collectorCapitalItemVal, { color: '#1D4ED8', fontSize: getTriColFontSize(metrics.cashAvailableInHand + (metrics.paperworkAvailableBalance || 0)) }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                {maskIfPrivate(metrics.cashAvailableInHand + (metrics.paperworkAvailableBalance || 0))}
               </Text>
             </View>
           </View>
 
           <View style={styles.collectorCapitalFooter}>
             <Text style={styles.collectorCapitalFooterText}>
-              Base disponible para prestar hoy: <Text style={{ fontWeight: '800', color: '#1D4ED8' }}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
+              Efectivo base: <Text style={{ fontWeight: '800', color: '#1D4ED8' }}>{maskIfPrivate(metrics.cashAvailableInHand)}</Text>
+              {(metrics.paperworkAvailableBalance || 0) > 0 && (
+                <Text style={{ fontWeight: '700', color: '#7C3AED' }}>
+                  {' · '}Papelería: {maskIfPrivate(metrics.paperworkAvailableBalance || 0)}
+                </Text>
+              )}
             </Text>
           </View>
           {Platform.OS === 'web' && (
@@ -1368,13 +1647,117 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
         </TouchableOpacity>
       )}
     </ScrollView>
+    );
+  };
+
+  const renderCloudReconnectModal = () => (
+    <Modal
+      visible={reconnectModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => !isReconnecting && setReconnectModalVisible(false)}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(15, 23, 42, 0.55)',
+          justifyContent: 'center',
+          paddingHorizontal: 20,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 18,
+            padding: 20,
+            borderWidth: 1,
+            borderColor: '#E2E8F0',
+            overflow: 'hidden',
+          }}
+        >
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', flex: 1, minWidth: 0 }}>
+              Reconectar Sincronización en la Nube
+            </Text>
+            <TouchableOpacity
+              disabled={isReconnecting}
+              onPress={() => setReconnectModalVisible(false)}
+              style={{ padding: 4 }}
+            >
+              <X size={18} color="#64748B" />
+            </TouchableOpacity>
+          </View>
+          <Text style={{ fontSize: 12, color: '#334155', lineHeight: 18, marginBottom: 12 }}>
+            Tus clientes, préstamos y cobros locales de este teléfono se conservarán intactos y se subirán primero a la nube para quedar al día con el PC de la oficina.
+          </Text>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>Usuario</Text>
+          <TextInput
+            value={reconnectUsername}
+            onChangeText={setReconnectUsername}
+            placeholder="Ej. admin-fbv"
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{
+              borderWidth: 1,
+              borderColor: '#CBD5E1',
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginBottom: 10,
+              color: '#0F172A',
+              backgroundColor: '#F8FAFC',
+            }}
+          />
+          <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>Contraseña</Text>
+          <TextInput
+            value={reconnectPassword}
+            onChangeText={setReconnectPassword}
+            placeholder="Tu contraseña"
+            secureTextEntry
+            autoCapitalize="none"
+            style={{
+              borderWidth: 1,
+              borderColor: '#CBD5E1',
+              borderRadius: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              marginBottom: 10,
+              color: '#0F172A',
+              backgroundColor: '#F8FAFC',
+            }}
+          />
+          {!!reconnectError && (
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626', marginBottom: 10 }}>
+              {reconnectError}
+            </Text>
+          )}
+          <TouchableOpacity
+            disabled={isReconnecting}
+            onPress={handleSubmitReconnect}
+            activeOpacity={0.8}
+            style={{
+              backgroundColor: isReconnecting ? '#94A3B8' : '#2563EB',
+              borderRadius: 12,
+              paddingVertical: 12,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
+              {isReconnecting ? 'Reconectando y subiendo datos...' : 'Reconectar y Subir Cambios'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 
   if (viewMode === 'DASHBOARD') {
-    if (isAdminMode) {
-      return renderAdminGeneralDashboard();
-    }
-    return renderCollectorDashboard();
+    return (
+      <>
+        {isAdminMode ? renderAdminGeneralDashboard() : renderCollectorDashboard()}
+        {renderCloudReconnectModal()}
+      </>
+    );
   }
 
   // MODO RUTA PURA: Enfocado 100% en la cobranza secuencial de la calle sin cuadros de métricas
@@ -2006,30 +2389,36 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
                 <Text style={styles.emptyTitle}>
                   {searchQuery || activeFilter !== 'TODOS'
                     ? 'Sin resultados para este filtro'
-                    : 'Carga Inicial del Taco (Cartulinas a Digital)'}
+                    : isAdminMode
+                      ? 'Carga Inicial del Taco (Cartulinas a Digital)'
+                      : 'Sin clientes asignados en esta ruta'}
                 </Text>
                 <Text style={[styles.emptyText, { textAlign: 'center', marginBottom: 16 }]}>
                   {searchQuery || activeFilter !== 'TODOS'
                     ? 'No se encontraron clientes para el filtro actual.'
-                    : 'Registra los clientes que están en el taco físico de esta ruta para generar el Administrativo, la Cartera en Calle, la Base Disponible y la Papelería.'}
+                    : isAdminMode
+                      ? 'Registra los clientes que están en el taco físico de esta ruta para generar el Administrativo, la Cartera en Calle, la Base Disponible y la Papelería.'
+                      : 'Solicita al Administrador de la oficina cargar la cartera de esta ruta para comenzar a cobrar.'}
                 </Text>
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: COLORS.primary,
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    borderRadius: 12,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}
-                  activeOpacity={0.8}
-                  onPress={onOpenNewLoan}
-                >
-                  <FilePlus2 size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-                  <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>
-                    Ingresar Clientes del Taco (Cartulina a Digital)
-                  </Text>
-                </TouchableOpacity>
+                {isAdminMode && (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: COLORS.primary,
+                      paddingHorizontal: 16,
+                      paddingVertical: 10,
+                      borderRadius: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                    }}
+                    activeOpacity={0.8}
+                    onPress={onOpenNewLoan}
+                  >
+                    <FilePlus2 size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>
+                      Ingresar Clientes del Taco (Cartulina a Digital)
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -2207,20 +2596,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   cleanAmountRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-    marginBottom: 4,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 3,
+    marginTop: 6,
+    marginBottom: 10,
   },
   cleanMainAmount: {
     color: '#FFFFFF',
     fontFamily: FONT_FAMILY,
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '900',
-    letterSpacing: -0.5,
+    letterSpacing: -0.6,
+    fontVariant: ['tabular-nums'],
+    width: '100%',
   },
   cleanGoalText: {
-    color: '#94A3B8',
+    color: '#CBD5E1',
     fontFamily: FONT_FAMILY,
     fontSize: 12,
     fontWeight: '600',
@@ -3835,6 +4227,7 @@ const styles = StyleSheet.create({
   },
   patrimonioCol: {
     flex: 1,
+    minWidth: 0,
   },
   patrimonioColLabel: {
     fontFamily: FONT_FAMILY,
@@ -3869,6 +4262,13 @@ const styles = StyleSheet.create({
   patrimonioBreakdownDigitalAmount: {
     fontWeight: '700',
     color: '#1D4ED8',
+  },
+  patrimonioBreakdownPaperwork: {
+    color: '#7C3AED',
+  },
+  patrimonioBreakdownPaperworkAmount: {
+    fontWeight: '700',
+    color: '#6D28D9',
   },
   patrimonioVerticalDivider: {
     width: 1,
