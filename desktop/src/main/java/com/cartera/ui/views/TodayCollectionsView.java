@@ -82,8 +82,14 @@ public class TodayCollectionsView extends VBox {
     private PaymentAllocationRepository paymentAllocationRepository;
     private RouteRepository routeRepository;
     private AppUserRepository appUserRepository;
+    private com.cartera.customers.application.FollowUpService followUpService;
     private Map<String, String> routeNameCache = new HashMap<>();
+    private Map<String, String> todayNonPaymentReasonByLoanId = new HashMap<>();
     private java.util.function.Consumer<String> onOpenCustomer360;
+
+    public void setFollowUpService(com.cartera.customers.application.FollowUpService followUpService) {
+        this.followUpService = followUpService;
+    }
 
     public void setOnOpenCustomer360(java.util.function.Consumer<String> onOpenCustomer360) {
         this.onOpenCustomer360 = onOpenCustomer360;
@@ -681,10 +687,15 @@ public class TodayCollectionsView extends VBox {
                     Label badge = new Label();
                     badge.setAlignment(Pos.CENTER);
                     String st = item.statusText() != null ? item.statusText().toUpperCase() : "";
+                    String nonPayReason = todayNonPaymentReasonByLoanId.get(item.loanId());
 
                     if (item.isPaidToday() && !st.contains("EN MORA")) {
                         badge.setText("PAGADO HOY");
                         badge.getStyleClass().setAll("badge-al-dia");
+                    } else if (nonPayReason != null && !item.isPaidToday()) {
+                        badge.setText((st.contains("EN MORA") || st.contains("VENCIDA")) ? "MORA • NO PAGÓ" : "NO PAGÓ HOY");
+                        badge.setStyle("-fx-background-color: #fff7ed; -fx-text-fill: #c2410c; -fx-border-color: #fdba74; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 3 8; -fx-font-size: 10.5px; -fx-font-weight: bold;");
+                        badge.setTooltip(new Tooltip("Visita sin pago hoy: " + nonPayReason));
                     } else if (st.contains("EN MORA") || st.contains("VENCIDA") || (item.overdueTotal() != null && item.overdueTotal().compareTo(BigDecimal.ZERO) > 0)) {
                         badge.setText("EN MORA");
                         badge.getStyleClass().setAll("badge-mora");
@@ -748,7 +759,7 @@ public class TodayCollectionsView extends VBox {
                         actBox.getChildren().addAll(btnExtra, btnReceipt, btnFicha, btnWhatsApp);
                     } else {
                         Button btnPay = new Button("Cobrar");
-                        btnPay.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 5 14; -fx-background-radius: 6; -fx-cursor: hand;");
+                        btnPay.setStyle("-fx-background-color: #059669; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 5 12; -fx-background-radius: 6; -fx-cursor: hand;");
                         btnPay.setOnAction(e -> {
                             PaymentDialog.show(primaryStage, item, paymentUseCase, systemSettingRepository, loanRepository, success -> {
                                 if (success) {
@@ -758,13 +769,21 @@ public class TodayCollectionsView extends VBox {
                             });
                         });
 
-                        actBox.getChildren().addAll(btnPay, btnFicha, btnWhatsApp);
+                        if (followUpService != null) {
+                            Button btnNoPago = new Button("No pagó");
+                            btnNoPago.setTooltip(new Tooltip("Registrar novedad de visita sin pago (sincroniza con Móvil)"));
+                            btnNoPago.setStyle("-fx-background-color: #fff7ed; -fx-text-fill: #c2410c; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 5 8; -fx-background-radius: 6; -fx-border-color: #fdba74; -fx-border-radius: 6; -fx-cursor: hand;");
+                            btnNoPago.setOnAction(e -> showQuickNonPaymentDialog(item));
+                            actBox.getChildren().addAll(btnPay, btnNoPago, btnFicha, btnWhatsApp);
+                        } else {
+                            actBox.getChildren().addAll(btnPay, btnFicha, btnWhatsApp);
+                        }
                     }
                     setGraphic(actBox);
                 }
             }
         });
-        colAction.setPrefWidth(250);
+        colAction.setPrefWidth(295);
 
         table.setRowFactory(tv -> {
             TableRow<CollectionItem> row = new TableRow<>();
@@ -905,6 +924,21 @@ public class TodayCollectionsView extends VBox {
         }
         routeNameCache = freshRoutes;
 
+        String todayIso = LocalDate.now().toString();
+        Map<String, String> freshNonPay = new HashMap<>();
+        if (auditLogRepository != null) {
+            for (var log : auditLogRepository.findAll()) {
+                if (!"NON_PAYMENT_VISIT".equals(log.getEntityType()) || log.getEntityId() == null) continue;
+                String newVal = log.getNewValue() != null ? log.getNewValue() : "";
+                String createdAt = log.getCreatedAt() != null ? log.getCreatedAt() : "";
+                boolean isToday = newVal.contains("Fecha=" + todayIso) || createdAt.startsWith(todayIso);
+                if (isToday) {
+                    freshNonPay.put(log.getEntityId(), log.getReason() != null ? log.getReason() : "No pagó");
+                }
+            }
+        }
+        todayNonPaymentReasonByLoanId = freshNonPay;
+
         var items = collectionsService.getTodayCollectionItems(LocalDate.now());
         masterData.setAll(items);
 
@@ -965,6 +999,59 @@ public class TodayCollectionsView extends VBox {
             return (parts[0].substring(0, 1) + parts[1].substring(0, 1)).toUpperCase();
         }
         return fullName.substring(0, Math.min(2, fullName.length())).toUpperCase();
+    }
+
+    private void showQuickNonPaymentDialog(CollectionItem item) {
+        if (followUpService == null || item == null || item.loanId() == null) return;
+        Dialog<ButtonType> dlg = new Dialog<>();
+        if (primaryStage != null) dlg.initOwner(primaryStage);
+        dlg.setTitle("Novedad de No Pago — " + item.fullName());
+        dlg.setHeaderText("Registrar visita sin pago (" + item.fullName() + ")");
+
+        ComboBox<String> cmbReason = new ComboBox<>();
+        cmbReason.getItems().addAll(
+                "No estaba en el domicilio",
+                "Negocio / local cerrado",
+                "Pidió pasar más tarde",
+                "Sin dinero hoy",
+                "Otro motivo"
+        );
+        cmbReason.setValue("No estaba en el domicilio");
+        cmbReason.setMaxWidth(Double.MAX_VALUE);
+
+        TextArea txtNotes = new TextArea();
+        txtNotes.setPromptText("Nota adicional (opcional, ej. regresa a las 5pm)...");
+        txtNotes.setPrefRowCount(3);
+        txtNotes.setWrapText(true);
+
+        VBox content = new VBox(8,
+                new Label("Motivo de la visita no efectiva:"),
+                cmbReason,
+                new Label("Observación adicional (opcional):"),
+                txtNotes
+        );
+        content.setPadding(new Insets(10, 4, 4, 4));
+        content.setPrefWidth(390);
+        dlg.getDialogPane().setContent(content);
+
+        ButtonType btnSave = new ButtonType("Guardar Novedad", ButtonBar.ButtonData.OK_DONE);
+        dlg.getDialogPane().getButtonTypes().setAll(ButtonType.CANCEL, btnSave);
+
+        dlg.showAndWait().ifPresent(choice -> {
+            if (choice == btnSave) {
+                try {
+                    String label = cmbReason.getValue() != null ? cmbReason.getValue().trim() : "No pagó";
+                    String extra = txtNotes.getText() != null ? txtNotes.getText().trim() : "";
+                    String formatted = extra.isBlank() ? label : (label + " — " + extra);
+                    String id = "npv-" + System.currentTimeMillis() + "-" + (int) (Math.random() * 1000);
+                    followUpService.visit(id, item.loanId(), formatted);
+                    refreshData();
+                    if (onDataUpdated != null) onDataUpdated.run();
+                } catch (Exception ex) {
+                    showAlert(Alert.AlertType.ERROR, "Error", "No se pudo registrar la novedad: " + ex.getMessage());
+                }
+            }
+        });
     }
 
     private void openMap(String address, String neighborhood) {

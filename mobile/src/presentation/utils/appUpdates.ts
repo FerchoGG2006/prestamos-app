@@ -3,7 +3,7 @@ import { Alert, Platform, Linking } from 'react-native';
 
 export const CURRENT_APP_VERSION = '1.2.18';
 export const CURRENT_VERSION_CODE = 20;
-export const WEB_BUILD_LABEL = 'web 1.2.27 (2026-11-25)';
+export const WEB_BUILD_LABEL = 'web 1.2.28 (2026-11-25)';
 
 export async function forceReloadWebBundle(): Promise<void> {
   if (Platform.OS !== 'web' || typeof window === 'undefined') {

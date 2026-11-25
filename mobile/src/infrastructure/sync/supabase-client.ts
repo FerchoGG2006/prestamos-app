@@ -11,6 +11,10 @@ import {
   Route,
   User,
   OfficeCompanyConfig,
+  PaymentPromise,
+  NonPaymentVisit,
+  PromiseStatus,
+  NonPaymentReason,
 } from '../../core/domain/types';
 
 export interface ImmutableFinancialEventRow {
@@ -172,10 +176,143 @@ class SupabaseSyncService {
     };
   }
 
+  private isTerminalPromiseStatus(status?: string): boolean {
+    const s = String(status || '').toUpperCase();
+    return s === 'CUMPLIDA' || s === 'CANCELADA' || s === 'INCUMPLIDA';
+  }
+
+  private normalizePromiseWire(raw: any): any | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = String(raw.id || '').trim();
+    const customerId = String(raw.customerId || '').trim();
+    const promisedDate = String(raw.promisedDate || '').trim();
+    if (!id || !customerId || !promisedDate) return null;
+    const amountRaw = typeof raw.amount === 'number' ? raw.amount : Number(raw.promisedAmount ?? raw.amount ?? 0);
+    const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.round(amountRaw)) : 0;
+    const statusRaw = String(raw.status || 'PENDIENTE').trim().toUpperCase();
+    const status: PromiseStatus =
+      statusRaw === 'CUMPLIDA' || statusRaw === 'CANCELADA' || statusRaw === 'INCUMPLIDA'
+        ? (statusRaw as PromiseStatus)
+        : 'PENDIENTE';
+    const createdAt = String(raw.createdAt || '').trim();
+    const updatedAt = String(raw.updatedAt || createdAt).trim();
+    return {
+      id,
+      customerId,
+      loanId: raw.loanId ? String(raw.loanId).trim() : null,
+      ...(raw.collectorId ? { collectorId: String(raw.collectorId).trim() } : {}),
+      amount,
+      promisedDate,
+      status,
+      notes: String(raw.notes || ''),
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  private mergePromisesSettings(remoteSettings: any, localPromises?: PaymentPromise[]): any[] {
+    const byId = new Map<string, any>();
+    const remoteArr = Array.isArray(remoteSettings?.desktopPromises) ? remoteSettings.desktopPromises : [];
+    for (const r of remoteArr) {
+      const norm = this.normalizePromiseWire(r);
+      if (norm) byId.set(norm.id, norm);
+    }
+    for (const lp of localPromises || []) {
+      const norm = this.normalizePromiseWire({
+        id: lp.id,
+        customerId: lp.customerId,
+        loanId: lp.loanId,
+        collectorId: lp.collectorId,
+        amount: lp.promisedAmount,
+        promisedDate: lp.promisedDate,
+        status: lp.status,
+        notes: lp.notes || '',
+        createdAt: lp.createdAt,
+        updatedAt: lp.updatedAt || lp.createdAt,
+      });
+      if (!norm) continue;
+      const prev = byId.get(norm.id);
+      if (!prev) {
+        byId.set(norm.id, norm);
+      } else {
+        const prevTerm = this.isTerminalPromiseStatus(prev.status);
+        const locTerm = this.isTerminalPromiseStatus(norm.status);
+        if (locTerm && !prevTerm) {
+          byId.set(norm.id, { ...prev, ...norm });
+        } else if (prevTerm && !locTerm) {
+          // Conservar estado terminal remoto (ej. resuelta en Desktop)
+          byId.set(norm.id, { ...norm, ...prev });
+        } else if ((norm.updatedAt || '') > (prev.updatedAt || '')) {
+          byId.set(norm.id, { ...prev, ...norm });
+        }
+      }
+    }
+    return Array.from(byId.values())
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || a.id.localeCompare(b.id))
+      .slice(0, 500);
+  }
+
+  private normalizeVisitWire(raw: any): any | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const id = String(raw.id || '').trim();
+    const customerId = String(raw.customerId || '').trim();
+    const loanId = String(raw.loanId || '').trim();
+    const createdAt = String(raw.createdAt || '').trim();
+    const date = String(raw.date || (createdAt.length >= 10 ? createdAt.slice(0, 10) : '')).trim();
+    if (!id || !customerId || !loanId || !date) return null;
+    const validReasons: NonPaymentReason[] = ['NO_ESTABA', 'LOCAL_CERRADO', 'PASAR_TARDE', 'SIN_DINERO', 'OTRO'];
+    const reasonRaw = String(raw.reason || 'OTRO').trim().toUpperCase() as NonPaymentReason;
+    const reason: NonPaymentReason = validReasons.includes(reasonRaw) ? reasonRaw : 'OTRO';
+    const reasonLabel = String(raw.reasonLabel || 'No pagó').trim();
+    return {
+      id,
+      customerId,
+      loanId,
+      reason,
+      reasonLabel,
+      notes: String(raw.notes || ''),
+      date,
+      createdAt,
+    };
+  }
+
+  private mergeNonPaymentVisitsSettings(remoteSettings: any, localVisits?: NonPaymentVisit[]): any[] {
+    const byId = new Map<string, any>();
+    const remoteArr = Array.isArray(remoteSettings?.nonPaymentVisits) ? remoteSettings.nonPaymentVisits : [];
+    for (const r of remoteArr) {
+      const norm = this.normalizeVisitWire(r);
+      if (norm) byId.set(norm.id, norm);
+    }
+    for (const lv of localVisits || []) {
+      const norm = this.normalizeVisitWire(lv);
+      if (!norm) continue;
+      const prev = byId.get(norm.id);
+      if (!prev || (norm.createdAt || '') > (prev.createdAt || '')) {
+        byId.set(norm.id, norm);
+      }
+    }
+    // Deduplicar por customerId::date conservando la visita más reciente
+    const byCustomerDate = new Map<string, any>();
+    for (const v of byId.values()) {
+      const key = `${v.customerId}::${v.date}`;
+      const existing = byCustomerDate.get(key);
+      if (!existing || (v.createdAt || '') >= (existing.createdAt || '')) {
+        byCustomerDate.set(key, v);
+      }
+    }
+    return Array.from(byCustomerDate.values())
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || a.id.localeCompare(b.id))
+      .slice(0, 500);
+  }
+
   /**
    * Sube o actualiza la oficina en la nube (Multi-Tenant)
    */
-  public async upsertOffice(officeId: string, config: OfficeCompanyConfig): Promise<boolean> {
+  public async upsertOffice(
+    officeId: string,
+    config: OfficeCompanyConfig,
+    followUp?: { promises?: PaymentPromise[]; nonPaymentVisits?: NonPaymentVisit[] }
+  ): Promise<boolean> {
     if (!this.client) return false;
     try {
       const { data: existingOffice } = await this.client
@@ -184,6 +321,8 @@ class SupabaseSyncService {
         .eq('id', officeId)
         .maybeSingle();
       const mergedOpening = this.mergeOpeningBaseSettings(existingOffice?.settings, config);
+      const mergedPromises = this.mergePromisesSettings(existingOffice?.settings, followUp?.promises);
+      const mergedVisits = this.mergeNonPaymentVisitsSettings(existingOffice?.settings, followUp?.nonPaymentVisits);
 
       const { error } = await this.client.from('offices').upsert({
         id: officeId,
@@ -200,11 +339,14 @@ class SupabaseSyncService {
           defaultInterestRate: config.defaultInterestRate,
           defaultInstallmentsCount: config.defaultInstallmentsCount,
           defaultFrequency: config.defaultFrequency,
+          excludeSundays: config.excludeSundays,
           paperworkFeeEnabled: config.paperworkFeeEnabled,
           paperworkRate: config.paperworkRate,
           routeInitialCashBase: config.routeInitialCashBase,
           dailyOpeningBaseByRouteDate: mergedOpening.dailyOpeningBaseByRouteDate,
           dailyOpeningBaseMeta: mergedOpening.dailyOpeningBaseMeta,
+          ...(mergedPromises.length > 0 ? { desktopPromises: mergedPromises } : {}),
+          ...(mergedVisits.length > 0 ? { nonPaymentVisits: mergedVisits } : {}),
         },
         updated_at: new Date().toISOString(),
       });

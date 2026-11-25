@@ -428,13 +428,14 @@ public class DesktopCloudSyncService {
         }
         long settingsHash = computeLocalSettingsHash();
         long promiseHash = computeLocalPromisesHash();
+        long visitsHash = computeLocalNonPaymentVisitsHash();
         return payCount + ":" + payAnnulled + ":" + loans.size() + ":" + loanHash
                 + ":" + customers.size() + ":" + custHash
                 + ":" + routes.size() + ":" + routeHash
                 + ":" + cashCount + ":" + cashSum.setScale(2, RoundingMode.HALF_UP).toPlainString()
                 + ":" + renewalCount + ":" + settlementCount
                 + ":" + totalPaidInst.toPlainString() + ":" + instHash
-                + ":" + settingsHash + ":" + promiseHash;
+                + ":" + settingsHash + ":" + promiseHash + ":" + visitsHash;
     }
 
     private long computeLocalSettingsHash() {
@@ -463,6 +464,17 @@ public class DesktopCloudSyncService {
         for (PaymentPromiseEntity pr : paymentPromiseRepository.findAll()) {
             BigDecimal amt = pr.getAmount() != null ? pr.getAmount().setScale(0, RoundingMode.HALF_UP) : BigDecimal.ZERO;
             h += Objects.hash(pr.getId(), pr.getLoanId(), pr.getPromisedDate(), pr.getStatus(), amt.toPlainString(), pr.getNotes());
+        }
+        return h;
+    }
+
+    private long computeLocalNonPaymentVisitsHash() {
+        if (auditLogRepository == null) return 0L;
+        long h = 0L;
+        for (AuditLogEntity a : auditLogRepository.findAll()) {
+            if ("NON_PAYMENT_VISIT".equals(a.getEntityType())) {
+                h += Objects.hash(a.getId(), a.getEntityId(), a.getReason(), a.getCreatedAt());
+            }
         }
         return h;
     }
@@ -1813,7 +1825,7 @@ public class DesktopCloudSyncService {
                 if (!validCustomerIds.contains(cid)) continue;
                 if (!lid.isBlank() && !validLoanIds.contains(lid)) continue;
 
-                BigDecimal amt = bd(pr.path("amount"));
+                BigDecimal amt = pr.has("amount") ? bd(pr.path("amount")) : bd(pr.path("promisedAmount"));
                 String status = pr.path("status").asText("PENDIENTE").trim().toUpperCase(Locale.ROOT);
                 String notes = pr.path("notes").asText("");
                 String createdAt = pr.path("createdAt").asText(now);
@@ -1824,13 +1836,80 @@ public class DesktopCloudSyncService {
                             id, cid, lid.isBlank() ? null : lid, amt, promisedDate, status, notes, createdAt
                     ));
                 } else if ("PENDIENTE".equalsIgnoreCase(existing.get().getStatus())
-                        && ("CUMPLIDA".equalsIgnoreCase(status) || "CANCELADA".equalsIgnoreCase(status))) {
+                        && isTerminalPromiseStatus(status)) {
                     PaymentPromiseEntity ent = existing.get();
                     ent.setStatus(status);
                     paymentPromiseRepository.save(ent);
                 }
             }
         }
+
+        // Visitas de "No pagó" sincronizadas de forma compacta en offices.settings.nonPaymentVisits
+        JsonNode remoteVisits = s.path("nonPaymentVisits");
+        if (auditLogRepository != null && remoteVisits.isArray()) {
+            Set<String> validUserIds = new HashSet<>();
+            for (AppUserEntity u : userRepository.findAll()) {
+                if (u.getId() != null) validUserIds.add(u.getId());
+            }
+            for (JsonNode v : remoteVisits) {
+                String id = v.path("id").asText("").trim();
+                String cid = v.path("customerId").asText("").trim();
+                String lid = v.path("loanId").asText("").trim();
+                if (id.isBlank() || lid.isBlank()) continue;
+                if (!validLoanIds.contains(lid)) continue;
+                if (!cid.isBlank() && !validCustomerIds.contains(cid)) continue;
+                if (auditLogRepository.findById(id).isPresent()) continue;
+
+                String reasonCode = v.path("reason").asText("OTRO").trim();
+                String reasonLabel = v.path("reasonLabel").asText("").trim();
+                String notes = v.path("notes").asText("").trim();
+                String formattedReason;
+                if (!reasonLabel.isBlank() && !notes.isBlank()) {
+                    formattedReason = reasonLabel + " — " + notes;
+                } else if (!reasonLabel.isBlank()) {
+                    formattedReason = reasonLabel;
+                } else if (!notes.isBlank()) {
+                    formattedReason = notes;
+                } else {
+                    formattedReason = reasonCode;
+                }
+
+                String visitDate = v.path("date").asText("").trim();
+                String createdAt = v.path("createdAt").asText("").trim();
+                if (createdAt.isBlank()) {
+                    createdAt = !visitDate.isBlank() ? (visitDate + "T12:00:00") : now;
+                }
+                if (visitDate.isBlank() && createdAt.length() >= 10) {
+                    visitDate = createdAt.substring(0, 10);
+                }
+                String actorId = v.path("collectorId").asText("").trim();
+                if (actorId.isBlank() || !validUserIds.contains(actorId)) {
+                    actorId = loanRepository.findById(lid)
+                            .map(LoanEntity::getCollectorId)
+                            .filter(validUserIds::contains)
+                            .orElse(null);
+                }
+                String newValue = "Cliente=" + cid + (visitDate.isBlank() ? "" : ";Fecha=" + visitDate);
+                auditLogRepository.save(new AuditLogEntity(
+                        id,
+                        actorId,
+                        "NON_PAYMENT_VISIT",
+                        lid,
+                        "VISITA_NO_PAGO",
+                        null,
+                        newValue,
+                        formattedReason,
+                        createdAt
+                ));
+            }
+        }
+    }
+
+    private static boolean isTerminalPromiseStatus(String status) {
+        if (status == null) return false;
+        return "CUMPLIDA".equalsIgnoreCase(status)
+                || "CANCELADA".equalsIgnoreCase(status)
+                || "INCUMPLIDA".equalsIgnoreCase(status);
     }
 
     private boolean hasSettingsDivergenceToPush(JsonNode remoteSettings) {
@@ -1964,30 +2043,170 @@ public class DesktopCloudSyncService {
             }
         }
 
-        // Sincronizar promesas locales en desktopPromises solo si existen promesas locales o remotas
+        // Fusión bidireccional sin pérdida de promesas en offices.settings.desktopPromises
         if (paymentPromiseRepository != null) {
+            Map<String, ObjectNode> mergedPromises = new LinkedHashMap<>();
+            JsonNode existingRemotePromises = out.path("desktopPromises");
+            if (existingRemotePromises.isArray()) {
+                for (JsonNode rp : existingRemotePromises) {
+                    if (rp.isObject()) {
+                        String rid = rp.path("id").asText("").trim();
+                        if (!rid.isBlank()) {
+                            mergedPromises.put(rid, (ObjectNode) rp.deepCopy());
+                        }
+                    }
+                }
+            }
+            boolean promisesMutated = false;
             List<PaymentPromiseEntity> localPromises = paymentPromiseRepository.findAll();
-            boolean remoteHadPromises = out.has("desktopPromises") && out.path("desktopPromises").isArray() && !out.path("desktopPromises").isEmpty();
-            if (!localPromises.isEmpty() || remoteHadPromises) {
-                localPromises.sort(Comparator.comparing(PaymentPromiseEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())));
-                int cap = Math.min(localPromises.size(), 500);
-                ArrayNode arr = out.putArray("desktopPromises");
-                for (int i = 0; i < cap; i++) {
-                    PaymentPromiseEntity pr = localPromises.get(i);
-                    ObjectNode node = arr.addObject();
+            for (PaymentPromiseEntity pr : localPromises) {
+                if (pr.getId() == null || pr.getId().isBlank()) continue;
+                String localStatus = pr.getStatus() == null ? "PENDIENTE" : pr.getStatus().trim().toUpperCase(Locale.ROOT);
+                ObjectNode existingNode = mergedPromises.get(pr.getId());
+                if (existingNode == null) {
+                    ObjectNode node = registryClient.createObjectNode();
                     node.put("id", pr.getId());
-                    node.put("customerId", pr.getCustomerId());
-                    if (pr.getLoanId() != null) node.put("loanId", pr.getLoanId()); else node.putNull("loanId");
+                    node.put("customerId", pr.getCustomerId() == null ? "" : pr.getCustomerId());
+                    if (pr.getLoanId() != null && !pr.getLoanId().isBlank()) {
+                        node.put("loanId", pr.getLoanId());
+                    } else {
+                        node.putNull("loanId");
+                    }
                     node.put("amount", pr.getAmount() != null ? pr.getAmount().setScale(0, RoundingMode.HALF_UP).longValue() : 0L);
                     node.put("promisedDate", pr.getPromisedDate() == null ? "" : pr.getPromisedDate());
-                    node.put("status", pr.getStatus() == null ? "PENDIENTE" : pr.getStatus());
+                    node.put("status", localStatus);
                     node.put("notes", pr.getNotes() == null ? "" : pr.getNotes());
-                    node.put("createdAt", pr.getCreatedAt() == null ? "" : pr.getCreatedAt());
+                    String created = pr.getCreatedAt() == null ? "" : pr.getCreatedAt();
+                    node.put("createdAt", created);
+                    node.put("updatedAt", created);
+                    mergedPromises.put(pr.getId(), node);
+                    promisesMutated = true;
+                } else {
+                    String remoteStatus = existingNode.path("status").asText("PENDIENTE").trim().toUpperCase(Locale.ROOT);
+                    if (isTerminalPromiseStatus(localStatus) && !isTerminalPromiseStatus(remoteStatus)) {
+                        existingNode.put("status", localStatus);
+                        existingNode.put("updatedAt", LocalDateTime.now().toString());
+                        promisesMutated = true;
+                    }
+                }
+            }
+            if (promisesMutated) {
+                List<ObjectNode> sorted = new ArrayList<>(mergedPromises.values());
+                sorted.sort(Comparator
+                        .comparing((ObjectNode n) -> n.path("createdAt").asText(""), Comparator.reverseOrder())
+                        .thenComparing(n -> n.path("id").asText("")));
+                int cap = Math.min(sorted.size(), 500);
+                ArrayNode arr = out.putArray("desktopPromises");
+                for (int i = 0; i < cap; i++) {
+                    arr.add(sorted.get(i));
+                }
+            }
+        }
+
+        // Fusión bidireccional sin pérdida de visitas de "No pagó" en offices.settings.nonPaymentVisits
+        if (auditLogRepository != null) {
+            Map<String, ObjectNode> mergedVisits = new LinkedHashMap<>();
+            JsonNode existingRemoteVisits = out.path("nonPaymentVisits");
+            if (existingRemoteVisits.isArray()) {
+                for (JsonNode rv : existingRemoteVisits) {
+                    if (rv.isObject()) {
+                        String vid = rv.path("id").asText("").trim();
+                        if (!vid.isBlank()) {
+                            mergedVisits.put(vid, (ObjectNode) rv.deepCopy());
+                        }
+                    }
+                }
+            }
+            boolean visitsMutated = false;
+            Map<String, LoanEntity> loansById = null;
+            for (AuditLogEntity a : auditLogRepository.findAll()) {
+                if (!"NON_PAYMENT_VISIT".equals(a.getEntityType())) continue;
+                if (a.getId() == null || a.getId().isBlank() || mergedVisits.containsKey(a.getId())) continue;
+                if (loansById == null) {
+                    loansById = new HashMap<>();
+                    for (LoanEntity l : loanRepository.findAll()) {
+                        loansById.put(l.getId(), l);
+                    }
+                }
+                String loanId = a.getEntityId() != null ? a.getEntityId().trim() : "";
+                LoanEntity loan = loansById.get(loanId);
+                String customerId = loan != null && loan.getCustomerId() != null
+                        ? loan.getCustomerId()
+                        : extractTagValue(a.getNewValue(), "Cliente=");
+                if (loanId.isBlank() || customerId.isBlank()) continue;
+
+                String createdAt = a.getCreatedAt() != null ? a.getCreatedAt().trim() : LocalDateTime.now().toString();
+                String visitDate = extractTagValue(a.getNewValue(), "Fecha=");
+                if (visitDate.isBlank() && createdAt.length() >= 10) {
+                    visitDate = createdAt.substring(0, 10);
+                }
+                String[] parsedReason = parseNonPaymentReason(a.getReason());
+                ObjectNode node = registryClient.createObjectNode();
+                node.put("id", a.getId());
+                node.put("customerId", customerId);
+                node.put("loanId", loanId);
+                if (a.getUserId() != null && !a.getUserId().isBlank()) {
+                    node.put("collectorId", a.getUserId());
+                } else if (loan != null && loan.getCollectorId() != null) {
+                    node.put("collectorId", loan.getCollectorId());
+                }
+                node.put("reason", parsedReason[0]);
+                node.put("reasonLabel", parsedReason[1]);
+                node.put("notes", parsedReason[2]);
+                node.put("date", visitDate);
+                node.put("createdAt", createdAt);
+                mergedVisits.put(a.getId(), node);
+                visitsMutated = true;
+            }
+            if (visitsMutated) {
+                List<ObjectNode> sorted = new ArrayList<>(mergedVisits.values());
+                sorted.sort(Comparator
+                        .comparing((ObjectNode n) -> n.path("createdAt").asText(""), Comparator.reverseOrder())
+                        .thenComparing(n -> n.path("id").asText("")));
+                int cap = Math.min(sorted.size(), 500);
+                ArrayNode arr = out.putArray("nonPaymentVisits");
+                for (int i = 0; i < cap; i++) {
+                    arr.add(sorted.get(i));
                 }
             }
         }
 
         return out;
+    }
+
+    private static String extractTagValue(String text, String prefix) {
+        if (text == null || prefix == null) return "";
+        int idx = text.indexOf(prefix);
+        if (idx < 0) return "";
+        int start = idx + prefix.length();
+        int end = text.indexOf(';', start);
+        return (end >= 0 ? text.substring(start, end) : text.substring(start)).trim();
+    }
+
+    private static String[] parseNonPaymentReason(String raw) {
+        String clean = raw == null ? "" : raw.trim();
+        if (clean.isBlank()) {
+            return new String[]{"OTRO", "No pagó", ""};
+        }
+        String label = clean;
+        String notes = "";
+        int sep = clean.indexOf(" — ");
+        if (sep > 0) {
+            label = clean.substring(0, sep).trim();
+            notes = clean.substring(sep + 3).trim();
+        }
+        String upper = label.toUpperCase(Locale.ROOT);
+        String code = "OTRO";
+        if (upper.contains("NO ESTABA") || upper.contains("DOMICILIO")) {
+            code = "NO_ESTABA";
+        } else if (upper.contains("CERRADO") || upper.contains("LOCAL")) {
+            code = "LOCAL_CERRADO";
+        } else if (upper.contains("TARDE") || upper.contains("DESPU")) {
+            code = "PASAR_TARDE";
+        } else if (upper.contains("SIN DINERO") || upper.contains("NO TIENE")) {
+            code = "SIN_DINERO";
+        }
+        return new String[]{code, label, notes};
     }
 
     private static int compareIsoTimestamps(String a, String b) {

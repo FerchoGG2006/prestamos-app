@@ -208,6 +208,7 @@ public final class CarteraApplication extends Application {
 
         var attachmentService = context.getBean(com.cartera.customers.application.AttachmentService.class);
         var followUpService = context.getBean(com.cartera.customers.application.FollowUpService.class);
+        todayCollectionsView.setFollowUpService(followUpService);
         var lifecycleService = context.getBean(com.cartera.customers.application.CustomerLifecycleService.class);
         var createCustomerWithLoanUseCase = context.getBean(com.cartera.customers.application.CreateCustomerWithLoanUseCase.class);
 

@@ -246,7 +246,88 @@ export const cloudSyncSafetyTests = (async () => {
     assert.equal(localStore.getLoans()[0].status, 'RENEWED');
     assert.equal(localStore.getInstallments()[0].paidAmount, 12000);
 
-    console.log('PASS cloud-sync-safety.test.ts (6/6 assertions)');
+    // 7. Sincronización bidireccional de Promesas y Visitas de No Pago (Desktop <-> Móvil en offices.settings)
+    await localStore.recordPromise({
+      customerId: 'c1',
+      loanId: 'loan-mono-1',
+      collectorId: 'usr-col-1',
+      promisedAmount: 25000,
+      promisedDate: '2026-11-26',
+      todayStr: '2026-11-25',
+      notes: 'Promesa móvil',
+    });
+    const localMobPromiseId = localStore.getPromises()[0].id;
+    await localStore.recordNonPaymentVisit({
+      customerId: 'c1',
+      loanId: 'loan-mono-1',
+      reason: 'LOCAL_CERRADO',
+      reasonLabel: 'Negocio / local cerrado',
+      notes: 'Cerrado a las 10am',
+      date: '2026-11-25',
+    });
+
+    await localStore.mergeCloudPortfolio({
+      office: {
+        settings: {
+          desktopPromises: [
+            {
+              id: 'prom-desktop-1',
+              customerId: 'c1',
+              loanId: 'loan-mono-1',
+              amount: 40000,
+              promisedDate: '2026-11-27',
+              status: 'PENDIENTE',
+              notes: 'Registrada desde computador',
+              createdAt: '2026-11-25T15:00:00',
+            },
+            {
+              id: localMobPromiseId,
+              customerId: 'c1',
+              loanId: 'loan-mono-1',
+              amount: 25000,
+              promisedDate: '2026-11-26',
+              status: 'CUMPLIDA',
+              notes: 'Promesa móvil',
+              createdAt: '2026-11-25T14:00:00',
+              updatedAt: '2026-11-25T16:00:00',
+            },
+          ],
+          nonPaymentVisits: [
+            {
+              id: 'npv-desktop-1',
+              customerId: 'c2',
+              loanId: 'loan-mono-2',
+              reason: 'NO_ESTABA',
+              reasonLabel: 'No estaba en el domicilio',
+              notes: 'Marcada en Desktop',
+              date: '2026-11-25',
+              createdAt: '2026-11-25T15:30:00Z',
+            },
+          ],
+        },
+      },
+      users: [],
+      routes: [],
+      customers: [],
+      loans: [],
+      installments: [],
+      payments: [],
+      renewals: [],
+      settlements: [],
+      cashMovements: [],
+    });
+
+    const syncedDesktopPromise = localStore.getPromises().find((p) => p.id === 'prom-desktop-1');
+    const resolvedLocalPromise = localStore.getPromises().find((p) => p.id === localMobPromiseId);
+    const syncedDesktopVisit = localStore.getNonPaymentVisits('2026-11-25').find((v) => v.id === 'npv-desktop-1');
+    const preservedMobileVisit = localStore.getNonPaymentVisits('2026-11-25').find((v) => v.customerId === 'c1');
+
+    assert.equal(syncedDesktopPromise?.promisedAmount, 40000, 'Promesa creada en Desktop debe llegar al Móvil');
+    assert.equal(resolvedLocalPromise?.status, 'CUMPLIDA', 'Estado terminal CUMPLIDA desde Desktop debe vencer a PENDIENTE');
+    assert.equal(syncedDesktopVisit?.reason, 'NO_ESTABA', 'Visita No Pago creada en Desktop debe llegar al Móvil');
+    assert.equal(preservedMobileVisit?.reason, 'LOCAL_CERRADO', 'Visita No Pago local del Móvil debe conservarse tras merge');
+
+    console.log('PASS cloud-sync-safety.test.ts (10/10 assertions)');
   } finally {
     restoreMocks();
   }

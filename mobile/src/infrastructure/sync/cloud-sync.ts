@@ -328,7 +328,10 @@ class CloudSyncEngine {
                 : 'La licencia de la oficina está suspendida.';
           } else {
             this.sessionInvalidDetected = false;
-            await supabaseSyncService.upsertOffice(immutableOfficeId, cfg);
+            await supabaseSyncService.upsertOffice(immutableOfficeId, cfg, {
+              promises: localStore.getPromises(),
+              nonPaymentVisits: localStore.getNonPaymentVisits(),
+            });
             await supabaseSyncService.syncUsersAndRoutes(
               immutableOfficeId,
               localStore.getUsers(),

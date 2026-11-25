@@ -26,6 +26,7 @@ import {
   DailyRouteMetrics,
   MobileSyncPackage,
   NonPaymentVisit,
+  NonPaymentReason,
   OfficeCompanyConfig,
 } from '../../core/domain/types';
 import {
@@ -974,9 +975,124 @@ class LocalStore {
         ...(typeof rSettings.paperworkRate === 'number'
           ? { paperworkRate: rSettings.paperworkRate }
           : {}),
+        ...(typeof rSettings.excludeSundays === 'boolean'
+          ? { excludeSundays: rSettings.excludeSundays }
+          : {}),
         dailyOpeningBaseByRouteDate: mergedMap,
         dailyOpeningBaseMeta: mergedMeta,
       };
+
+      // Sincronización bidireccional de Promesas de Pago (offices.settings.desktopPromises)
+      if (Array.isArray(rSettings.desktopPromises) && rSettings.desktopPromises.length > 0) {
+        const isTerminalPromise = (st?: string) =>
+          st === 'CUMPLIDA' || st === 'CANCELADA' || st === 'INCUMPLIDA';
+        const promiseMap = new Map<string, PaymentPromise>();
+        for (const lp of this.promises) promiseMap.set(lp.id, lp);
+        for (const raw of rSettings.desktopPromises) {
+          if (!raw || typeof raw !== 'object') continue;
+          const id = String(raw.id || '').trim();
+          const customerId = String(raw.customerId || '').trim();
+          const promisedDate = String(raw.promisedDate || '').trim();
+          if (!id || !customerId || !promisedDate) continue;
+          const loanId = String(raw.loanId || '').trim();
+          const matchedLoan =
+            remote.loans.find((l) => l.id === loanId) ||
+            this.loans.find((l) => l.id === loanId);
+          const statusRaw = String(raw.status || 'PENDIENTE').trim().toUpperCase();
+          const status: PaymentPromise['status'] =
+            statusRaw === 'CUMPLIDA' || statusRaw === 'CANCELADA' || statusRaw === 'INCUMPLIDA'
+              ? (statusRaw as PaymentPromise['status'])
+              : 'PENDIENTE';
+          const amountRaw =
+            typeof raw.amount === 'number'
+              ? raw.amount
+              : Number(raw.promisedAmount ?? raw.amount ?? 0);
+          const createdAt = String(raw.createdAt || promisedDate).trim();
+          const updatedAt = String(raw.updatedAt || createdAt).trim();
+          const remotePromise: PaymentPromise = {
+            id,
+            customerId,
+            loanId,
+            collectorId: String(raw.collectorId || matchedLoan?.collectorId || '').trim(),
+            promisedAmount: Number.isFinite(amountRaw) ? Math.max(0, Math.round(amountRaw)) : 0,
+            promisedDate,
+            status,
+            notes: raw.notes ? String(raw.notes) : undefined,
+            createdAt,
+            updatedAt,
+          };
+          const localPromise = promiseMap.get(id);
+          if (!localPromise) {
+            promiseMap.set(id, remotePromise);
+          } else {
+            const locTerm = isTerminalPromise(localPromise.status);
+            const remTerm = isTerminalPromise(remotePromise.status);
+            if (remTerm && !locTerm) {
+              promiseMap.set(id, { ...localPromise, ...remotePromise });
+            } else if (!locTerm && (remotePromise.updatedAt || '') > (localPromise.updatedAt || '')) {
+              promiseMap.set(id, { ...localPromise, ...remotePromise });
+            }
+          }
+        }
+        this.promises = Array.from(promiseMap.values())
+          .sort(
+            (a, b) =>
+              (b.createdAt || '').localeCompare(a.createdAt || '') || a.id.localeCompare(b.id)
+          )
+          .slice(0, 500);
+      }
+
+      // Sincronización bidireccional de Visitas de No Pago (offices.settings.nonPaymentVisits)
+      if (Array.isArray(rSettings.nonPaymentVisits) && rSettings.nonPaymentVisits.length > 0) {
+        const validReasons = new Set<NonPaymentReason>([
+          'NO_ESTABA',
+          'LOCAL_CERRADO',
+          'PASAR_TARDE',
+          'SIN_DINERO',
+          'OTRO',
+        ]);
+        const visitById = new Map<string, NonPaymentVisit>();
+        for (const lv of this.nonPaymentVisits) visitById.set(lv.id, lv);
+        for (const raw of rSettings.nonPaymentVisits) {
+          if (!raw || typeof raw !== 'object') continue;
+          const id = String(raw.id || '').trim();
+          const customerId = String(raw.customerId || '').trim();
+          const loanId = String(raw.loanId || '').trim();
+          const createdAt = String(raw.createdAt || '').trim();
+          const date = String(raw.date || (createdAt.length >= 10 ? createdAt.slice(0, 10) : '')).trim();
+          if (!id || !customerId || !loanId || !date) continue;
+          const reasonCandidate = String(raw.reason || 'OTRO').trim().toUpperCase() as NonPaymentReason;
+          const reason: NonPaymentReason = validReasons.has(reasonCandidate) ? reasonCandidate : 'OTRO';
+          const remoteVisit: NonPaymentVisit = {
+            id,
+            customerId,
+            loanId,
+            reason,
+            reasonLabel: String(raw.reasonLabel || 'No pagó').trim(),
+            notes: raw.notes ? String(raw.notes) : undefined,
+            date,
+            createdAt: createdAt || `${date}T12:00:00`,
+          };
+          const prev = visitById.get(id);
+          if (!prev || (remoteVisit.createdAt || '') > (prev.createdAt || '')) {
+            visitById.set(id, remoteVisit);
+          }
+        }
+        const byCustomerDate = new Map<string, NonPaymentVisit>();
+        for (const v of visitById.values()) {
+          const key = `${v.customerId}::${v.date}`;
+          const existing = byCustomerDate.get(key);
+          if (!existing || (v.createdAt || '') >= (existing.createdAt || '')) {
+            byCustomerDate.set(key, v);
+          }
+        }
+        this.nonPaymentVisits = Array.from(byCustomerDate.values())
+          .sort(
+            (a, b) =>
+              (b.createdAt || '').localeCompare(a.createdAt || '') || a.id.localeCompare(b.id)
+          )
+          .slice(0, 500);
+      }
     }
 
     const isTerminalLoanStatus = (status?: string): boolean =>
@@ -1064,6 +1180,8 @@ class LocalStore {
       safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify(this.renewals)),
       safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(this.settlements)),
       safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
+      safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
+      safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify(this.nonPaymentVisits)),
     ]);
     this.notify();
   }
@@ -2500,7 +2618,7 @@ class LocalStore {
           });
     const netDisbursed = isMigration ? 0 : Math.max(0, summary.principal - paperworkFee);
 
-    const loanId = `loan-${Date.now()}`;
+    const loanId = `loan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const loanNumber = `#00${101 + this.loans.length}`;
     const collectorId = params.collectorId || customer.assignedCollectorId || 'usr-col-1';
     const routeId = params.routeId || customer.routeId || 'route-norte';
@@ -2771,7 +2889,7 @@ class LocalStore {
       effectiveInstallmentCount
     );
 
-    const newLoanId = `loan-${Date.now()}`;
+    const newLoanId = `loan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newLoanNumber = `#00${101 + this.loans.length}`;
     const newInstallments = generateInstallments(
       newLoanId,
@@ -2879,8 +2997,9 @@ class LocalStore {
     notes?: string;
   }): Promise<PaymentPromise> {
     const dateStamp = params.todayStr || getLocalTodayStr();
+    const nowStamp = `${dateStamp}T${new Date().toTimeString().split(' ')[0]}`;
     const promise: PaymentPromise = {
-      id: `prom-${Date.now()}`,
+      id: `prom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       customerId: params.customerId,
       loanId: params.loanId,
       collectorId: params.collectorId,
@@ -2888,8 +3007,8 @@ class LocalStore {
       promisedDate: params.promisedDate,
       status: 'PENDIENTE',
       notes: params.notes,
-      createdAt: dateStamp,
-      updatedAt: dateStamp,
+      createdAt: nowStamp,
+      updatedAt: nowStamp,
     };
 
     this.promises.unshift(promise);

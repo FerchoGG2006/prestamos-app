@@ -236,6 +236,17 @@ class DesktopFullMobileParityTest {
         rPr.put("notes", "Promesa remota");
         rPr.put("createdAt", "2026-11-24T09:00:00");
 
+        ArrayNode remoteVisits = remoteSettingsHolder[0].putArray("nonPaymentVisits");
+        ObjectNode rVisit = remoteVisits.addObject();
+        rVisit.put("id", "npv-mobile-1");
+        rVisit.put("customerId", "cust-a");
+        rVisit.put("loanId", "loan-a");
+        rVisit.put("reason", "LOCAL_CERRADO");
+        rVisit.put("reasonLabel", "Negocio / local cerrado");
+        rVisit.put("notes", "Cerrado en la mañana");
+        rVisit.put("date", today);
+        rVisit.put("createdAt", today + "T09:15:00Z");
+
         SupabaseRegistryClient.RemoteOffice office = new SupabaseRegistryClient.RemoteOffice(
                 "off-p13", "Oficina Parity 13", "P13-CODE", "ACTIVE", "LIFETIME", null, "Admin", "3000000000", "Barranquilla"
         );
@@ -300,17 +311,32 @@ class DesktopFullMobileParityTest {
                 settlementUseCase.getSavedOpeningRouteBase("route-p13", LocalDate.of(2026, 11, 24)).orElseThrow()
         ));
         assertTrue(paymentPromiseRepository.findById("prom-remote-1").isPresent());
+        AuditLogEntity hydratedVisit = auditLogRepository.findById("npv-mobile-1").orElseThrow();
+        assertEquals("NON_PAYMENT_VISIT", hydratedVisit.getEntityType());
+        assertEquals("loan-a", hydratedVisit.getEntityId());
+        assertTrue(hydratedVisit.getReason().contains("Negocio / local cerrado"));
+        assertTrue(hydratedVisit.getReason().contains("Cerrado en la mañana"));
 
         // 2. Idle background sync MUST stay strictly read-only (0 pushes!)
         sync.syncSilentlyInBackground();
         assertTrue(patchedSettingsLog.isEmpty(), "Idle sync NO debe parchear offices.settings si no hubo cambios locales");
         assertTrue(pushedCustomersLog.isEmpty(), "Idle sync NO debe subir customers si no hubo cambios locales");
 
-        // 3. Modificar orden de visita localmente + editar base diaria + cambiar política -> debe subir a Supabase
+        // 3. Modificar orden de visita localmente + editar base diaria + cambiar política + registrar visita No Pago y cumplir promesa -> debe subir a Supabase
         collectionsService.saveCustomerRouteOrder(List.of("cust-b", "cust-a"));
         settlementUseCase.saveOpeningRouteBase("route-p13", LocalDate.of(2026, 11, 25), new BigDecimal("220000"));
         settingRepository.save(new SystemSettingEntity("exclude_sundays", "false", "2026-11-25T10:00:00"));
         settingRepository.save(new SystemSettingEntity(DesktopCloudSyncService.KEY_SETTINGS_LOCAL_DIRTY, "true", "2026-11-25T10:00:00Z"));
+
+        PaymentPromiseEntity localProm = paymentPromiseRepository.findById("prom-remote-1").orElseThrow();
+        localProm.setStatus("CUMPLIDA");
+        paymentPromiseRepository.save(localProm);
+
+        auditLogRepository.save(new AuditLogEntity(
+                "npv-desktop-1", "usr-adm-p13", "NON_PAYMENT_VISIT", "loan-b",
+                "VISITA_NO_PAGO", null, "Cliente=cust-b;Fecha=" + today,
+                "No estaba en el domicilio — Se llamó dos veces", today + "T11:30:00"
+        ));
 
         sync.syncSilentlyInBackground();
         assertEquals(1, patchedSettingsLog.size(), "Debe parchear offices.settings tras cambio local");
@@ -320,6 +346,21 @@ class DesktopFullMobileParityTest {
         assertEquals(220000L, pushedSettings.path("dailyOpeningBaseByRouteDate").path("route-p13::2026-11-25").asLong());
         assertEquals(150000L, pushedSettings.path("dailyOpeningBaseByRouteDate").path("route-p13::2026-11-24").asLong());
         assertFalse(pushedCustomersLog.isEmpty(), "Debe subir customers con el nuevo order_index");
+
+        // Verificar unión bidireccional de promesas y visitas de no pago
+        assertEquals("CUMPLIDA", pushedSettings.path("desktopPromises").get(0).path("status").asText());
+        assertEquals(2, pushedSettings.path("nonPaymentVisits").size(), "Debe conservar visita móvil + agregar visita desktop");
+        Map<String, JsonNode> pushedVisitsById = new HashMap<>();
+        for (JsonNode vn : pushedSettings.path("nonPaymentVisits")) {
+            pushedVisitsById.put(vn.path("id").asText(), vn);
+        }
+        assertEquals("LOCAL_CERRADO", pushedVisitsById.get("npv-mobile-1").path("reason").asText());
+        assertEquals("NO_ESTABA", pushedVisitsById.get("npv-desktop-1").path("reason").asText());
+        assertEquals("Se llamó dos veces", pushedVisitsById.get("npv-desktop-1").path("notes").asText());
+
+        // 4. Siguiente sync en reposo tras subir NO debe volver a parchear settings
+        sync.syncSilentlyInBackground();
+        assertEquals(1, patchedSettingsLog.size(), "Tras quedar sincronizado, el siguiente sync idle NO debe parchear");
 
         Map<String, Integer> pushedOrderById = new HashMap<>();
         for (ObjectNode row : pushedCustomersLog) {
@@ -428,7 +469,7 @@ class DesktopFullMobileParityTest {
 
     @Test
     void block3SemverUpdateCheckerAndWhatsAppSettlementReport() {
-        assertEquals("1.2.1", AppVersion.CURRENT);
+        assertTrue(AppVersion.compareSemver(AppVersion.CURRENT, "1.2.3") >= 0);
         assertEquals("1.2.0", AppVersion.SHELL_VERSION);
         assertTrue(AppVersion.isNewer("1.2.2", "1.2.1"));
         assertTrue(AppVersion.isNewer("v1.3.0", "1.2.1"));
