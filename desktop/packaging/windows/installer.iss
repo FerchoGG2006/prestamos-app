@@ -2,12 +2,14 @@
 ; Produce un instalador profesional autoejecutable .exe para oficinas
 
 #define MyAppName "Sistema de Cartera y Cobros"
-#define MyAppVersion "1.2.0"
+#ifndef MyAppVersion
+#define MyAppVersion "1.2.2"
+#endif
 #ifndef SourceDir
-#define SourceDir "..\..\..\dist\releases\1.2.0\SistemaCartera"
+#define SourceDir "..\..\..\dist\releases\1.2.2\SistemaCartera"
 #endif
 #ifndef ReleaseDir
-#define ReleaseDir "..\..\..\dist\releases\1.2.0"
+#define ReleaseDir "..\..\..\dist\releases\1.2.2"
 #endif
 #define MyAppPublisher "Cartera Software"
 #define MyAppExeName "SistemaCartera.exe"
@@ -22,7 +24,7 @@ DefaultDirName={autopf}\SistemaCartera
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir={#ReleaseDir}
-OutputBaseFilename=Instalador-SistemaCartera-v1.2.0
+OutputBaseFilename=Instalador-SistemaCartera-v{#MyAppVersion}
 SetupIconFile=..\..\src\main\resources\ui\app.ico
 Compression=lzma2/fast
 SolidCompression=yes
@@ -31,7 +33,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequiredOverridesAllowed=commandline dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
-VersionInfoVersion=1.2.0.0
+VersionInfoVersion={#MyAppVersion}.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription={#MyAppName} - Instalador Oficial
 VersionInfoProductName={#MyAppName}

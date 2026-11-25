@@ -13,7 +13,8 @@ version = '0.1.0-SNAPSHOT'
 if (providers.gradleProperty('isolatedBuildDir').isPresent()) {
     layout.buildDirectory.set(file(providers.gradleProperty('isolatedBuildDir').get()))
 }
-def releaseDir = file(providers.gradleProperty('distributionDir').getOrElse("${rootDir}/dist/releases/1.2.0"))
+def installerVersion = providers.gradleProperty('installerVersion').getOrElse('1.2.2')
+def releaseDir = file(providers.gradleProperty('distributionDir').getOrElse("${rootDir}/dist/releases/${installerVersion}"))
 def desktopShellVersion = '1.2.0'
 def otaBucketPublicBase = 'https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates'
 
@@ -190,14 +191,14 @@ tasks.register('packageWindows') {
                     '--icon', "${projectDir}/src/main/resources/ui/app.ico",
                     '--dest', releaseDir.absolutePath,
                     '--vendor', 'Cartera Software',
-                    '--app-version', desktopShellVersion,
+                    '--app-version', installerVersion,
                     '--add-modules', 'java.se,jdk.unsupported,jdk.crypto.ec,jdk.httpserver',
                     '--jlink-options', '--strip-debug --no-man-pages --no-header-files',
                     '--java-options', '-Dfile.encoding=UTF-8',
                     '--java-options', '-Duser.timezone=America/Bogota',
                     '--java-options', '-Duser.language=es',
                     '--java-options', '-Duser.country=CO',
-                    '--java-options', "-Dkredia.shell.version=${desktopShellVersion}"
+                    '--java-options', "-Dkredia.shell.version=${installerVersion}"
         }
 
         def appJarName = tasks.named('jar').get().archiveFileName.get()
@@ -234,7 +235,7 @@ tasks.register('packageZip', Zip) {
     description = 'Zips the standalone Windows package into a downloadable archive'
     group = 'distribution'
 
-    archiveFileName = "SistemaCartera-v${desktopShellVersion}-Windows-x64.zip"
+    archiveFileName = "SistemaCartera-v${installerVersion}-Windows-x64.zip"
     destinationDirectory = releaseDir
 
     from(new File(releaseDir,"SistemaCartera")) {
@@ -250,7 +251,7 @@ tasks.register('packageInstaller') {
     doLast {
         def isccPath = providers.gradleProperty('isccPath').getOrElse(System.getenv('ISCC_EXE') ?: "C:\\Users\\ASUS\\AppData\\Local\\Programs\\Antigravity IDE\\resources\\app\\node_modules\\innosetup\\bin\\ISCC.exe")
         exec {
-            commandLine isccPath, "/DSourceDir=${new File(releaseDir,'SistemaCartera').absolutePath}", "/DReleaseDir=${releaseDir.absolutePath}", "${projectDir}/packaging/windows/installer.iss"
+            commandLine isccPath, "/DMyAppVersion=${installerVersion}", "/DSourceDir=${new File(releaseDir,'SistemaCartera').absolutePath}", "/DReleaseDir=${releaseDir.absolutePath}", "${projectDir}/packaging/windows/installer.iss"
         }
     }
 }
