@@ -910,7 +910,6 @@ function MainApp({
     todayStr,
     effectiveRouteFilter === 'ALL' ? undefined : effectiveRouteFilter
   );
-  const todayPaymentsCount = routeScopedPayments.filter((p) => p.status === 'COMPLETED').length;
   const pendingPromisesCount = routeScopedPromises.filter((p) => p.status === 'PENDIENTE').length;
 
   // Alertas de cartera: Moras activas y promesas de pago para hoy o vencidas
@@ -1838,17 +1837,10 @@ function MainApp({
                   ]}
                   onPress={() => setOperationsMenuVisible(true)}
                 >
-                  <View style={{ position: 'relative' }}>
-                    <Calculator
-                      size={19}
-                      color={operationsMenuVisible || collectorTab === 'HISTORIAL' ? COLORS.primary : '#64748B'}
-                    />
-                    {todayPaymentsCount > 0 && (
-                      <View style={styles.dockBadgePill}>
-                        <Text style={styles.dockBadgeText}>{todayPaymentsCount}</Text>
-                      </View>
-                    )}
-                  </View>
+                  <Calculator
+                    size={19}
+                    color={operationsMenuVisible || collectorTab === 'HISTORIAL' ? COLORS.primary : '#64748B'}
+                  />
                   <Text
                     style={[
                       styles.dockNavText,
