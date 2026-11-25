@@ -6,5 +6,5 @@
   "version_code": 20,
   "apk_url": "https://expo.dev/artifacts/eas/LG-0cvK-f3SAzoDavexlI5t3P-UcbNqtShRLSOMJ8kU.apk",
   "force_update": false,
-  "release_notes": "• Nuevo logo oficial de Kredia en pantalla de inicio de sesión e ícono adaptativo/monocromático de Android.\n• Barra inferior limpia en Mi Cuadre (globo de notificaciones únicamente en Alertas)."
+  "release_notes": "• Nuevo logo oficial de Kredia en inicio de sesión e ícono de la app (adaptativo y monocromático).\n• Barra inferior limpia en Mi Cuadre (globo de aviso solo en Alertas).\n• Mejoras de estabilidad y sincronización con la nube."
 }
