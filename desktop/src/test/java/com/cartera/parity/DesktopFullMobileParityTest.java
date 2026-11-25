@@ -428,11 +428,32 @@ class DesktopFullMobileParityTest {
 
     @Test
     void block3SemverUpdateCheckerAndWhatsAppSettlementReport() {
-        assertEquals("1.2.0", AppVersion.CURRENT);
-        assertTrue(AppVersion.isNewer("1.2.1", "1.2.0"));
-        assertTrue(AppVersion.isNewer("v1.3.0", "1.2.0"));
-        assertFalse(AppVersion.isNewer("1.2.0", "1.2.0"));
-        assertFalse(AppVersion.isNewer("1.1.5", "1.2.0"));
+        assertEquals("1.2.1", AppVersion.CURRENT);
+        assertEquals("1.2.0", AppVersion.SHELL_VERSION);
+        assertTrue(AppVersion.isNewer("1.2.2", "1.2.1"));
+        assertTrue(AppVersion.isNewer("v1.3.0", "1.2.1"));
+        assertFalse(AppVersion.isNewer("1.2.1", "1.2.1"));
+        assertFalse(AppVersion.isNewer("1.2.0", "1.2.1"));
+
+        // Regresión PGRST102: normalizeBatchChunk garantiza llaves idénticas para PostgREST en lotes heterogéneos
+        SupabaseRegistryClient client = new SupabaseRegistryClient();
+        ObjectNode loanNormal = client.createObjectNode();
+        loanNormal.put("id", "l-1");
+        loanNormal.put("frequency", "DAILY");
+        ObjectNode loanFixedWithNotes = client.createObjectNode();
+        loanFixedWithNotes.put("id", "l-2");
+        loanFixedWithNotes.put("frequency", "FIXED_DATE");
+        loanFixedWithNotes.put("fixed_due_date", "2026-12-15");
+        loanFixedWithNotes.put("notes", "Migrado de cartulina física a digital");
+        var normalizedArr = client.normalizeBatchChunk(List.of(loanNormal, loanFixedWithNotes));
+        assertEquals(2, normalizedArr.size());
+        Set<String> keys0 = new HashSet<>();
+        Set<String> keys1 = new HashSet<>();
+        normalizedArr.get(0).fieldNames().forEachRemaining(keys0::add);
+        normalizedArr.get(1).fieldNames().forEachRemaining(keys1::add);
+        assertEquals(keys0, keys1, "Todas las filas de un lote PostgREST deben tener exactamente las mismas llaves");
+        assertTrue(normalizedArr.get(0).get("fixed_due_date").isNull());
+        assertTrue(normalizedArr.get(0).get("notes").isNull());
 
         DesktopUpdateChecker checker = new DesktopUpdateChecker("http://127.0.0.1:1/never-called");
         String manifestJson = """

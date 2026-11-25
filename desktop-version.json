@@ -1,10 +1,12 @@
 {
-  "latest_version": "1.2.0",
+  "latest_version": "1.2.1",
   "min_version": "1.2.0",
   "min_shell_version": "1.2.0",
   "release_date": "2026-11-25",
-  "core_jar_url": "https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates/kredia-app-1.2.0.jar",
+  "core_jar_url": "https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates/kredia-app-1.2.1.jar",
+  "core_jar_sha256": "3a47e21c191561094277d66b154ce687a5a1aa986685dd2620a55d17d4f00bfe",
+  "core_jar_size_bytes": 1649836,
   "installer_url": "https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates/Instalador-SistemaCartera-v1.2.0.exe",
   "download_url": "https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates/Instalador-SistemaCartera-v1.2.0.exe",
-  "release_notes": "v1.2.0 — Instalador base con motor de actualizaciones automáticas OTA (~1.6 MB) + paridad total con Móvil (sincronización bidireccional completa, Ficha 360°, cliente + cartulina física en 1 paso, campana de alertas, filtro de período y modo privacidad)."
+  "release_notes": "v1.2.1 — Correccion definitiva de sincronizacion de prestamos (PGRST102) y blindaje universal de lotes PostgREST."
 }

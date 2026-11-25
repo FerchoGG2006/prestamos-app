@@ -239,10 +239,8 @@ public class SupabaseRegistryClient {
 
         int chunkSize = 100;
         for (int i = 0; i < rows.size(); i += chunkSize) {
-            ArrayNode arr = objectMapper.createArrayNode();
-            for (int j = i; j < Math.min(i + chunkSize, rows.size()); j++) {
-                arr.add(rows.get(j));
-            }
+            List<ObjectNode> chunk = rows.subList(i, Math.min(i + chunkSize, rows.size()));
+            ArrayNode arr = normalizeBatchChunk(chunk);
             HttpRequest req = baseRequest(url, apiKey, activeSessionToken, null)
                     .header("Prefer", prefer)
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(arr)))
@@ -252,6 +250,32 @@ public class SupabaseRegistryClient {
                 throw new IllegalStateException("Error sincronizando " + table + " (" + resp.statusCode() + "): " + resp.body());
             }
         }
+    }
+
+    /**
+     * PostgREST exige que todos los objetos dentro de un mismo lote JSON tengan exactamente
+     * el mismo conjunto de llaves de primer nivel (de lo contrario devuelve HTTP 400 PGRST102).
+     * Esta normalización garantiza llaves uniformes insertando null cuando una fila omite una llave opcional.
+     */
+    public ArrayNode normalizeBatchChunk(List<ObjectNode> chunk) {
+        java.util.LinkedHashSet<String> allKeys = new java.util.LinkedHashSet<>();
+        for (ObjectNode row : chunk) {
+            if (row != null) {
+                row.fieldNames().forEachRemaining(allKeys::add);
+            }
+        }
+        ArrayNode arr = objectMapper.createArrayNode();
+        for (ObjectNode row : chunk) {
+            if (row == null) continue;
+            ObjectNode copy = row.deepCopy();
+            for (String key : allKeys) {
+                if (!copy.has(key)) {
+                    copy.putNull(key);
+                }
+            }
+            arr.add(copy);
+        }
+        return arr;
     }
 
     public ObjectNode createObjectNode() {

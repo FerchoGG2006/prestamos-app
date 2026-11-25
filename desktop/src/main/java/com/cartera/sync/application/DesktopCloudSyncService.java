@@ -1409,7 +1409,11 @@ public class DesktopCloudSyncService {
                     String fixedDate = (l.getEndDate() != null && !l.getEndDate().isBlank()) ? l.getEndDate() : l.getStartDate();
                     if (fixedDate != null && !fixedDate.isBlank()) {
                         n.put("fixed_due_date", fixedDate);
+                    } else {
+                        n.putNull("fixed_due_date");
                     }
+                } else {
+                    n.putNull("fixed_due_date");
                 }
                 n.put("start_date", l.getStartDate());
                 if (l.getEndDate() != null) n.put("end_date", l.getEndDate()); else n.putNull("end_date");
@@ -1420,6 +1424,8 @@ public class DesktopCloudSyncService {
                     n.put("notes", existingNotes);
                 } else if ("MIGRACION".equalsIgnoreCase(l.getOperationType())) {
                     n.put("notes", "Migrado de cartulina física a digital");
+                } else {
+                    n.put("notes", "");
                 }
                 n.put("updated_at", nowIso);
                 loanRows.add(n);
