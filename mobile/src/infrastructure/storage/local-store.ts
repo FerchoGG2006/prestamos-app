@@ -186,6 +186,7 @@ class LocalStore {
 
   private isInitialized = false;
   private listeners: Array<() => void> = [];
+  private localMutationListeners: Array<() => void> = [];
 
   private rebuildIndexes(): void {
     this.metricsCache.clear();
@@ -227,9 +228,27 @@ class LocalStore {
     };
   }
 
-  private notify() {
+  /**
+   * Suscripción exclusiva para mutaciones locales (clientes, créditos, cobros, gastos, rutas)
+   * excluyendo fusiones entrantes de nube y metadatos de sincronización para evitar bucles.
+   */
+  public subscribeLocalMutations(listener: () => void): () => void {
+    this.localMutationListeners.push(listener);
+    return () => {
+      this.localMutationListeners = this.localMutationListeners.filter((l) => l !== listener);
+    };
+  }
+
+  private notify(emitLocalMutation: boolean = true) {
     this.rebuildIndexes();
     this.listeners.forEach((l) => l());
+    if (emitLocalMutation) {
+      this.localMutationListeners.forEach((l) => {
+        try {
+          l();
+        } catch {}
+      });
+    }
   }
 
   public async initialize(): Promise<void> {
@@ -305,9 +324,9 @@ class LocalStore {
       } else {
         this.activeSession = {
           id: `ses-${getLocalTodayStr()}`,
-          routeId: 'route-norte',
+          routeId: this.routes[0]?.id || '',
           date: getLocalTodayStr(),
-          collectorId: 'usr-col-1',
+          collectorId: this.routes[0]?.collectorId || this.users.find((u) => u.role === 'COBRADOR')?.id || '',
           status: 'OPEN',
           startTime: '07:30:00',
           expectedCollection: 0,
@@ -649,10 +668,10 @@ class LocalStore {
 
     const routeMetrics = this.getDailyRouteMetrics(nextDate);
     this.activeSession = {
-      id: `session-${nextDate}-${this.routes[0]?.id || 'norte'}`,
+      id: `session-${nextDate}-${this.routes[0]?.id || 'ruta'}`,
       date: nextDate,
-      routeId: this.routes[0]?.id || 'route-norte',
-      collectorId: 'usr-col-1',
+      routeId: this.routes[0]?.id || '',
+      collectorId: this.routes[0]?.collectorId || this.users.find((u) => u.role === 'COBRADOR')?.id || '',
       status: 'OPEN',
       startTime: '07:00:00',
       expectedCollection: routeMetrics.expectedDailyGoal,
@@ -762,9 +781,9 @@ class LocalStore {
       const today = getLocalTodayStr();
       this.activeSession = {
         id: `ses-${today}`,
-        routeId: this.routes[0]?.id || 'route-norte',
+        routeId: this.routes[0]?.id || '',
         date: today,
-        collectorId: this.users.find((u) => u.role === 'COBRADOR')?.id || 'usr-col-1',
+        collectorId: this.routes[0]?.collectorId || this.users.find((u) => u.role === 'COBRADOR')?.id || '',
         status: 'OPEN',
         startTime: '07:30:00',
         expectedCollection: 0,
@@ -788,7 +807,13 @@ class LocalStore {
   public async updateOfficeConfig(config: Partial<OfficeCompanyConfig>): Promise<OfficeCompanyConfig> {
     this.officeConfig = { ...this.officeConfig, ...config };
     await safeStorage.setItem(STORAGE_KEYS.OFFICE_CONFIG, JSON.stringify(this.officeConfig));
-    this.notify();
+    const keys = Object.keys(config);
+    const isSyncMetadataOnly =
+      keys.length > 0 &&
+      keys.every((k) =>
+        ['lastSyncedAt', 'cloudSessionToken', 'licenseStatus', 'licensePlan', 'licenseExpiresAt'].includes(k)
+      );
+    this.notify(!isSyncMetadataOnly);
     return { ...this.officeConfig };
   }
 
@@ -906,7 +931,7 @@ class LocalStore {
         ? safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession))
         : safeStorage.removeItem(STORAGE_KEYS.SESSION),
     ]);
-    this.notify();
+    this.notify(false);
   }
 
   public async mergeCloudPortfolio(remote: {
@@ -1107,7 +1132,9 @@ class LocalStore {
     );
 
     if (remote.users.length > 0) this.users = mergeById(this.users, remote.users);
-    if (remote.routes.length > 0) this.routes = mergeById(this.routes, remote.routes);
+    if (remote.routes.length > 0) {
+      this.routes = [...remote.routes];
+    }
     if (remote.customers.length > 0) this.customers = mergeById(this.customers, remote.customers);
     if (remote.loans.length > 0) {
       const loanMap = new Map<string, Loan>();
@@ -1144,6 +1171,31 @@ class LocalStore {
     if (remote.renewals.length > 0) this.renewals = mergeById(this.renewals, remote.renewals);
     if (remote.settlements.length > 0) this.settlements = mergeById(this.settlements, remote.settlements);
     if (remote.cashMovements.length > 0) this.cashMovements = mergeById(this.cashMovements, remote.cashMovements);
+
+    // Invariante de fuente única de verdad de rutas sin pérdida de datos:
+    // tras fusionar todas las colecciones, cualquier registro cuyo routeId haya sido podado
+    // (o haya quedado vacío/huérfano) se reasigna de forma transparente a la primera ruta activa del servidor.
+    if (remote.routes.length > 0) {
+      const validRouteIds = new Set(this.routes.map((r) => r.id));
+      const fallbackRouteId = this.routes[0]?.id || '';
+      if (fallbackRouteId) {
+        this.customers = this.customers.map((c) =>
+          !c.routeId || !validRouteIds.has(c.routeId) ? { ...c, routeId: fallbackRouteId } : c
+        );
+        this.loans = this.loans.map((l) =>
+          !l.routeId || !validRouteIds.has(l.routeId) ? { ...l, routeId: fallbackRouteId } : l
+        );
+        this.cashMovements = this.cashMovements.map((cm) =>
+          !cm.routeId || !validRouteIds.has(cm.routeId) ? { ...cm, routeId: fallbackRouteId } : cm
+        );
+        this.settlements = this.settlements.map((s) =>
+          !s.routeId || !validRouteIds.has(s.routeId) ? { ...s, routeId: fallbackRouteId } : s
+        );
+        if (this.activeSession && (!this.activeSession.routeId || !validRouteIds.has(this.activeSession.routeId))) {
+          this.activeSession = { ...this.activeSession, routeId: fallbackRouteId };
+        }
+      }
+    }
 
     // Invariante relacional: todo crédito referenciado en renewals.previousLoanId SIEMPRE permanece RENEWED
     // con todas sus cuotas liquidadas (pendingAmount = 0), evitando regresiones por sincronización antigua.
@@ -1184,8 +1236,11 @@ class LocalStore {
       safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
       safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
       safeStorage.setItem(STORAGE_KEYS.NON_PAYMENT_VISITS, JSON.stringify(this.nonPaymentVisits)),
+      ...(this.activeSession
+        ? [safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession))]
+        : []),
     ]);
-    this.notify();
+    this.notify(false);
   }
 
   public async saveUsersAndRoutes(users: User[], routes: Route[]): Promise<void> {
@@ -2546,9 +2601,13 @@ class LocalStore {
       throw new Error(`Ya existe un cliente registrado con la cédula ${params.documentNumber}`);
     }
 
-    const effectiveRouteId = params.routeId || 'route-norte';
+    const effectiveRouteId = params.routeId || this.routes[0]?.id || '';
     const routeObj = this.routes.find((r) => r.id === effectiveRouteId);
-    const effectiveCollectorId = params.collectorId || routeObj?.collectorId || 'usr-col-1';
+    const effectiveCollectorId =
+      params.collectorId ||
+      routeObj?.collectorId ||
+      this.users.find((u) => u.role === 'COBRADOR')?.id ||
+      '';
     const existingRouteCustomersCount = this.customers.filter((c) => c.routeId === effectiveRouteId).length;
     const effectiveOrderIndex =
       params.orderIndex !== undefined && params.orderIndex > 0
@@ -2778,8 +2837,12 @@ class LocalStore {
 
     const loanId = `loan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const loanNumber = `#00${101 + this.loans.length}`;
-    const collectorId = params.collectorId || customer.assignedCollectorId || 'usr-col-1';
-    const routeId = params.routeId || customer.routeId || 'route-norte';
+    const routeId = params.routeId || customer.routeId || this.routes[0]?.id || '';
+    const collectorId =
+      params.collectorId ||
+      customer.assignedCollectorId ||
+      this.routes.find((r) => r.id === routeId)?.collectorId ||
+      '';
 
     // Si es migración de cartulina física y no enviaron fecha de inicio explícita,
     // calculamos el inicio hacia atrás en días hábiles (saltando domingos si excludeSundays está activo)
@@ -3205,7 +3268,7 @@ class LocalStore {
     }
 
     const session = this.activeSession;
-    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || 'route-norte';
+    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || '';
     const movement: CashMovement = {
       id: `csm-rec-${Date.now()}`,
       routeId: targetRouteId,
@@ -3243,7 +3306,7 @@ class LocalStore {
     const effectiveRouteId =
       params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined;
     const session = this.activeSession;
-    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || 'route-norte';
+    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || '';
 
     const movement: CashMovement = {
       id: "csm-inj-" + Date.now(),
@@ -3284,7 +3347,7 @@ class LocalStore {
     const effectiveRouteId =
       params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined;
     const session = this.activeSession;
-    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || 'route-norte';
+    const targetRouteId = effectiveRouteId || session?.routeId || this.routes[0]?.id || '';
 
     const movement: CashMovement = {
       id: "csm-pap-" + Date.now(),
@@ -3596,7 +3659,7 @@ class LocalStore {
     this.renewals.forEach((r) => {
       const assocLoan = this.loans.find((l) => l.id === r.newLoanId);
       if (assocLoan && assocLoan.status === 'CANCELLED') return;
-      const rRouteId = assocLoan ? assocLoan.routeId : (this.routes[0] ? this.routes[0].id : 'route-norte');
+      const rRouteId = assocLoan ? assocLoan.routeId : (this.routes[0] ? this.routes[0].id : '');
       if (isFilter && rRouteId !== routeId) return;
       if (r.paperworkDeducted > 0) {
         const cust = this.customers.find((c) => c.id === r.customerId);
@@ -3665,7 +3728,7 @@ class LocalStore {
     const session = this.getActiveSession();
     const effectiveRouteFilter =
       params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined;
-    const targetRouteId = effectiveRouteFilter || session.routeId || this.routes[0]?.id || 'route-norte';
+    const targetRouteId = effectiveRouteFilter || session.routeId || this.routes[0]?.id || '';
     const targetRouteObj = this.routes.find((r) => r.id === targetRouteId);
     const targetCollectorId =
       params.collectorId || targetRouteObj?.collectorId || session.collectorId || 'usr-col-1';
@@ -3717,7 +3780,7 @@ class LocalStore {
     const isMigratedCardLoan = (l: Loan) =>
       Boolean(l.notes?.startsWith('Migrado de cartulina física'));
     const scopedLoans = effectiveRouteFilter
-      ? this.loans.filter((l) => (l.routeId || 'route-norte') === effectiveRouteFilter)
+      ? this.loans.filter((l) => (l.routeId || this.routes[0]?.id || '') === effectiveRouteFilter)
       : this.loans;
     const scopedLoanIds = new Set(scopedLoans.map((l) => l.id));
 
@@ -3896,7 +3959,7 @@ class LocalStore {
       (params.routeId && params.routeId !== 'ALL' ? params.routeId : undefined) ||
       this.activeSession?.routeId ||
       this.routes[0]?.id ||
-      'route-norte';
+      '';
     const routeObj = this.routes.find((r) => r.id === routeId);
     const collectorId =
       params.collectorId || routeObj?.collectorId || this.activeSession?.collectorId || 'usr-col-1';
@@ -3924,8 +3987,8 @@ class LocalStore {
    */
   public exportMobileSyncPackage(todayStr: string): MobileSyncPackage {
     const metrics = this.getDailyRouteMetrics(todayStr);
-    const routeId = this.activeSession?.routeId || 'route-norte';
-    const collectorId = this.activeSession?.collectorId || 'usr-col-1';
+    const routeId = this.activeSession?.routeId || this.routes[0]?.id || '';
+    const collectorId = this.activeSession?.collectorId || this.routes[0]?.collectorId || '';
 
     return {
       packageVersion: '1.0.0',
@@ -5088,9 +5151,9 @@ class LocalStore {
     this.nonPaymentVisits = [];
     this.activeSession = {
       id: `ses-${getLocalTodayStr()}`,
-      routeId: 'route-norte',
+      routeId: this.routes[0]?.id || '',
       date: getLocalTodayStr(),
-      collectorId: 'usr-col-1',
+      collectorId: this.routes[0]?.collectorId || this.users.find((u) => u.role === 'COBRADOR')?.id || '',
       status: 'OPEN',
       startTime: '07:30:00',
       expectedCollection: 0,

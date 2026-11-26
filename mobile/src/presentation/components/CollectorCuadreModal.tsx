@@ -117,9 +117,9 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
   // Sesión garantizada: si viene nula o no sincronizada, se construye una activa con los datos de contexto
   const activeSession: CollectionSession = session || {
     id: `ses-${todayStr}`,
-    routeId: routeId || 'route-norte',
+    routeId: routeId || localStore.getRoutes()[0]?.id || '',
     date: todayStr,
-    collectorId: collectorId || 'usr-col-1',
+    collectorId: collectorId || localStore.getRoutes()[0]?.collectorId || '',
     status: 'OPEN',
     startTime: '07:30:00',
     expectedCollection: metrics?.expectedDailyGoal || 0,

@@ -27,7 +27,7 @@ import { formatCOP, getFrequencyLabel, getInitials } from '../../../core/config/
 import { calculateDelinquencyMetrics } from '../../../core/domain/calculator';
 import { COLORS, TYPOGRAPHY, FONT_FAMILY } from '../../theme/colors';
 import { localStore, safeStorage } from '../../../infrastructure/storage/local-store';
-import { cloudSyncEngine, CloudSyncStatusSnapshot } from '../../../infrastructure/sync/cloud-sync';
+import { cloudSyncEngine } from '../../../infrastructure/sync/cloud-sync';
 import {
   formatAccountStatementReminder,
   openWhatsAppReceipt,
@@ -178,101 +178,10 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   const [summaryPeriodFilter, setSummaryPeriodFilter] = useState<'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'ALL'>('TODAY');
   const [showSummaryFilterModal, setShowSummaryFilterModal] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatusSnapshot>(() => cloudSyncEngine.getStatus());
-  const [reconnectModalVisible, setReconnectModalVisible] = useState<boolean>(false);
-  const [reconnectUsername, setReconnectUsername] = useState<string>('');
-  const [reconnectPassword, setReconnectPassword] = useState<string>('');
-  const [showReconnectPassword, setShowReconnectPassword] = useState<boolean>(false);
-  const [reconnectError, setReconnectError] = useState<string>('');
-  const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
-
-  useEffect(() => {
-    setCloudStatus(cloudSyncEngine.getStatus());
-    const unsub = cloudSyncEngine.subscribe(() => {
-      setCloudStatus(cloudSyncEngine.getStatus());
-    });
-    return () => unsub();
-  }, []);
-
-  const openCloudReconnectModal = React.useCallback(() => {
-    const loggedUser = localStore.getUsers().find((u) => u.id === currentUserId);
-    if (loggedUser?.username) {
-      setReconnectUsername(loggedUser.username);
-    }
-    setReconnectPassword('');
-    setShowReconnectPassword(false);
-    setReconnectError('');
-    setReconnectModalVisible(true);
-  }, [currentUserId]);
-
-  const handleCloudStatusTap = React.useCallback(async () => {
-    const current = cloudSyncEngine.getStatus();
-    if (current.needsCloudAuth) {
-      openCloudReconnectModal();
-      return;
-    }
-    const ok = await cloudSyncEngine.syncBidirectional();
-    const after = cloudSyncEngine.getStatus();
-    if (after.needsCloudAuth) {
-      openCloudReconnectModal();
-      return;
-    }
-    if (Platform.OS === 'web') {
-      window.alert(after.message);
-    } else {
-      Alert.alert(ok ? 'Nube Sincronizada' : 'Estado de Sincronización', after.message);
-    }
-  }, [openCloudReconnectModal]);
-
-  const handleSubmitReconnect = React.useCallback(async () => {
-    const cleanU = reconnectUsername.trim().toLowerCase();
-    const cleanP = reconnectPassword.trim();
-    if (!cleanU || !cleanP) {
-      setReconnectError('Ingresa tu usuario y contraseña para reconectar la nube.');
-      return;
-    }
-    setIsReconnecting(true);
-    setReconnectError('');
-    try {
-      const res = await cloudSyncEngine.reconnectCloudSession(cleanU, cleanP);
-      if (res.ok) {
-        // Actualizar credenciales recordadas usando el usuario final vigente en local/nube tras sincronizar
-        const finalUsers = localStore.getUsers();
-        const syncedSelf =
-          finalUsers.find((u) => u.id === currentUserId) ||
-          finalUsers.find((u) => (u.username || '').toLowerCase() === cleanU);
-        const finalUsername = (syncedSelf?.username || cleanU).trim().toLowerCase();
-        await safeStorage.setItem(
-          '@prestamos_remembered_credentials',
-          JSON.stringify({ username: finalUsername, password: cleanP })
-        );
-        setReconnectModalVisible(false);
-        setReconnectPassword('');
-        setShowReconnectPassword(false);
-        if (Platform.OS === 'web') {
-          window.alert('¡Sincronización reactivada! Tus datos locales se subieron correctamente a la nube.');
-        } else {
-          Alert.alert('¡Sincronización Reactivada!', 'Tus datos locales se subieron correctamente a la nube.');
-        }
-      } else {
-        setReconnectError(res.message || 'No se pudo reconectar con la nube.');
-      }
-    } catch (e: any) {
-      setReconnectError(e?.message || 'Error al reconectar con la nube.');
-    } finally {
-      setIsReconnecting(false);
-    }
-  }, [reconnectUsername, reconnectPassword]);
 
   const handleRefresh = React.useCallback(async () => {
     setRefreshing(true);
     try {
-      const st = cloudSyncEngine.getStatus();
-      if (st.needsCloudAuth) {
-        setRefreshing(false);
-        openCloudReconnectModal();
-        return;
-      }
       await cloudSyncEngine.syncBidirectional().catch(() => {});
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         await forceReloadWebBundle();
@@ -280,7 +189,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       }
     } catch {}
     setTimeout(() => setRefreshing(false), 500);
-  }, [openCloudReconnectModal]);
+  }, []);
 
   useEffect(() => {
     setVisibleLimit(35);
@@ -790,117 +699,13 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               <Text style={styles.adminRouteFilterText}>Todas las rutas</Text>
             </View>
           )}
-
-          {(() => {
-            const isSyncing = cloudStatus.status === 'SYNCING';
-            const needsAuth = cloudStatus.needsCloudAuth;
-            const hasIssue = cloudStatus.status === 'ERROR' || cloudStatus.status === 'OFFLINE_QUEUED';
-            const dotColor = needsAuth
-              ? '#DC2626'
-              : hasIssue
-                ? '#D97706'
-                : isSyncing
-                  ? '#2563EB'
-                  : '#16A34A';
-            const pillBg = needsAuth
-              ? '#FEF2F2'
-              : hasIssue
-                ? '#FFFBEB'
-                : isSyncing
-                  ? '#EFF6FF'
-                  : '#F0FDF4';
-            const pillBorder = needsAuth
-              ? '#FECACA'
-              : hasIssue
-                ? '#FDE68A'
-                : isSyncing
-                  ? '#BFDBFE'
-                  : '#BBF7D0';
-            const textColor = needsAuth
-              ? '#B91C1C'
-              : hasIssue
-                ? '#B45309'
-                : isSyncing
-                  ? '#1D4ED8'
-                  : '#15803D';
-            const lastTime = cloudStatus.lastSyncedAt
-              ? new Date(cloudStatus.lastSyncedAt).toLocaleTimeString('es-CO', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : '';
-            const labelText = isSyncing
-              ? 'Sincronizando...'
-              : needsAuth
-                ? 'Reconectar nube'
-                : hasIssue
-                  ? 'Pendiente subir'
-                  : lastTime
-                    ? `Nube ${lastTime}`
-                    : 'Sincronizar';
-            return (
-              <TouchableOpacity
-                style={[
-                  styles.adminLiveStatusPill,
-                  { backgroundColor: pillBg, borderColor: pillBorder, borderWidth: 1 },
-                ]}
-                activeOpacity={0.75}
-                onPress={handleCloudStatusTap}
-              >
-                <View style={[styles.adminLiveDot, { backgroundColor: dotColor }]} />
-                <Text style={[styles.adminLiveStatusText, { color: textColor }]}>{labelText}</Text>
-              </TouchableOpacity>
-            );
-          })()}
         </View>
-
-        {cloudStatus.needsCloudAuth && (
-          <TouchableOpacity
-            onPress={openCloudReconnectModal}
-            activeOpacity={0.8}
-            style={{
-              marginHorizontal: 16,
-              marginBottom: 10,
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              backgroundColor: '#FFFBEB',
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: '#F59E0B',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E' }}>
-                Sincronización con la nube en pausa
-              </Text>
-              <Text style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
-                Tus datos locales están seguros aquí. Toca para reconectar y subirlos al PC de la oficina.
-              </Text>
-            </View>
-            <View
-              style={{
-                backgroundColor: '#D97706',
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 8,
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Reconectar</Text>
-            </View>
-          </TouchableOpacity>
-        )}
 
         {/* BARRA DE ACTUALIZACIÓN EN VIVO (WEB / IPHONE) */}
         {Platform.OS === 'web' && (
           <TouchableOpacity
             onPress={async () => {
-              if (!cloudSyncEngine.getStatus().needsCloudAuth) {
-                await cloudSyncEngine.syncBidirectional().catch(() => {});
-              }
+              await cloudSyncEngine.syncBidirectional().catch(() => {});
               await forceReloadWebBundle();
             }}
             activeOpacity={0.7}
@@ -925,7 +730,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               </Text>
             </View>
             <Text style={{ fontSize: 10, fontWeight: '800', color: '#2563EB' }}>
-              🔄 Sincronizar y Actualizar
+              ↻ Actualizar
             </Text>
           </TouchableOpacity>
         )}
@@ -1300,38 +1105,6 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       }
     >
       {/* 1. HERO FINTECH LIMPIO: COBRO PLENO DE LA RUTA */}
-      {cloudStatus.needsCloudAuth && (
-        <TouchableOpacity
-          onPress={openCloudReconnectModal}
-          activeOpacity={0.8}
-          style={{
-            marginHorizontal: 16,
-            marginBottom: 10,
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            backgroundColor: '#FFFBEB',
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: '#F59E0B',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 8,
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E' }}>
-              Sincronización con la nube en pausa
-            </Text>
-            <Text style={{ fontSize: 11, color: '#B45309', marginTop: 2 }}>
-              Tus cobros locales están seguros aquí. Toca para reconectar y subirlos.
-            </Text>
-          </View>
-          <View style={{ backgroundColor: '#D97706', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Reconectar</Text>
-          </View>
-        </TouchableOpacity>
-      )}
       <View style={styles.cleanHeroCard}>
         <View style={styles.cleanHeroTopRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1667,157 +1440,8 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     );
   };
 
-  const renderCloudReconnectModal = () => (
-    <Modal
-      visible={reconnectModalVisible}
-      transparent
-      animationType="fade"
-      onRequestClose={() => !isReconnecting && setReconnectModalVisible(false)}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: 'rgba(15, 23, 42, 0.55)',
-          justifyContent: 'center',
-          paddingHorizontal: 20,
-        }}
-      >
-        <View
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderRadius: 18,
-            padding: 20,
-            borderWidth: 1,
-            borderColor: '#E2E8F0',
-            overflow: 'hidden',
-          }}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', flex: 1, minWidth: 0 }}>
-              Reconectar Sincronización en la Nube
-            </Text>
-            <TouchableOpacity
-              disabled={isReconnecting}
-              onPress={() => setReconnectModalVisible(false)}
-              style={{ padding: 4 }}
-            >
-              <X size={18} color="#64748B" />
-            </TouchableOpacity>
-          </View>
-          <Text style={{ fontSize: 12, color: '#334155', lineHeight: 18, marginBottom: 8 }}>
-            Tus clientes, préstamos y cobros locales de este teléfono se conservarán intactos y se subirán primero a la nube para quedar al día con el PC de la oficina.
-          </Text>
-          <View
-            style={{
-              backgroundColor: '#EFF6FF',
-              borderWidth: 1,
-              borderColor: '#BFDBFE',
-              borderRadius: 10,
-              paddingHorizontal: 10,
-              paddingVertical: 8,
-              marginBottom: 12,
-            }}
-          >
-            <Text style={{ fontSize: 11.5, color: '#1E40AF', lineHeight: 16, fontWeight: '600' }}>
-              Ingresa el usuario y clave registrados en la nube para tu oficina. Si cambiaste el usuario mientras la nube estaba en pausa, escribe tu usuario anterior con el que iniciaste sesión originalmente.
-            </Text>
-          </View>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>Usuario en la nube</Text>
-          <TextInput
-            value={reconnectUsername}
-            onChangeText={(v) => {
-              setReconnectUsername(v);
-              setReconnectError('');
-            }}
-            placeholder="Ej. usuario de tu oficina"
-            placeholderTextColor="#94A3B8"
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={{
-              borderWidth: 1,
-              borderColor: '#CBD5E1',
-              borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              marginBottom: 10,
-              color: '#0F172A',
-              backgroundColor: '#F8FAFC',
-            }}
-          />
-          <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>Contraseña</Text>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              borderWidth: 1,
-              borderColor: '#CBD5E1',
-              borderRadius: 10,
-              backgroundColor: '#F8FAFC',
-              paddingHorizontal: 12,
-              marginBottom: 10,
-            }}
-          >
-            <TextInput
-              value={reconnectPassword}
-              onChangeText={(v) => {
-                setReconnectPassword(v);
-                setReconnectError('');
-              }}
-              placeholder="Ingresa tu contraseña"
-              placeholderTextColor="#94A3B8"
-              secureTextEntry={!showReconnectPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-              style={{
-                flex: 1,
-                paddingVertical: 10,
-                color: '#0F172A',
-              }}
-            />
-            <TouchableOpacity
-              onPress={() => setShowReconnectPassword((prev) => !prev)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{ paddingLeft: 8 }}
-            >
-              {showReconnectPassword ? (
-                <EyeOff size={18} color="#64748B" />
-              ) : (
-                <Eye size={18} color="#64748B" />
-              )}
-            </TouchableOpacity>
-          </View>
-          {!!reconnectError && (
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626', marginBottom: 10 }}>
-              {reconnectError}
-            </Text>
-          )}
-          <TouchableOpacity
-            disabled={isReconnecting}
-            onPress={handleSubmitReconnect}
-            activeOpacity={0.8}
-            style={{
-              backgroundColor: isReconnecting ? '#94A3B8' : '#2563EB',
-              borderRadius: 12,
-              paddingVertical: 12,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 14 }}>
-              {isReconnecting ? 'Reconectando y subiendo datos...' : 'Reconectar y Subir Cambios'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-
   if (viewMode === 'DASHBOARD') {
-    return (
-      <>
-        {isAdminMode ? renderAdminGeneralDashboard() : renderCollectorDashboard()}
-        {renderCloudReconnectModal()}
-      </>
-    );
+    return isAdminMode ? renderAdminGeneralDashboard() : renderCollectorDashboard();
   }
 
   // MODO RUTA PURA: Enfocado 100% en la cobranza secuencial de la calle sin cuadros de métricas

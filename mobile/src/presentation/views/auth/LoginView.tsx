@@ -602,7 +602,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
           });
           setWizError(
             syncRes.error ||
-              'No se pudieron guardar las nuevas credenciales en la nube. Inicia sesión primero con tus credenciales actuales en la nube y reconecta antes de cambiarlas.'
+              'No se pudieron guardar las nuevas credenciales. Verifica tu conexión a internet e intenta de nuevo.'
           );
           return;
         }

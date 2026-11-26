@@ -315,10 +315,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         }
         const msg =
           syncRes.error ||
-          'No se pudo sincronizar las credenciales con la nube. Reconecta tu cuenta con conexión a internet e intenta de nuevo.';
+          'No se pudieron guardar las credenciales. Verifica tu conexión a internet e intenta de nuevo.';
         setRouteFeedback({ type: 'error', text: msg });
         notifyUser(
-          syncRes.usernameConflict ? 'Usuario no disponible' : 'Requiere sincronización en la nube',
+          syncRes.usernameConflict ? 'Usuario no disponible' : 'No se pudo guardar',
           msg
         );
         return;
@@ -397,10 +397,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         setUsersList([...localStore.getUsers()]);
         const msg =
           syncRes.error ||
-          'No se pudo sincronizar la ruta con la nube. Verifica tu conexión o toca "Reconectar nube" primero.';
+          'No se pudieron guardar los cambios de la ruta. Verifica tu conexión a internet e intenta de nuevo.';
         setRouteFeedback({ type: 'error', text: msg });
         notifyUser(
-          syncRes.usernameConflict ? 'Usuario no disponible' : 'Requiere sincronización en la nube',
+          syncRes.usernameConflict ? 'Usuario no disponible' : 'No se pudo guardar',
           msg
         );
         return;
@@ -429,25 +429,35 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
 
   const handleDeleteRouteItem = (route: Route) => {
     if (routesList.length <= 1) {
-      if (Platform.OS === 'web') {
-        window.alert('Aviso: La oficina debe conservar al menos 1 ruta activa.');
-      } else {
-        Alert.alert('Aviso', 'La oficina debe conservar al menos 1 ruta activa.');
-      }
+      notifyUser('Aviso', 'La oficina debe conservar al menos 1 ruta activa.');
+      return;
+    }
+    const routeCustomersCount = localStore
+      .getCustomers()
+      .filter((c) => c.routeId === route.id).length;
+    const routeLoansCount = localStore
+      .getLoans()
+      .filter((l) => l.routeId === route.id).length;
+    if (routeCustomersCount > 0 || routeLoansCount > 0) {
+      notifyUser(
+        'Ruta con cartera activa',
+        `La ruta "${route.name}" tiene ${routeCustomersCount} cliente(s) y ${routeLoansCount} crédito(s) asociados. Trasládalos a otra ruta antes de eliminarla.`
+      );
       return;
     }
     const executeDelete = async () => {
       try {
+        const cloudRes = await cloudSyncEngine.deleteRouteInCloud(route.id);
+        if (!cloudRes.ok) {
+          notifyUser('No se pudo eliminar', cloudRes.error || 'Verifica tu conexión a internet e intenta de nuevo.');
+          return;
+        }
         await localStore.deleteRoute(route.id);
         setRoutesList([...localStore.getRoutes()]);
         setUsersList([...localStore.getUsers()]);
         onSuccess();
       } catch (err: any) {
-        if (Platform.OS === 'web') {
-          window.alert(err.message || 'No se pudo eliminar la ruta.');
-        } else {
-          Alert.alert('Error', err.message || 'No se pudo eliminar la ruta.');
-        }
+        notifyUser('Error', err.message || 'No se pudo eliminar la ruta.');
       }
     };
 
@@ -552,10 +562,10 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
         setRoutesList([...localStore.getRoutes()]);
         const msg =
           syncRes.error ||
-          'No se pudo registrar la nueva ruta en la nube. Verifica tu conexión o toca "Reconectar nube" primero.';
+          'No se pudo registrar la nueva ruta. Verifica tu conexión a internet e intenta de nuevo.';
         setRouteFeedback({ type: 'error', text: msg });
         notifyUser(
-          syncRes.usernameConflict ? 'Usuario no disponible' : 'Requiere sincronización en la nube',
+          syncRes.usernameConflict ? 'Usuario no disponible' : 'No se pudo guardar',
           msg
         );
         return;

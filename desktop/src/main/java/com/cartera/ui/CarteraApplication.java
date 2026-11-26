@@ -344,7 +344,6 @@ public final class CarteraApplication extends Application {
     private VBox navContainer;
     private com.cartera.sync.application.DesktopCloudSyncService desktopCloudSyncService;
     private java.util.concurrent.ScheduledExecutorService silentSyncExecutor;
-    private Label lblCloudSyncStatus;
     private Button btnSyncNow;
     private Button btnNotifications;
     private Button btnUpdateAvailable;
@@ -352,32 +351,14 @@ public final class CarteraApplication extends Application {
     private boolean otaStagedReady = false;
 
     private void updateCloudSyncBadge() {
-        if (lblCloudSyncStatus == null || desktopCloudSyncService == null) return;
-        var st = desktopCloudSyncService.getLastSyncStatus();
-        String timeStr = st.lastSyncAt() != null
-                ? st.lastSyncAt().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
-                : "";
-        if (st.synced()) {
-            lblCloudSyncStatus.setText(timeStr.isBlank() ? "● Nube sincronizada" : ("● Nube " + timeStr));
-            lblCloudSyncStatus.setStyle("-fx-background-color: #ecfdf5; -fx-text-fill: #047857; -fx-border-color: #a7f3d0; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold;");
-        } else if (st.hasError()) {
-            lblCloudSyncStatus.setText("⚠ Nube sin sincronizar");
-            lblCloudSyncStatus.setStyle("-fx-background-color: #fffbeb; -fx-text-fill: #b45309; -fx-border-color: #fcd34d; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold;");
-        } else {
-            lblCloudSyncStatus.setText("● Conectando nube...");
-            lblCloudSyncStatus.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold;");
-        }
-        lblCloudSyncStatus.setTooltip(new javafx.scene.control.Tooltip(st.message() != null ? st.message() : "Estado de sincronización con Supabase"));
+        // Sincronización 100% silenciosa en segundo plano (estilo bancario, sin carteles técnicos de nube)
     }
 
     private void triggerManualCloudSync() {
         if (desktopCloudSyncService == null) return;
         if (btnSyncNow != null) {
             btnSyncNow.setDisable(true);
-            btnSyncNow.setText("Sincronizando...");
-        }
-        if (lblCloudSyncStatus != null) {
-            lblCloudSyncStatus.setText("↻ Sincronizando...");
+            btnSyncNow.setText("Actualizando...");
         }
         Thread t = new Thread(() -> {
             boolean updated = false;
@@ -386,22 +367,21 @@ public final class CarteraApplication extends Application {
             } catch (Exception ignored) {}
             final boolean hadChanges = updated;
             Platform.runLater(() -> {
-                updateCloudSyncBadge();
                 if (btnSyncNow != null) {
                     btnSyncNow.setDisable(false);
-                    btnSyncNow.setText("↻ Sincronizar");
+                    btnSyncNow.setText("↻ Actualizar");
                 }
                 reloadGlobalRoutes();
                 refreshActiveViews();
                 var st = desktopCloudSyncService.getLastSyncStatus();
                 if (st.synced()) {
                     MotionUtil.showToast(appRoot,
-                            hadChanges ? "Nube sincronizada — se cargaron novedades." : "Nube al día (sin cambios nuevos).",
+                            hadChanges ? "Información actualizada con novedades." : "Información al día.",
                             MotionUtil.ToastType.SUCCESS);
                 } else {
                     MotionUtil.showToast(appRoot,
-                            st.message() != null ? st.message() : "No se pudo sincronizar con la nube.",
-                            MotionUtil.ToastType.ERROR);
+                            "Trabajando en modo local seguro. Se actualizará automáticamente al recuperar conexión.",
+                            MotionUtil.ToastType.INFO);
                 }
             });
         }, "kredia-manual-sync");
@@ -421,14 +401,13 @@ public final class CarteraApplication extends Application {
             try {
                 boolean updated = desktopCloudSyncService.syncSilentlyInBackground();
                 Platform.runLater(() -> {
-                    updateCloudSyncBadge();
                     if (updated) {
                         reloadGlobalRoutes();
                         refreshActiveViews();
                     }
                 });
             } catch (Exception ignored) {}
-        }, 30, 30, java.util.concurrent.TimeUnit.SECONDS);
+        }, 15, 15, java.util.concurrent.TimeUnit.SECONDS);
     }
 
     private void stopSilentBackgroundSync() {
@@ -751,35 +730,13 @@ public final class CarteraApplication extends Application {
         btnUpdateAvailable.setOnAction(e -> showAvailableUpdateDialog());
         MotionUtil.installTactileButton(btnUpdateAvailable);
 
-        lblCloudSyncStatus = new Label("● Conectando nube...");
-        lblCloudSyncStatus.getStyleClass().add("status-ok");
-        lblCloudSyncStatus.setStyle(lblCloudSyncStatus.getStyle() + " -fx-cursor: hand;");
-        lblCloudSyncStatus.setOnMouseClicked(e -> {
-            if (desktopCloudSyncService == null) return;
-            var st = desktopCloudSyncService.getLastSyncStatus();
-            if (st.hasError() && st.message() != null
-                    && (st.message().toLowerCase().contains("vencida") || st.message().toLowerCase().contains("token"))) {
-                var confirm = new javafx.scene.control.Alert(
-                        javafx.scene.control.Alert.AlertType.CONFIRMATION,
-                        "Tu sesión en la nube expiró. ¿Deseas volver a iniciar sesión para reconectar la sincronización ahora?",
-                        javafx.scene.control.ButtonType.YES, javafx.scene.control.ButtonType.NO);
-                if (primaryStage != null) confirm.initOwner(primaryStage);
-                confirm.setTitle("Reconectar Sesión en la Nube");
-                confirm.setHeaderText("Sesión de sincronización vencida");
-                confirm.showAndWait().ifPresent(bt -> {
-                    if (bt == javafx.scene.control.ButtonType.YES) onLogout();
-                });
-            } else {
-                triggerManualCloudSync();
-            }
-        });
-
-        btnSyncNow = new Button("↻ Sincronizar");
+        btnSyncNow = new Button("↻ Actualizar");
         btnSyncNow.setStyle("-fx-background-color: #eff6ff; -fx-text-fill: #1d4ed8; -fx-border-color: #bfdbfe; -fx-border-radius: 16; -fx-background-radius: 16; -fx-padding: 5 12; -fx-font-size: 11px; -fx-font-weight: bold; -fx-cursor: hand;");
+        btnSyncNow.setTooltip(new javafx.scene.control.Tooltip("Actualizar datos de la oficina"));
         btnSyncNow.setOnAction(e -> triggerManualCloudSync());
         MotionUtil.installTactileButton(btnSyncNow);
 
-        bar.getChildren().addAll(topTitle, spacer, routeSelectorBox, btnUpdateAvailable, btnNotifications, lblCloudSyncStatus, btnSyncNow);
+        bar.getChildren().addAll(topTitle, spacer, routeSelectorBox, btnUpdateAvailable, btnNotifications, btnSyncNow);
         return bar;
     }
 

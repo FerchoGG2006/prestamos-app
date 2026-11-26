@@ -54,17 +54,18 @@ export const RouteSelectorModal: React.FC<RouteSelectorModalProps> = ({
   };
 
   const getRouteStats = (routeId: string) => {
+    const defaultRouteId = routes[0]?.id || '';
     const routeCustomers =
       routeId === 'ALL'
         ? customers
-        : customers.filter((c) => (c.routeId || 'route-norte') === routeId);
+        : customers.filter((c) => (c.routeId || defaultRouteId) === routeId);
     const activeLoans =
       routeId === 'ALL'
         ? loans.filter((l) => l.status === 'ACTIVE')
         : loans.filter(
             (l) =>
               l.status === 'ACTIVE' &&
-              ((l.routeId || 'route-norte') === routeId ||
+              ((l.routeId || defaultRouteId) === routeId ||
                 routeCustomers.some((c) => c.id === l.customerId))
           );
     return {

@@ -195,4 +195,110 @@ class DesktopCloudSyncServiceTest {
         assertEquals("ADMIN", DesktopCloudSyncService.normalizeRole("ADMIN"));
         assertEquals("COBRADOR", DesktopCloudSyncService.normalizeRole("COBRADOR"));
     }
+
+    @Test
+    void prunesEmptyLocalGhostRouteWhenAbsentFromServerWithoutLosingData() {
+        ObjectMapper mapper = new ObjectMapper();
+        String now = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+        userRepository.saveAndFlush(new com.cartera.infrastructure.persistence.entity.AppUserEntity(
+                "usr-col-plancha", "plancha.r1", PasswordHasher.hash("Clave2026!"), "La plancha 1", 1, now
+        ));
+        routeRepository.saveAndFlush(new com.cartera.infrastructure.persistence.entity.RouteEntity(
+                "rt-c995615d-01", "La plancha 1", "usr-col-plancha", 1, now
+        ));
+        routeRepository.saveAndFlush(new com.cartera.infrastructure.persistence.entity.RouteEntity(
+                "rt-plancha-001", "Ruta 1", null, 1, now
+        ));
+        customerRepository.saveAndFlush(new com.cartera.infrastructure.persistence.entity.CustomerEntity(
+                "cust-plancha-1", "Cliente Seguro Plancha", "1099001122", "3001112233", "3001112233",
+                "Calle 1", "Centro", "Valledupar", "Comerciante", "Tienda", "", "ACTIVO",
+                "rt-c995615d-01", "usr-col-plancha", now
+        ));
+        settingRepository.saveAndFlush(new com.cartera.infrastructure.persistence.entity.SystemSettingEntity(
+                OfficeLicensingService.KEY_OFFICE_ID, "off-c995615df9", now
+        ));
+        licensingService.saveCloudSessionToken("tok-plancha-365d");
+
+        java.util.concurrent.atomic.AtomicBoolean refreshCalled = new java.util.concurrent.atomic.AtomicBoolean(false);
+        SupabaseRegistryClient stubClient = new SupabaseRegistryClient() {
+            @Override
+            public boolean refreshCloudSession(String supabaseUrl, String apiKey) {
+                refreshCalled.set(true);
+                return true;
+            }
+
+            @Override
+            public java.util.Optional<RemoteOffice> findOfficeById(String supabaseUrl, String apiKey, String officeId) {
+                return java.util.Optional.of(new RemoteOffice(
+                        "off-c995615df9", "Inversiones La Plancha", "KRD-FXSG-TX4Z",
+                        "ACTIVE", "LIFETIME", null, "Keiner", "3127880287", "Valledupar"
+                ));
+            }
+
+            @Override
+            public List<com.fasterxml.jackson.databind.JsonNode> fetchOfficeRows(String supabaseUrl, String apiKey, String table, String officeId) {
+                if ("users".equals(table)) {
+                    ObjectNode u = mapper.createObjectNode();
+                    u.put("id", "usr-col-plancha");
+                    u.put("username", "plancha.r1");
+                    u.put("name", "La plancha 1");
+                    u.put("role", "COBRADOR");
+                    u.put("is_active", true);
+                    return List.of(u);
+                }
+                if ("routes".equals(table)) {
+                    ObjectNode r = mapper.createObjectNode();
+                    r.put("id", "rt-c995615d-01");
+                    r.put("name", "La plancha 1");
+                    r.put("code", "R-01");
+                    r.put("collector_id", "usr-col-plancha");
+                    r.put("is_active", true);
+                    return List.of(r);
+                }
+                if ("customers".equals(table)) {
+                    ObjectNode c = mapper.createObjectNode();
+                    c.put("id", "cust-plancha-1");
+                    c.put("route_id", "rt-c995615d-01");
+                    c.put("assigned_collector_id", "usr-col-plancha");
+                    c.put("full_name", "Cliente Seguro Plancha");
+                    c.put("document_number", "1099001122");
+                    c.put("status", "ACTIVE");
+                    return List.of(c);
+                }
+                return List.of();
+            }
+
+            @Override
+            public void upsertRowsBatch(String supabaseUrl, String apiKey, String table, List<ObjectNode> rows, boolean ignoreDuplicates, String onConflict) {}
+        };
+        stubClient.setActiveSessionToken("tok-plancha-365d");
+
+        DesktopCloudSyncService service = new DesktopCloudSyncService(
+                authService, licensingService, stubClient, backupService, ledgerService,
+                txManager, jdbcTemplate, userRepository, routeRepository, customerRepository,
+                loanRepository, installmentRepository, paymentRepository, allocationRepository,
+                renewalRepository, cashMovementRepository, settingRepository, auditLogRepository
+        );
+
+        try {
+            service.syncSilentlyInBackground();
+
+            assertTrue(refreshCalled.get(), "Silent sync must extend sliding 365-day session");
+            assertTrue(routeRepository.findById("rt-plancha-001").isEmpty(), "Empty ghost route absent from server must be pruned locally");
+            assertTrue(routeRepository.findById("rt-c995615d-01").isPresent(), "Active server route must be preserved");
+            assertTrue(customerRepository.findById("cust-plancha-1").isPresent(), "Customer data must remain 100% intact");
+        } finally {
+            settingRepository.findById(OfficeLicensingService.KEY_OFFICE_ID).ifPresent(settingRepository::delete);
+            settingRepository.findById(OfficeLicensingService.KEY_CLOUD_SESSION_TOKEN).ifPresent(settingRepository::delete);
+            settingRepository.flush();
+            customerRepository.findById("cust-plancha-1").ifPresent(customerRepository::delete);
+            customerRepository.flush();
+            routeRepository.findById("rt-plancha-001").ifPresent(routeRepository::delete);
+            routeRepository.findById("rt-c995615d-01").ifPresent(routeRepository::delete);
+            routeRepository.flush();
+            jdbcTemplate.update("DELETE FROM user_role WHERE user_id = ?", "usr-col-plancha");
+            userRepository.findById("usr-col-plancha").ifPresent(userRepository::delete);
+            userRepository.flush();
+        }
+    }
 }

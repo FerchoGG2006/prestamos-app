@@ -70,7 +70,7 @@ public class SupabaseRegistryClient {
 
     /**
      * Autentica al usuario directamente en servidor (RPC authenticate_kredia_user) sin exponer hashes,
-     * validando contraseña y licencia activa, y recibiendo un token de sesión de 30 días.
+     * validando contraseña y licencia activa, y recibiendo un token de sesión deslizante de 365 días.
      */
     public CloudAuthResponse authenticateUser(String supabaseUrl, String apiKey, String username, String rawPassword) throws Exception {
         validateConnection(supabaseUrl, apiKey);
@@ -100,6 +100,49 @@ public class SupabaseRegistryClient {
         JsonNode userNode = root.path("user");
         setActiveSessionToken(token);
         return new CloudAuthResponse(true, "", token, office, userNode);
+    }
+
+    /**
+     * Renueva silenciosamente la vigencia deslizante de 365 días del token x-kredia-session activo.
+     */
+    public boolean refreshCloudSession(String supabaseUrl, String apiKey) {
+        try {
+            validateConnection(supabaseUrl, apiKey);
+            if (activeSessionToken == null || activeSessionToken.isBlank()) {
+                return false;
+            }
+            String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/rpc/refresh_kredia_session";
+            HttpRequest req = baseRequest(url, apiKey, activeSessionToken, null)
+                    .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() >= 400) return false;
+            JsonNode root = objectMapper.readTree(resp.body());
+            return root.path("ok").asBoolean(false);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Elimina de forma segura una ruta vacía (0 clientes y 0 créditos) en Supabase (RPC delete_empty_route).
+     */
+    public JsonNode deleteEmptyRoute(String supabaseUrl, String apiKey, String routeId) throws Exception {
+        validateConnection(supabaseUrl, apiKey);
+        if (activeSessionToken == null || activeSessionToken.isBlank()) {
+            throw new IllegalStateException("Sin sesión activa.");
+        }
+        String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/rpc/delete_empty_route";
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("p_route_id", routeId == null ? "" : routeId.trim());
+        HttpRequest req = baseRequest(url, apiKey, activeSessionToken, null)
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() >= 400) {
+            throw new IllegalStateException("Error eliminando ruta (" + resp.statusCode() + "): " + resp.body());
+        }
+        return objectMapper.readTree(resp.body());
     }
 
     public List<RemoteOffice> listOffices(String supabaseUrl, String apiKey) throws Exception {

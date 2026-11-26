@@ -6,7 +6,7 @@ package com.cartera.infrastructure.version;
  */
 public final class AppVersion {
 
-    public static final String CURRENT = "1.2.4";
+    public static final String CURRENT = "1.2.5";
     public static final String SHELL_VERSION = "1.2.0";
     public static final String BUILD_DATE = "2026-11-26";
 

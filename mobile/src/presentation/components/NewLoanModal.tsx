@@ -100,7 +100,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   const initialRoute =
     defaultRouteId && defaultRouteId !== 'ALL'
       ? defaultRouteId
-      : availableRoutes[0]?.id || 'route-norte';
+      : availableRoutes[0]?.id || '';
   const [selectedRouteId, setSelectedRouteId] = useState(initialRoute);
 
   const [withLoan, setWithLoan] = useState<boolean>(true);
@@ -153,7 +153,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       const targetRoute =
         defaultRouteId && defaultRouteId !== 'ALL'
           ? defaultRouteId
-          : localStore.getRoutes()[0]?.id || 'route-norte';
+          : localStore.getRoutes()[0]?.id || '';
       setSelectedRouteId(targetRoute);
 
       setWithLoan(true);

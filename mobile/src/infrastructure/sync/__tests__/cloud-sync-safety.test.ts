@@ -25,6 +25,7 @@ export const cloudSyncSafetyTests = (async () => {
   const origPush = supabaseSyncService.pushFullPortfolio.bind(supabaseSyncService);
   const origPull = supabaseSyncService.pullFullPortfolio.bind(supabaseSyncService);
   const origReauth = supabaseSyncService.reauthenticateCloudSession.bind(supabaseSyncService);
+  const origRefreshTop = supabaseSyncService.refreshCloudSession.bind(supabaseSyncService);
 
   const restoreMocks = () => {
     supabaseSyncService.isConnected = origIsConnected;
@@ -35,6 +36,7 @@ export const cloudSyncSafetyTests = (async () => {
     supabaseSyncService.pushFullPortfolio = origPush;
     supabaseSyncService.pullFullPortfolio = origPull;
     supabaseSyncService.reauthenticateCloudSession = origReauth;
+    supabaseSyncService.refreshCloudSession = origRefreshTop;
   };
 
   try {
@@ -50,6 +52,7 @@ export const cloudSyncSafetyTests = (async () => {
 
     // 1. Sin token y sin credenciales recordadas -> expone NEEDS_CLOUD_AUTH y NO marca SUSPENDED
     supabaseSyncService.isConnected = () => true;
+    supabaseSyncService.refreshCloudSession = async () => ({ ok: true });
     const syncedNoToken = await cloudSyncEngine.syncBidirectional('');
     assert.equal(syncedNoToken, false);
     assert.equal(cloudSyncEngine.getStatus().status, 'NEEDS_CLOUD_AUTH');
@@ -590,7 +593,219 @@ export const cloudSyncSafetyTests = (async () => {
       'Cliente debe remapearse en cascada al nuevo routeId aislado por oficina para respetar FK en Supabase'
     );
 
-    console.log('PASS cloud-sync-safety.test.ts (28/28 assertions)');
+    const origRefresh = supabaseSyncService.refreshCloudSession.bind(supabaseSyncService);
+    const origDeleteRoute = supabaseSyncService.deleteEmptyRoute.bind(supabaseSyncService);
+
+    // 8. Regresión Spec 017 (cloud-first-silent-sync):
+    //    a) Rutas fantasma vacías sin cobrador (ej. rt-plancha-001) NO se re-suben a Supabase
+    //       y mergeCloudPortfolio las poda localmente sin perder ningún cliente ni préstamo.
+    await localStore.applyLinkedOfficeBundle({
+      officeId: 'off-c995615df9',
+      activationCode: 'KRD-FXSG-TX4Z',
+      companyName: 'Inversiones La Plancha',
+      licenseStatus: 'ACTIVE',
+      cloudSessionToken: 'plancha-365d-token',
+      users: [
+        {
+          id: 'usr-adm-a65ad54d',
+          name: 'jefeplancha',
+          username: 'kr0000',
+          password: hashPassword('DBZ000'),
+          email: 'kr0000@oficina.com',
+          role: 'ADMIN',
+          assignedRouteIds: ['ALL'],
+          isActive: true,
+          createdAt: '2026-11-21',
+        },
+        {
+          id: 'usr-col-c995615d-2',
+          name: 'La plancha 1',
+          username: 'plancha.r1',
+          password: hashPassword('Clave2026!'),
+          email: 'plancha.r1@oficina.com',
+          role: 'COBRADOR',
+          routeId: 'rt-c995615d-01',
+          assignedRouteIds: ['rt-c995615d-01'],
+          isActive: true,
+          createdAt: '2026-11-26',
+        },
+      ],
+      routes: [
+        {
+          id: 'rt-c995615d-01',
+          name: 'La plancha 1',
+          code: 'R-01',
+          collectorId: 'usr-col-c995615d-2',
+          isActive: true,
+          createdAt: '2026-11-26',
+        },
+        {
+          id: 'rt-plancha-001',
+          name: 'Ruta 1',
+          code: 'R-01',
+          collectorId: '',
+          isActive: true,
+          createdAt: '2026-11-21',
+        },
+      ],
+      portfolio: {
+        customers: [
+          {
+            id: 'cust-plancha-keep',
+            routeId: 'rt-c995615d-01',
+            assignedCollectorId: 'usr-col-c995615d-2',
+            fullName: 'Cliente Activo Plancha',
+            documentNumber: '900112233',
+            phone: '3001234567',
+            whatsappPhone: '3001234567',
+            address: 'Calle 1',
+            neighborhood: 'Centro',
+            city: 'Valledupar',
+            occupation: 'Comerciante',
+            orderIndex: 1,
+            status: 'ACTIVE',
+            references: [],
+            createdAt: '2026-11-26',
+            updatedAt: '2026-11-26',
+          },
+          {
+            id: 'cust-orphan-on-ghost',
+            routeId: 'rt-plancha-001',
+            assignedCollectorId: '',
+            fullName: 'Cliente Huérfano Protegido',
+            documentNumber: '900445566',
+            phone: '3007654321',
+            whatsappPhone: '3007654321',
+            address: 'Calle 2',
+            neighborhood: 'Centro',
+            city: 'Valledupar',
+            occupation: 'Comerciante',
+            orderIndex: 2,
+            status: 'ACTIVE',
+            references: [],
+            createdAt: '2026-11-26',
+            updatedAt: '2026-11-26',
+          },
+        ],
+        loans: [],
+        installments: [],
+        payments: [],
+        renewals: [],
+        settlements: [],
+        cashMovements: [],
+      },
+      preserveLocalPortfolio: false,
+    });
+
+    // Primero probar que si rt-plancha-001 está 100% vacía, syncBidirectional NO la re-sube
+    let pushedRouteIds: string[] = [];
+    supabaseSyncService.refreshCloudSession = async () => ({ ok: true, officeId: 'off-c995615df9' });
+    supabaseSyncService.checkOfficeLicense = async () => ({
+      active: true,
+      status: 'ACTIVE',
+      expiresAt: null,
+    });
+    supabaseSyncService.upsertOffice = async () => true;
+    supabaseSyncService.syncUsersAndRoutes = async (_oid, _u, r) => {
+      pushedRouteIds = r.map((item) => item.id);
+      return { ok: true };
+    };
+    supabaseSyncService.pushFullPortfolio = async () => ({ ok: true });
+    supabaseSyncService.pullFullPortfolio = async () => ({
+      office: null,
+      users: localStore.getUsers(),
+      routes: [
+        {
+          id: 'rt-c995615d-01',
+          name: 'La plancha 1',
+          code: 'R-01',
+          collectorId: 'usr-col-c995615d-2',
+          isActive: true,
+          createdAt: '2026-11-26',
+        },
+      ],
+      customers: localStore.getCustomers(),
+      loans: [],
+      installments: [],
+      payments: [],
+      renewals: [],
+      settlements: [],
+      cashMovements: [],
+    });
+
+    // Al fusionar con el servidor que solo tiene rt-c995615d-01:
+    // - rt-plancha-001 desaparece localmente
+    // - cust-orphan-on-ghost se reasigna a rt-c995615d-01 (CERO pérdida de datos)
+    let localMutationsDuringMerge = 0;
+    const unsubMut = localStore.subscribeLocalMutations(() => {
+      localMutationsDuringMerge++;
+    });
+    try {
+      await cloudSyncEngine.syncBidirectional('');
+      assert.equal(localStore.getRoutes().length, 1, 'Debe quedar únicamente la ruta real del servidor');
+      assert.equal(localStore.getRoutes()[0].id, 'rt-c995615d-01');
+      assert.equal(localStore.getCustomers().length, 2, 'CERO clientes perdidos al podar ruta fantasma');
+      assert.equal(
+        localStore.getCustomers().every((c) => c.routeId === 'rt-c995615d-01'),
+        true,
+        'Todo cliente de una ruta podada debe reasignarse automáticamente a la ruta activa'
+      );
+      assert.equal(
+        localMutationsDuringMerge,
+        0,
+        'mergeCloudPortfolio y updateOfficeConfig(lastSyncedAt) NO deben disparar mutaciones locales (cero bucles)'
+      );
+
+      //    b) Una escritura local real SÍ dispara subscribeLocalMutations para sincronización en tiempo real
+      await localStore.recordRouteExpense({
+        amount: 5000,
+        category: 'Gasolina',
+        description: 'Tanqueo prueba',
+        todayStr: '2026-11-26',
+        routeId: 'rt-c995615d-01',
+      });
+      assert.equal(
+        localMutationsDuringMerge >= 1,
+        true,
+        'Una mutación local real debe emitir evento de escritura en tiempo real'
+      );
+
+      //    c) Si una ruta fantasma está 100% vacía y sin cobrador, syncBidirectional NO la vuelve a subir
+      await localStore.saveUsersAndRoutes(localStore.getUsers(), [
+        ...localStore.getRoutes(),
+        {
+          id: 'rt-plancha-001',
+          name: 'Ruta 1',
+          code: 'R-01',
+          collectorId: '',
+          isActive: true,
+          createdAt: '2026-11-21',
+        },
+      ]);
+      await cloudSyncEngine.syncBidirectional('');
+      assert.equal(
+        pushedRouteIds.includes('rt-plancha-001'),
+        false,
+        'Ruta fantasma vacía sin cobrador jamás debe re-subirse a Supabase'
+      );
+      assert.equal(localStore.getRoutes().length, 1, 'Ruta fantasma debe auto-podarse tras pull');
+
+      //    d) deleteRouteInCloud delega correctamente en RPC delete_empty_route
+      let deletedRouteParam = '';
+      supabaseSyncService.deleteEmptyRoute = async (rid) => {
+        deletedRouteParam = rid;
+        return { ok: true, deleted: true };
+      };
+      const delRes = await cloudSyncEngine.deleteRouteInCloud('rt-empty-99');
+      assert.equal(delRes.ok, true);
+      assert.equal(deletedRouteParam, 'rt-empty-99');
+    } finally {
+      unsubMut();
+      supabaseSyncService.refreshCloudSession = origRefresh;
+      supabaseSyncService.deleteEmptyRoute = origDeleteRoute;
+    }
+
+    console.log('PASS cloud-sync-safety.test.ts (36/36 assertions)');
   } finally {
     restoreMocks();
   }

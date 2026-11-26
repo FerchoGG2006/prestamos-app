@@ -431,7 +431,7 @@ class SupabaseSyncService {
             return {
               ok: false,
               sessionExpired: true,
-              error: 'Tu sesión de nube venció o hay un conflicto de permisos. Toca "Reconectar nube" con tu usuario actual primero.',
+              error: 'Tu sesión expiró. Cierra sesión e inicia nuevamente para guardar cambios de seguridad.',
             };
           }
           return {
@@ -465,7 +465,7 @@ class SupabaseSyncService {
             return {
               ok: false,
               sessionExpired: true,
-              error: 'Tu sesión de nube venció. Toca "Reconectar nube" primero antes de guardar cambios.',
+              error: 'Tu sesión expiró. Cierra sesión e inicia nuevamente para guardar cambios en rutas.',
             };
           }
           return {
@@ -1129,6 +1129,91 @@ class SupabaseSyncService {
       };
     } catch {
       return { active: false, status: 'ACTIVE', expiresAt: null, networkError: true };
+    }
+  }
+
+  /**
+   * Renueva silenciosamente la vigencia deslizante de 365 días del token x-kredia-session activo.
+   */
+  public async refreshCloudSession(): Promise<{
+    ok: boolean;
+    officeId?: string;
+    expiresAt?: string;
+    sessionInvalid?: boolean;
+    licenseStatus?: string;
+    networkError?: boolean;
+  }> {
+    if (!this.client || !this.sessionToken) {
+      return { ok: false, sessionInvalid: true };
+    }
+    try {
+      const { data, error } = await this.client.rpc('refresh_kredia_session');
+      if (error) {
+        return { ok: false, networkError: true };
+      }
+      if (!data?.ok) {
+        return {
+          ok: false,
+          sessionInvalid: Boolean(data?.session_invalid),
+          licenseStatus: data?.license_status ? String(data.license_status) : undefined,
+        };
+      }
+      return {
+        ok: true,
+        officeId: data.office_id ? String(data.office_id) : undefined,
+        expiresAt: data.expires_at ? String(data.expires_at) : undefined,
+      };
+    } catch {
+      return { ok: false, networkError: true };
+    }
+  }
+
+  /**
+   * Elimina de forma segura una ruta vacía (0 clientes y 0 créditos) en el servidor
+   * para impedir que reaparezca en futuros ciclos de sincronización.
+   */
+  public async deleteEmptyRoute(routeId: string): Promise<{
+    ok: boolean;
+    deleted?: boolean;
+    alreadyAbsent?: boolean;
+    sessionInvalid?: boolean;
+    networkError?: boolean;
+    error?: string;
+  }> {
+    if (!this.client || !this.sessionToken) {
+      return { ok: false, sessionInvalid: true, error: 'Tu sesión expiró. Inicia sesión nuevamente.' };
+    }
+    try {
+      const { data, error } = await this.client.rpc('delete_empty_route', {
+        p_route_id: routeId,
+      });
+      if (error) {
+        const msg = String(error.message || '');
+        const isNet = /network|fetch|timeout|failed to fetch|offline/i.test(msg);
+        return {
+          ok: false,
+          networkError: isNet,
+          error: msg || 'No se pudo eliminar la ruta en el servidor.',
+        };
+      }
+      if (!data?.ok) {
+        return {
+          ok: false,
+          sessionInvalid: Boolean(data?.session_invalid),
+          error: data?.error || 'No se pudo eliminar la ruta.',
+        };
+      }
+      return {
+        ok: true,
+        deleted: Boolean(data.deleted),
+        alreadyAbsent: Boolean(data.already_absent),
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        networkError: true,
+        error: err?.message || 'Sin conexión para eliminar la ruta.',
+      };
     }
   }
 

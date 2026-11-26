@@ -48,8 +48,12 @@ export interface CloudSyncStatusSnapshot {
 
 class CloudSyncEngine {
   private isSyncing = false;
+  private isAutoSyncInitialized = false;
   private syncTimer: ReturnType<typeof setInterval> | null = null;
   private startupSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  private realtimePushTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingRealtimeSync = false;
+  private lastSessionRefreshAt = 0;
   private lastSyncStatus: CloudSyncState = 'IDLE';
   private lastSyncMessage = 'Sincronización automática lista';
   private outboxCount = 0;
@@ -71,41 +75,108 @@ class CloudSyncEngine {
     });
   }
 
+  /**
+   * Programa una escritura silenciosa en tiempo real (debounced ~800ms) tras cualquier
+   * operación local (cliente, crédito, abono, renovación, gasto o ajuste).
+   */
+  public scheduleRealtimeSync(delayMs: number = 800): void {
+    const cfg = localStore.getOfficeConfig();
+    if (cfg.autoCloudSyncEnabled === false) return;
+    if (this.realtimePushTimer) {
+      clearTimeout(this.realtimePushTimer);
+    }
+    this.realtimePushTimer = setTimeout(() => {
+      this.realtimePushTimer = null;
+      if (this.isSyncing) {
+        this.pendingRealtimeSync = true;
+        return;
+      }
+      this.syncNowIfAutoEnabled().catch(() => {});
+    }, Math.max(50, delayMs));
+  }
+
+  /**
+   * Extiende silenciosamente la sesión deslizante de 365 días sin interrumpir al usuario.
+   */
+  public async refreshSessionSilently(force: boolean = false): Promise<boolean> {
+    if (!supabaseSyncService.isConnected()) return false;
+    const now = Date.now();
+    if (!force && now - this.lastSessionRefreshAt < 10 * 60 * 1000) {
+      return true;
+    }
+    try {
+      const cfg = localStore.getOfficeConfig();
+      const token = cfg.cloudSessionToken?.trim();
+      if (!token) {
+        const recovered = await this.tryRecoverCloudSessionFromRememberedCredentials();
+        if (recovered) {
+          this.lastSessionRefreshAt = Date.now();
+          return true;
+        }
+        return false;
+      }
+      supabaseSyncService.setSessionToken(token);
+      const res = await supabaseSyncService.refreshCloudSession();
+      if (res.ok) {
+        this.lastSessionRefreshAt = Date.now();
+        this.sessionInvalidDetected = false;
+        return true;
+      }
+      if (res.sessionInvalid) {
+        const recovered = await this.tryRecoverCloudSessionFromRememberedCredentials();
+        if (recovered) {
+          this.lastSessionRefreshAt = Date.now();
+          return true;
+        }
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   public async initializeAutoSync(): Promise<void> {
     await this.refreshOutboxCount();
+    if (this.isAutoSyncInitialized) return;
+    this.isAutoSyncInitialized = true;
 
     const cfg = localStore.getOfficeConfig();
     if (supabaseSyncService.isConnected() && !cfg.cloudSessionToken?.trim()) {
       this.lastSyncStatus = 'NEEDS_CLOUD_AUTH';
-      this.lastSyncMessage = 'Sesión de nube pendiente — reconectando para subir cambios locales...';
+      this.lastSyncMessage = 'Sincronización en espera de sesión activa';
       this.emitStatusChange();
     }
 
-    // Escuchar cambios en localStore para encolar en el Outbox cuando hay nuevos cobros o créditos
-    localStore.subscribe(() => {
+    // Renovar silenciosamente la sesión bancaria deslizante de 365 días al iniciar
+    this.refreshSessionSilently(true).catch(() => {});
+
+    // Escuchar SOLO mutaciones locales reales para encolar en el Outbox y sincronizar en ~800ms
+    localStore.subscribeLocalMutations(() => {
       this.enqueueCurrentSnapshotIfNeeded().catch(() => {});
+      this.scheduleRealtimeSync(800);
     });
 
     // En Web/PWA: sincronizar inmediatamente cuando el teléfono recupera señal de Internet / Wi-Fi
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('online', () => {
+        this.refreshSessionSilently().catch(() => {});
         this.syncNowIfAutoEnabled().catch(() => {});
       });
     }
 
-    // Primer intento pronto tras arrancar (recupera token y sube pendientes sin esperar 60s)
+    // Primer intento pronto tras arrancar (recupera token y sube pendientes sin esperar)
     if (!this.startupSyncTimer) {
       this.startupSyncTimer = setTimeout(() => {
         this.startupSyncTimer = null;
         this.syncNowIfAutoEnabled().catch(() => {});
-      }, 1500);
+      }, 1200);
     }
 
-    // Sincronización periódica ligera cada 60 segundos si está habilitada
+    // Sincronización periódica ligera cada 45 segundos para incorporar cambios de otros dispositivos
     if (!this.syncTimer) {
       this.syncTimer = setInterval(() => {
         this.syncNowIfAutoEnabled().catch(() => {});
-      }, 60000);
+      }, 45000);
     }
   }
 
@@ -152,7 +223,7 @@ class CloudSyncEngine {
       id: `outbox-${todayStr}`,
       createdAt: new Date().toISOString(),
       operatingDate: todayStr,
-      routeId: session?.routeId || 'route-norte',
+      routeId: session?.routeId || localStore.getRoutes()[0]?.id || '',
       pendingPaymentsCount: payments.length,
       pendingLoansCount: loans.length,
     };
@@ -247,6 +318,7 @@ class CloudSyncEngine {
     }
 
     this.sessionInvalidDetected = false;
+    this.lastSessionRefreshAt = Date.now();
     return { ok: true };
   }
 
@@ -315,7 +387,7 @@ class CloudSyncEngine {
       return {
         ok: false,
         sessionExpired: true,
-        error: 'La sincronización con la nube está en pausa. Toca "Reconectar nube" con tu usuario actual antes de cambiar credenciales.',
+        error: 'Verifica tu conexión o vuelve a iniciar sesión para guardar cambios de credenciales.',
       };
     }
 
@@ -347,6 +419,57 @@ class CloudSyncEngine {
       this.emitStatusChange();
     }
     return res;
+  }
+
+  /**
+   * Elimina una ruta vacía (0 clientes y 0 créditos) directamente en el servidor
+   * para garantizar que no reaparezca en sincronizaciones posteriores.
+   */
+  public async deleteRouteInCloud(routeId: string): Promise<{
+    ok: boolean;
+    error?: string;
+    sessionExpired?: boolean;
+    networkError?: boolean;
+    skippedLocalOnly?: boolean;
+  }> {
+    if (!supabaseSyncService.isConnected()) {
+      return { ok: true, skippedLocalOnly: true };
+    }
+    let cfg = localStore.getOfficeConfig();
+    if (!cfg.officeId?.trim()) {
+      return { ok: true, skippedLocalOnly: true };
+    }
+    if (!cfg.cloudSessionToken?.trim()) {
+      const recovered = await this.tryRecoverCloudSessionFromRememberedCredentials();
+      if (recovered) {
+        cfg = localStore.getOfficeConfig();
+      }
+    }
+    if (!cfg.cloudSessionToken?.trim()) {
+      return {
+        ok: false,
+        sessionExpired: true,
+        error: 'Verifica tu conexión o vuelve a iniciar sesión para eliminar esta ruta.',
+      };
+    }
+    supabaseSyncService.setSessionToken(cfg.cloudSessionToken.trim());
+    let res = await supabaseSyncService.deleteEmptyRoute(routeId);
+    if (!res.ok && res.sessionInvalid) {
+      const recovered = await this.tryRecoverCloudSessionFromRememberedCredentials();
+      if (recovered) {
+        cfg = localStore.getOfficeConfig();
+        if (cfg.cloudSessionToken?.trim()) {
+          supabaseSyncService.setSessionToken(cfg.cloudSessionToken.trim());
+          res = await supabaseSyncService.deleteEmptyRoute(routeId);
+        }
+      }
+    }
+    return {
+      ok: res.ok,
+      error: res.error,
+      sessionExpired: res.sessionInvalid,
+      networkError: res.networkError,
+    };
   }
 
   /**
@@ -429,14 +552,29 @@ class CloudSyncEngine {
                 : 'La licencia de la oficina está suspendida.';
           } else {
             this.sessionInvalidDetected = false;
+            this.refreshSessionSilently().catch(() => {});
             await supabaseSyncService.upsertOffice(immutableOfficeId, cfg, {
               promises: localStore.getPromises(),
               nonPaymentVisits: localStore.getNonPaymentVisits(),
             });
+            // Nunca re-subir rutas fantasma vacías sin cobrador cuando la oficina ya tiene rutas activas
+            const allLocalRoutes = localStore.getRoutes();
+            const usedRouteIds = new Set<string>([
+              ...localStore.getCustomers().map((c) => c.routeId).filter(Boolean),
+              ...localStore.getLoans().map((l) => l.routeId).filter(Boolean),
+            ]);
+            const filteredRoutes =
+              allLocalRoutes.length > 1
+                ? allLocalRoutes.filter(
+                    (r) => Boolean((r.collectorId || '').trim()) || usedRouteIds.has(r.id)
+                  )
+                : allLocalRoutes;
+            const routesToPush = filteredRoutes.length > 0 ? filteredRoutes : allLocalRoutes;
+
             const usersRoutesResult = await supabaseSyncService.syncUsersAndRoutes(
               immutableOfficeId,
               localStore.getUsers(),
-              localStore.getRoutes()
+              routesToPush
             );
 
             if (!usersRoutesResult.ok) {
@@ -485,12 +623,16 @@ class CloudSyncEngine {
       await localStore.updateOfficeConfig({ lastSyncedAt: nowIso });
       this.isSyncing = false;
       this.emitStatusChange();
+      if (this.pendingRealtimeSync) {
+        this.pendingRealtimeSync = false;
+        this.scheduleRealtimeSync(300);
+      }
       return true;
     }
 
     if (cloudAuthNeeded) {
       this.lastSyncStatus = 'NEEDS_CLOUD_AUTH';
-      this.lastSyncMessage = cloudErrorMessage || 'Reconecta tu cuenta para sincronizar con la nube.';
+      this.lastSyncMessage = cloudErrorMessage || 'Sesión pendiente de renovación.';
     } else if (cloudErrorMessage) {
       this.lastSyncStatus = 'ERROR';
       this.lastSyncMessage = cloudErrorMessage;
@@ -502,6 +644,10 @@ class CloudSyncEngine {
 
     this.isSyncing = false;
     this.emitStatusChange();
+    if (this.pendingRealtimeSync) {
+      this.pendingRealtimeSync = false;
+      this.scheduleRealtimeSync(1500);
+    }
     return anySyncSuccessful;
   }
 }

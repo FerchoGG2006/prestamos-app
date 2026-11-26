@@ -43,7 +43,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
   const [referenceName, setReferenceName] = useState('');
   const [referencePhone, setReferencePhone] = useState('');
   const [referenceRelationship, setReferenceRelationship] = useState('');
-  const [selectedRouteId, setSelectedRouteId] = useState('route-norte');
+  const [selectedRouteId, setSelectedRouteId] = useState(() => localStore.getRoutes()[0]?.id || '');
   const [orderIndexStr, setOrderIndexStr] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -60,7 +60,7 @@ export const EditCustomerModal: React.FC<EditCustomerModalProps> = ({
       setCity(customer.city || 'Barranquilla');
       setBusinessName(customer.businessName || '');
       setOccupation(customer.occupation || '');
-      setSelectedRouteId(customer.routeId || 'route-norte');
+      setSelectedRouteId(customer.routeId || localStore.getRoutes()[0]?.id || '');
       setOrderIndexStr(customer.orderIndex ? String(customer.orderIndex) : '');
       const firstRef = customer.references?.[0];
       setReferenceName(firstRef?.fullName || '');

@@ -655,6 +655,7 @@ function MainApp({
         resetTimer();
         // Verificación silenciosa en segundo plano (OTA + APK + nube) al regresar a la aplicación
         performAppUpdatesCheck(true);
+        cloudSyncEngine.refreshSessionSilently().catch(() => {});
         cloudSyncEngine.syncNowIfAutoEnabled().catch(() => {});
       }
     };
@@ -821,7 +822,11 @@ function MainApp({
                     found.assignedRouteIds?.includes(r.id)
                 );
               setSelectedRouteId(
-                assignedRoute?.id || found.routeId || found.assignedRouteIds?.[0] || 'route-norte'
+                assignedRoute?.id ||
+                  found.routeId ||
+                  found.assignedRouteIds?.[0] ||
+                  localStore.getRoutes()[0]?.id ||
+                  ''
               );
             } else {
               setSelectedRouteId('ALL');
@@ -854,7 +859,11 @@ function MainApp({
             user.assignedRouteIds?.includes(r.id)
         );
       setSelectedRouteId(
-        assignedRoute?.id || user.routeId || user.assignedRouteIds?.[0] || 'route-norte'
+        assignedRoute?.id ||
+          user.routeId ||
+          user.assignedRouteIds?.[0] ||
+          localStore.getRoutes()[0]?.id ||
+          ''
       );
     } else {
       setSelectedRouteId('ALL');
@@ -887,13 +896,15 @@ function MainApp({
       ? currentUser?.routeId ||
         currentUser?.assignedRouteIds?.[0] ||
         routes.find((r) => r.collectorId === currentUser?.id)?.id ||
-        'route-norte'
+        routes[0]?.id ||
+        ''
       : selectedRouteId;
 
+  const fallbackRouteId = routes[0]?.id || '';
   const routeScopedCustomers =
     effectiveRouteFilter === 'ALL'
       ? customers
-      : customers.filter((c) => (c.routeId || 'route-norte') === effectiveRouteFilter);
+      : customers.filter((c) => (c.routeId || fallbackRouteId) === effectiveRouteFilter);
 
   const routeScopedCustomerIds = new Set(routeScopedCustomers.map((c) => c.id));
   const routeScopedLoans =
@@ -901,7 +912,7 @@ function MainApp({
       ? loans
       : loans.filter(
           (l) =>
-            (l.routeId || 'route-norte') === effectiveRouteFilter ||
+            (l.routeId || fallbackRouteId) === effectiveRouteFilter ||
             routeScopedCustomerIds.has(l.customerId)
         );
   const routeScopedLoanIds = new Set(routeScopedLoans.map((l) => l.id));
@@ -960,7 +971,7 @@ function MainApp({
   const activeRouteLabel =
     effectiveRouteFilter === 'ALL'
       ? 'Todas las Rutas'
-      : routes.find((r) => r.id === effectiveRouteFilter)?.name || 'Ruta Norte';
+      : routes.find((r) => r.id === effectiveRouteFilter)?.name || routes[0]?.name || 'Mi Ruta';
 
   // Botón Central con Logo de la Oficina: Dashboard principal con los cuadros (NO es la hoja de ruta)
   const handleCentralLogoPress = () => {
@@ -990,7 +1001,11 @@ function MainApp({
             currentUser?.assignedRouteIds?.includes(r.id)
         );
       setSelectedRouteId(
-        assignedRoute?.id || currentUser?.routeId || currentUser?.assignedRouteIds?.[0] || 'route-norte'
+        assignedRoute?.id ||
+          currentUser?.routeId ||
+          currentUser?.assignedRouteIds?.[0] ||
+          localStore.getRoutes()[0]?.id ||
+          ''
       );
     } else {
       setSelectedRouteId('ALL');

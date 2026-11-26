@@ -86,6 +86,7 @@ public class DesktopCloudSyncService {
     private final AtomicBoolean syncing = new AtomicBoolean(false);
     private final AtomicReference<SyncStatus> lastSyncStatus = new AtomicReference<>(SyncStatus.initial());
     private final AtomicReference<String> lastSyncedDigest = new AtomicReference<>(null);
+    private volatile long lastSessionRefreshMillis = 0L;
 
     public DesktopCloudSyncService(
             AuthService authService,
@@ -307,6 +308,12 @@ public class DesktopCloudSyncService {
                 registryClient.setActiveSessionToken(savedToken);
             }
             String officeId = optOfficeId.get();
+            long nowMs = System.currentTimeMillis();
+            if (nowMs - lastSessionRefreshMillis >= 10L * 60L * 1000L) {
+                if (registryClient.refreshCloudSession(url, key)) {
+                    lastSessionRefreshMillis = nowMs;
+                }
+            }
             Optional<RemoteOffice> optOffice = registryClient.findOfficeById(url, key, officeId);
             if (optOffice.isEmpty()) {
                 lastSyncStatus.set(new SyncStatus(false, lastSyncStatus.get().lastSyncAt(), "Sesión de nube vencida — vuelve a iniciar sesión", true));
@@ -514,8 +521,18 @@ public class DesktopCloudSyncService {
         if (isSettingFlagTrue(KEY_SETTINGS_LOCAL_DIRTY) || isSettingFlagTrue(KEY_CUSTOMER_ORDER_DIRTY)) {
             return true;
         }
+        Set<String> localUsedRouteIds = new HashSet<>();
+        customerRepository.findAll().forEach(c -> {
+            if (c.getRouteId() != null && !c.getRouteId().isBlank()) localUsedRouteIds.add(c.getRouteId());
+        });
+        loanRepository.findAll().forEach(l -> {
+            if (l.getRouteId() != null && !l.getRouteId().isBlank()) localUsedRouteIds.add(l.getRouteId());
+        });
         for (RouteEntity r : routeRepository.findAll()) {
-            if (!pullCtx.remoteRouteIds().contains(r.getId())) return true;
+            boolean isEmptyGhostRoute = !pullCtx.remoteRouteIds().isEmpty()
+                    && (r.getCollectorId() == null || r.getCollectorId().isBlank())
+                    && !localUsedRouteIds.contains(r.getId());
+            if (!isEmptyGhostRoute && !pullCtx.remoteRouteIds().contains(r.getId())) return true;
         }
         for (CustomerEntity c : customerRepository.findAll()) {
             if (!pullCtx.remoteCustomerIds().contains(c.getId())) return true;
@@ -1240,6 +1257,36 @@ public class DesktopCloudSyncService {
                 }
             }
 
+            // 8c. Podar rutas fantasma locales vacías que ya no existen en la nube (fuente única de verdad, cero pérdida)
+            if (!validRouteIds.isEmpty()) {
+                Set<String> referencedRouteIds = new HashSet<>();
+                for (CustomerEntity c : customerRepository.findAll()) {
+                    if (c.getRouteId() != null && !c.getRouteId().isBlank()) referencedRouteIds.add(c.getRouteId());
+                }
+                for (LoanEntity l : loanRepository.findAll()) {
+                    if (l.getRouteId() != null && !l.getRouteId().isBlank()) referencedRouteIds.add(l.getRouteId());
+                }
+                for (CashMovementEntity cm : cashMovementRepository.findAll()) {
+                    if (cm.getRouteId() != null && !cm.getRouteId().isBlank()) referencedRouteIds.add(cm.getRouteId());
+                }
+                if (collectionSessionRepository != null) {
+                    for (CollectionSessionEntity cs : collectionSessionRepository.findAll()) {
+                        if (cs.getRouteId() != null && !cs.getRouteId().isBlank()) referencedRouteIds.add(cs.getRouteId());
+                    }
+                }
+                boolean prunedAny = false;
+                for (RouteEntity localRoute : routeRepository.findAll()) {
+                    String localRid = localRoute.getId();
+                    if (!validRouteIds.contains(localRid) && !referencedRouteIds.contains(localRid)) {
+                        routeRepository.delete(localRoute);
+                        prunedAny = true;
+                    }
+                }
+                if (prunedAny) {
+                    routeRepository.flush();
+                }
+            }
+
             // 9. Hechos Inmutables del Libro Mayor (append-only, idempotente)
             for (JsonNode ev : remoteEvents) {
                 String idem = ev.path("idempotency_key").asText("");
@@ -1344,9 +1391,22 @@ public class DesktopCloudSyncService {
             }
         }
 
-        // 2. Rutas (preservando el código remoto existente cuando existe)
+        // 2. Rutas (preservando el código remoto existente y omitiendo rutas fantasma vacías sin cobrador)
+        Set<String> pushUsedRouteIds = new HashSet<>();
+        customerRepository.findAll().forEach(c -> {
+            if (c.getRouteId() != null && !c.getRouteId().isBlank()) pushUsedRouteIds.add(c.getRouteId());
+        });
+        loanRepository.findAll().forEach(l -> {
+            if (l.getRouteId() != null && !l.getRouteId().isBlank()) pushUsedRouteIds.add(l.getRouteId());
+        });
         List<ObjectNode> routeRows = new ArrayList<>();
         for (RouteEntity r : allRoutes) {
+            boolean isEmptyGhostRoute = allRoutes.size() > 1
+                    && !pullCtx.remoteRouteIds().isEmpty()
+                    && !pullCtx.remoteRouteIds().contains(r.getId())
+                    && (r.getCollectorId() == null || r.getCollectorId().isBlank())
+                    && !pushUsedRouteIds.contains(r.getId());
+            if (isEmptyGhostRoute) continue;
             ObjectNode n = registryClient.createObjectNode();
             n.put("id", r.getId());
             n.put("office_id", officeId);
