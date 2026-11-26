@@ -23,4 +23,4 @@
   - Upgrade `ReceiptDialog.java` to native JavaFX fintech comprobante design (PAYMENT / LOAN / RENEWAL, Office header, Kredia logo footer, WhatsApp 1-tap, PDF download, Print, Copy).
   - Wire `PaymentDialog.java`, `CreateLoanDialog.java`, `RenewLoanDialog.java`, `Customer360Dialog.java` (true historical balance), and `TodayCollectionsView.java`.
 - [x] **T007**: Write automated tests (Mobile finance/receipt test suite + Desktop JUnit tests) and verify `npm run typecheck`, `npm run test:finance`, and `.\gradlew.bat test`.
-- [ ] **T008**: Commit to `main`, deploy Mobile Web (`eas deploy`), Android OTA (`preview` channel), and Desktop OTA (`v1.2.4`), and verify end-to-end live receipt URL + convergence.
+- [x] **T008**: Commit to `main`, deploy Mobile Web (`eas deploy`), Android OTA (`preview` channel), and Desktop OTA (`v1.2.4`), and verify end-to-end live receipt URL + convergence.
