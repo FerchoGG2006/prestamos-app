@@ -433,7 +433,145 @@ export const cloudSyncSafetyTests = (async () => {
     assert.equal(pushedNowUsers.some((u) => u.username === 'sur.cobro1'), true);
     assert.equal(pushedNowRoutes.some((r) => r.name === 'Ruta Sur Activa'), true);
 
-    console.log('PASS cloud-sync-safety.test.ts (18/18 assertions)');
+    // 7. Regresión Bugfix credentials-sync-deadlock (Inversiones La Plancha / multi-oficina):
+    //    a) setupOfficeAndRoutes en una oficina nueva NUNCA debe sobreescribir el ID del admin con 'usr-adm-1' ni rutas con 'route-norte'
+    await localStore.applyLinkedOfficeBundle({
+      officeId: 'off-c995615df9',
+      activationCode: 'KRD-FXSG-TX4Z',
+      companyName: 'Inversiones La Plancha',
+      licenseStatus: 'ACTIVE',
+      cloudSessionToken: '',
+      users: [
+        {
+          id: 'usr-adm-a65ad54d',
+          name: 'jefeplancha',
+          username: 'plancha1',
+          password: hashPassword('Plancha2026!'),
+          email: 'plancha1@oficina.com',
+          role: 'ADMIN',
+          assignedRouteIds: ['ALL'],
+          isActive: true,
+          createdAt: '2026-11-21',
+        },
+      ],
+      routes: [
+        {
+          id: 'rt-plancha-001',
+          name: 'Ruta 1',
+          code: 'R-01',
+          collectorId: '',
+          isActive: true,
+          createdAt: '2026-11-21',
+        },
+      ],
+      preserveLocalPortfolio: false,
+    });
+
+    const setupRes = await localStore.setupOfficeAndRoutes({
+      companyName: 'Inversiones La Plancha',
+      adminName: 'jefeplancha',
+      adminUsername: 'kr0000',
+      adminPassword: 'NuevaClave2026!',
+      currentAdminPassword: 'Plancha2026!',
+      cleanCustomersData: false,
+      routesConfig: [
+        {
+          id: 'rt-plancha-001',
+          name: 'Ruta 1',
+          collectorName: 'Cobrador 1',
+          username: 'plancha.r1',
+          password: 'RutaClave2026!',
+        },
+      ],
+    });
+    assert.equal(
+      setupRes.adminUser.id,
+      'usr-adm-a65ad54d',
+      'Debe preservar el ID cloud del admin y JAMÁS pisarlo con usr-adm-1'
+    );
+    assert.equal(setupRes.createdRoutes[0].id, 'rt-plancha-001', 'Debe preservar ID de ruta de la oficina');
+    assert.equal(
+      setupRes.createdUsers.find((u) => u.role === 'COBRADOR')?.id !== 'usr-col-1',
+      true,
+      'Cobrador de otra oficina JAMÁS debe recibir el ID global usr-col-1 de FBV'
+    );
+
+    //    b) Sin cloudSessionToken activo, syncUsersAndRoutesNow DEBE reportar sessionExpired: true
+    await safeStorage.removeItem('@prestamos_remembered_credentials');
+    const pausedSyncRes = await cloudSyncEngine.syncUsersAndRoutesNow();
+    assert.equal(pausedSyncRes.ok, false);
+    assert.equal(pausedSyncRes.sessionExpired, true, 'Debe reportar sessionExpired para permitir rollback limpio');
+
+    //    c) Reconnect auto-sanea IDs heredados globales (usr-adm-1 / usr-col-1 / route-norte) en oficinas != off-fbv-001
+    await localStore.saveUsersAndRoutes(
+      [
+        {
+          id: 'usr-adm-1',
+          name: 'jefeplancha',
+          username: 'kr0000',
+          password: hashPassword('NuevaClave2026!'),
+          email: 'kr0000@oficina.com',
+          role: 'ADMIN',
+          assignedRouteIds: ['ALL'],
+          isActive: true,
+          createdAt: '2026-11-26',
+        },
+        {
+          id: 'usr-col-1',
+          name: 'Cobrador 1',
+          username: 'plancha.r1',
+          password: hashPassword('RutaClave2026!'),
+          email: 'plancha.r1@oficina.com',
+          role: 'COBRADOR',
+          routeId: 'route-norte',
+          assignedRouteIds: ['route-norte'],
+          isActive: true,
+          createdAt: '2026-11-26',
+        },
+      ],
+      [
+        {
+          id: 'route-norte',
+          name: 'Ruta 1',
+          code: 'R-01',
+          collectorId: 'usr-col-1',
+          isActive: true,
+          createdAt: '2026-11-26',
+        },
+      ]
+    );
+    supabaseSyncService.reauthenticateCloudSession = async () => ({
+      ok: true,
+      sessionToken: 'plancha-fresh-tok',
+      officeId: 'off-c995615df9',
+      activationCode: 'KRD-FXSG-TX4Z',
+      companyName: 'Inversiones La Plancha',
+      licenseStatus: 'ACTIVE',
+      licensePlan: 'LIFETIME',
+      authenticatedUserId: 'usr-adm-a65ad54d',
+      authenticatedUsername: 'plancha1',
+    });
+    supabaseSyncService.pushFullPortfolio = async () => ({ ok: true });
+    supabaseSyncService.pullFullPortfolio = async () => null;
+    const healedReauth = await cloudSyncEngine.reconnectCloudSession('plancha1', 'Plancha2026!');
+    assert.equal(healedReauth.ok, true);
+    assert.equal(
+      localStore.getUsers().some((u) => u.id === 'usr-adm-a65ad54d' && u.username === 'kr0000'),
+      true,
+      'Reconnect debe remapear usr-adm-1 al ID cloud real (usr-adm-a65ad54d) evitando choque RLS 42501'
+    );
+    assert.equal(
+      localStore.getUsers().some((u) => u.id === 'usr-col-1'),
+      false,
+      'Reconnect debe sanear usr-col-1 en oficinas distintas a FBV'
+    );
+    assert.equal(
+      localStore.getRoutes().some((r) => r.id === 'route-norte'),
+      false,
+      'Reconnect debe sanear route-norte en oficinas distintas a FBV'
+    );
+
+    console.log('PASS cloud-sync-safety.test.ts (26/26 assertions)');
   } finally {
     restoreMocks();
   }

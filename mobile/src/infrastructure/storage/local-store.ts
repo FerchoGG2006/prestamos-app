@@ -1378,13 +1378,25 @@ class LocalStore {
 
     const nowIso = new Date().toISOString();
     const todayStr = getLocalTodayStr();
+    const officeTag = (this.officeConfig.officeId || '')
+      .replace(/^off-/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 8)
+      .toLowerCase();
+    const idPrefix = officeTag || `loc${Date.now().toString(36).slice(-5)}`;
 
     const newRoutes: Route[] = [];
     const collectorUsers: User[] = [];
 
     params.routesConfig.forEach((rc, idx) => {
-      const routeId = rc.id || (idx === 0 ? 'route-norte' : idx === 1 ? 'route-centro' : idx === 2 ? 'route-sur' : `route-${idx + 1}-${Date.now()}`);
-      const collectorId = `usr-col-${idx + 1}`;
+      const existingRoute =
+        (rc.id ? this.routes.find((r) => r.id === rc.id) : undefined) || this.routes[idx];
+      const existingCollector = existingRoute?.collectorId
+        ? this.users.find((u) => u.id === existingRoute.collectorId)
+        : undefined;
+      const suffix = `${idPrefix}-${idx + 1}-${Math.random().toString(36).slice(2, 5)}`;
+      const routeId = rc.id || existingRoute?.id || `rt-${suffix}`;
+      const collectorId = existingCollector?.id || `usr-col-${suffix}`;
       const colName = rc.collectorName.trim() || `Cobrador Ruta ${idx + 1}`;
       const rName = rc.name.trim() || `Ruta ${idx + 1}`;
       const rUser = rc.username.trim().toLowerCase();
@@ -1395,15 +1407,15 @@ class LocalStore {
       newRoutes.push({
         id: routeId,
         name: rName,
-        code: `R-${String(idx + 1).padStart(2, '0')}`,
+        code: existingRoute?.code || `R-${String(idx + 1).padStart(2, '0')}`,
         collectorId,
         collectorName: colName,
         isActive: true,
         description: rc.description?.trim() || `Asignada a ${colName}`,
         targetAdministrative: targetAdmin,
         expectedCustomersCount: expectedCustomers,
-        initialCashBase: 0,
-        createdAt: todayStr,
+        initialCashBase: existingRoute?.initialCashBase ?? 0,
+        createdAt: existingRoute?.createdAt || todayStr,
       });
 
       collectorUsers.push({
@@ -1416,21 +1428,25 @@ class LocalStore {
         assignedRouteIds: [routeId],
         routeId,
         isActive: true,
-        createdAt: todayStr,
+        createdAt: existingCollector?.createdAt || todayStr,
       });
     });
 
     const allRouteIds = newRoutes.map((r) => r.id);
+    const preservedAdminId =
+      existingAdmin?.id && !(officeTag && officeTag !== 'fbv001' && existingAdmin.id === 'usr-adm-1')
+        ? existingAdmin.id
+        : `usr-adm-${idPrefix}-${Math.random().toString(36).slice(2, 6)}`;
     const adminUser: User = {
-      id: 'usr-adm-1',
-      name: params.adminName.trim() || 'Administrador de Oficina',
+      id: preservedAdminId,
+      name: params.adminName.trim() || existingAdmin?.name || 'Administrador de Oficina',
       username: cleanAdminUsername,
       password: hashPassword(cleanAdminPassword),
       email: `${cleanAdminUsername}@oficina.com`,
       role: 'ADMIN',
       assignedRouteIds: ['ALL', ...allRouteIds],
       isActive: true,
-      createdAt: todayStr,
+      createdAt: existingAdmin?.createdAt || todayStr,
     };
 
     this.users = [adminUser, ...collectorUsers];
@@ -1550,6 +1566,11 @@ class LocalStore {
       throw new Error(`El usuario "${cleanUsername}" ya está asignado a otro miembro de la oficina.`);
     }
 
+    const officeTag = (this.officeConfig.officeId || '')
+      .replace(/^off-/i, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 8)
+      .toLowerCase();
     const updatedAdmin: User =
       existingAdmin
         ? {
@@ -1559,8 +1580,8 @@ class LocalStore {
             password: finalPasswordHash,
           }
         : {
-            id: 'usr-adm-1',
-            name: params.name.trim() || 'Administrador FBV',
+            id: officeTag ? `usr-adm-${officeTag}-${Date.now().toString(36).slice(-4)}` : `usr-adm-${Date.now().toString(36)}`,
+            name: params.name.trim() || 'Administrador de Oficina',
             username: cleanUsername,
             password: finalPasswordHash,
             email: `${cleanUsername}@oficina.com`,

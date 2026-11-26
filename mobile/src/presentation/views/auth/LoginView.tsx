@@ -564,6 +564,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }
       }
 
+      const prevUsers = [...localStore.getUsers()];
+      const prevRoutes = [...localStore.getRoutes()];
+      const prevCfg = { ...localStore.getOfficeConfig() };
+
       const result = await localStore.setupOfficeAndRoutes({
         companyName: wizCompanyName.trim(),
         recoveryPin: wizRecoveryPin.trim() || undefined,
@@ -586,6 +590,23 @@ export const LoginView: React.FC<LoginViewProps> = ({
           };
         }),
       });
+
+      // Si la oficina está vinculada a la nube, sincronizar las credenciales inmediatamente (o revertir si falla)
+      if (prevCfg.officeId?.trim()) {
+        const syncRes = await cloudSyncEngine.syncUsersAndRoutesNow();
+        if (!syncRes.ok) {
+          await localStore.saveUsersAndRoutes(prevUsers, prevRoutes);
+          await localStore.updateOfficeConfig({
+            companyName: prevCfg.companyName,
+            recoveryPin: prevCfg.recoveryPin,
+          });
+          setWizError(
+            syncRes.error ||
+              'No se pudieron guardar las nuevas credenciales en la nube. Inicia sesión primero con tus credenciales actuales en la nube y reconecta antes de cambiarlas.'
+          );
+          return;
+        }
+      }
 
       if (onDataReset) onDataReset();
       setSetupVisible(false);

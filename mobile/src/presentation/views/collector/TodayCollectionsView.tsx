@@ -182,6 +182,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
   const [reconnectModalVisible, setReconnectModalVisible] = useState<boolean>(false);
   const [reconnectUsername, setReconnectUsername] = useState<string>('');
   const [reconnectPassword, setReconnectPassword] = useState<string>('');
+  const [showReconnectPassword, setShowReconnectPassword] = useState<boolean>(false);
   const [reconnectError, setReconnectError] = useState<string>('');
   const [isReconnecting, setIsReconnecting] = useState<boolean>(false);
 
@@ -199,6 +200,7 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
       setReconnectUsername(loggedUser.username);
     }
     setReconnectPassword('');
+    setShowReconnectPassword(false);
     setReconnectError('');
     setReconnectModalVisible(true);
   }, [currentUserId]);
@@ -234,12 +236,19 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     try {
       const res = await cloudSyncEngine.reconnectCloudSession(cleanU, cleanP);
       if (res.ok) {
+        // Actualizar credenciales recordadas usando el usuario final vigente en local/nube tras sincronizar
+        const finalUsers = localStore.getUsers();
+        const syncedSelf =
+          finalUsers.find((u) => u.id === currentUserId) ||
+          finalUsers.find((u) => (u.username || '').toLowerCase() === cleanU);
+        const finalUsername = (syncedSelf?.username || cleanU).trim().toLowerCase();
         await safeStorage.setItem(
           '@prestamos_remembered_credentials',
-          JSON.stringify({ username: cleanU, password: cleanP })
+          JSON.stringify({ username: finalUsername, password: cleanP })
         );
         setReconnectModalVisible(false);
         setReconnectPassword('');
+        setShowReconnectPassword(false);
         if (Platform.OS === 'web') {
           window.alert('¡Sincronización reactivada! Tus datos locales se subieron correctamente a la nube.');
         } else {
@@ -1695,14 +1704,33 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
               <X size={18} color="#64748B" />
             </TouchableOpacity>
           </View>
-          <Text style={{ fontSize: 12, color: '#334155', lineHeight: 18, marginBottom: 12 }}>
+          <Text style={{ fontSize: 12, color: '#334155', lineHeight: 18, marginBottom: 8 }}>
             Tus clientes, préstamos y cobros locales de este teléfono se conservarán intactos y se subirán primero a la nube para quedar al día con el PC de la oficina.
           </Text>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>Usuario</Text>
+          <View
+            style={{
+              backgroundColor: '#EFF6FF',
+              borderWidth: 1,
+              borderColor: '#BFDBFE',
+              borderRadius: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              marginBottom: 12,
+            }}
+          >
+            <Text style={{ fontSize: 11.5, color: '#1E40AF', lineHeight: 16, fontWeight: '600' }}>
+              Ingresa el usuario y clave registrados en la nube para tu oficina. Si cambiaste el usuario mientras la nube estaba en pausa, escribe tu usuario anterior con el que iniciaste sesión originalmente.
+            </Text>
+          </View>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>Usuario en la nube</Text>
           <TextInput
             value={reconnectUsername}
-            onChangeText={setReconnectUsername}
-            placeholder="Ej. admin-fbv"
+            onChangeText={(v) => {
+              setReconnectUsername(v);
+              setReconnectError('');
+            }}
+            placeholder="Ej. usuario de tu oficina"
+            placeholderTextColor="#94A3B8"
             autoCapitalize="none"
             autoCorrect={false}
             style={{
@@ -1717,23 +1745,47 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
             }}
           />
           <Text style={{ fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 4 }}>Contraseña</Text>
-          <TextInput
-            value={reconnectPassword}
-            onChangeText={setReconnectPassword}
-            placeholder="Tu contraseña"
-            secureTextEntry
-            autoCapitalize="none"
+          <View
             style={{
+              flexDirection: 'row',
+              alignItems: 'center',
               borderWidth: 1,
               borderColor: '#CBD5E1',
               borderRadius: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              marginBottom: 10,
-              color: '#0F172A',
               backgroundColor: '#F8FAFC',
+              paddingHorizontal: 12,
+              marginBottom: 10,
             }}
-          />
+          >
+            <TextInput
+              value={reconnectPassword}
+              onChangeText={(v) => {
+                setReconnectPassword(v);
+                setReconnectError('');
+              }}
+              placeholder="Ingresa tu contraseña"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry={!showReconnectPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                color: '#0F172A',
+              }}
+            />
+            <TouchableOpacity
+              onPress={() => setShowReconnectPassword((prev) => !prev)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ paddingLeft: 8 }}
+            >
+              {showReconnectPassword ? (
+                <EyeOff size={18} color="#64748B" />
+              ) : (
+                <Eye size={18} color="#64748B" />
+              )}
+            </TouchableOpacity>
+          </View>
           {!!reconnectError && (
             <Text style={{ fontSize: 12, fontWeight: '700', color: '#DC2626', marginBottom: 10 }}>
               {reconnectError}

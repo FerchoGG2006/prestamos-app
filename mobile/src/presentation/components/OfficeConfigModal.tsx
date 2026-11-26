@@ -304,38 +304,47 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       });
 
       const syncRes = await cloudSyncEngine.syncUsersAndRoutesNow();
-      if (!syncRes.ok && syncRes.usernameConflict) {
+      if (!syncRes.ok) {
+        // Garantía estricta: NUNCA dejar credenciales del Admin desincronizadas respecto a Supabase
         await localStore.saveUsersAndRoutes(prevUsers, prevRoutes);
         setUsersList([...localStore.getUsers()]);
-        const msg = syncRes.error || 'Ese usuario ya está registrado en otra cuenta de Kredia.';
+        const prevAdm = prevUsers.find((u) => u.role === 'ADMIN' || u.role === 'SUPER_ADMIN');
+        if (prevAdm) {
+          setAdminNameEdit(prevAdm.name || 'Administración General');
+          setAdminUserEdit(prevAdm.username || '');
+        }
+        const msg =
+          syncRes.error ||
+          'No se pudo sincronizar las credenciales con la nube. Reconecta tu cuenta con conexión a internet e intenta de nuevo.';
         setRouteFeedback({ type: 'error', text: msg });
-        notifyUser('Usuario no disponible', msg);
+        notifyUser(
+          syncRes.usernameConflict ? 'Usuario no disponible' : 'Requiere sincronización en la nube',
+          msg
+        );
         return;
       }
 
       setUsersList([...localStore.getUsers()]);
       const changedPass = adminPassEdit.trim();
       setAdminPassEdit('');
-      if (changedPass) {
-        try {
+      try {
+        const rawPrev = await safeStorage.getItem('@prestamos_remembered_credentials');
+        const parsedPrev = rawPrev ? JSON.parse(rawPrev) : {};
+        const effectivePassword = changedPass || parsedPrev?.password || '';
+        if (effectivePassword) {
           await safeStorage.setItem(
             '@prestamos_remembered_credentials',
-            JSON.stringify({ username: updatedAdmin.username, password: changedPass })
+            JSON.stringify({ username: updatedAdmin.username, password: effectivePassword })
           );
-        } catch {}
-      }
+        }
+      } catch {}
 
-      const msg = syncRes.ok
-        ? syncRes.skippedLocalOnly
-          ? `Credenciales del administrador guardadas (${updatedAdmin.username}).`
-          : `Credenciales del administrador guardadas y sincronizadas en la nube (${updatedAdmin.username}).`
-        : `Guardado en este dispositivo (${updatedAdmin.username}), pero no se pudo subir a la nube: ${syncRes.error || 'sin conexión'}.`;
+      const msg = syncRes.skippedLocalOnly
+        ? `Credenciales del administrador guardadas (${updatedAdmin.username}).`
+        : `Credenciales del administrador guardadas y sincronizadas en la nube (${updatedAdmin.username}).`;
 
-      setRouteFeedback({ type: syncRes.ok ? 'success' : 'error', text: msg });
-      notifyUser(
-        syncRes.ok ? 'Credenciales de Administrador Actualizadas' : 'Guardado solo localmente',
-        msg
-      );
+      setRouteFeedback({ type: 'success', text: msg });
+      notifyUser('Credenciales de Administrador Actualizadas', msg);
       onSuccess();
     } catch (err: any) {
       const msg = err?.message || 'No se pudieron actualizar las credenciales.';
@@ -381,13 +390,19 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       });
 
       const syncRes = await cloudSyncEngine.syncUsersAndRoutesNow();
-      if (!syncRes.ok && syncRes.usernameConflict) {
+      if (!syncRes.ok) {
+        // Garantía estricta: NUNCA dejar credenciales de ruta desincronizadas respecto a Supabase
         await localStore.saveUsersAndRoutes(prevUsers, prevRoutes);
         setRoutesList([...localStore.getRoutes()]);
         setUsersList([...localStore.getUsers()]);
-        const msg = syncRes.error || 'Ese usuario ya existe en el sistema. Elige otro distinto.';
+        const msg =
+          syncRes.error ||
+          'No se pudo sincronizar la ruta con la nube. Verifica tu conexión o toca "Reconectar nube" primero.';
         setRouteFeedback({ type: 'error', text: msg });
-        notifyUser('Usuario no disponible', msg);
+        notifyUser(
+          syncRes.usernameConflict ? 'Usuario no disponible' : 'Requiere sincronización en la nube',
+          msg
+        );
         return;
       }
 
@@ -396,17 +411,12 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setEditingRouteId(null);
       setEditPassword('');
 
-      const msg = syncRes.ok
-        ? syncRes.skippedLocalOnly
-          ? `Ruta "${route.name}" y usuario "${collector.username}" guardados correctamente.`
-          : `Ruta "${route.name}" y credenciales del cobrador "${collector.username}" guardadas y sincronizadas en la nube. Ya puedes iniciar sesión con este usuario.`
-        : `Guardado en este dispositivo (${collector.username}), pero no se pudo subir a la nube: ${syncRes.error || 'sin conexión'}. Intenta tocar Sincronizar antes de cerrar sesión.`;
+      const msg = syncRes.skippedLocalOnly
+        ? `Ruta "${route.name}" y usuario "${collector.username}" guardados correctamente.`
+        : `Ruta "${route.name}" y credenciales del cobrador "${collector.username}" guardadas y sincronizadas en la nube. Ya puedes iniciar sesión con este usuario.`;
 
-      setRouteFeedback({ type: syncRes.ok ? 'success' : 'error', text: msg });
-      notifyUser(
-        syncRes.ok ? 'Ruta y Credenciales Guardadas' : 'Guardado solo en este dispositivo',
-        msg
-      );
+      setRouteFeedback({ type: 'success', text: msg });
+      notifyUser('Ruta y Credenciales Guardadas', msg);
       onSuccess();
     } catch (err: any) {
       const msg = err?.message || 'No se pudo actualizar la ruta.';
@@ -536,13 +546,18 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       await localStore.saveUsersAndRoutes(updatedUsers, updatedRoutes);
 
       const syncRes = await cloudSyncEngine.syncUsersAndRoutesNow();
-      if (!syncRes.ok && syncRes.usernameConflict) {
+      if (!syncRes.ok) {
         await localStore.saveUsersAndRoutes(prevUsers, prevRoutes);
         setUsersList([...localStore.getUsers()]);
         setRoutesList([...localStore.getRoutes()]);
-        const msg = syncRes.error || 'Ese nombre de usuario ya existe en el sistema. Elige otro.';
+        const msg =
+          syncRes.error ||
+          'No se pudo registrar la nueva ruta en la nube. Verifica tu conexión o toca "Reconectar nube" primero.';
         setRouteFeedback({ type: 'error', text: msg });
-        notifyUser('Usuario no disponible', msg);
+        notifyUser(
+          syncRes.usernameConflict ? 'Usuario no disponible' : 'Requiere sincronización en la nube',
+          msg
+        );
         return;
       }
 
@@ -557,14 +572,11 @@ export const OfficeConfigModal: React.FC<OfficeConfigModalProps> = ({
       setNewInitialCashBaseStr('0');
       setNewExpectedCustomersStr('40');
 
-      const msg = syncRes.ok
-        ? `Se habilitó "${newRoute.name}" y se sincronizó en la nube.\n\nUsuario: ${newCollector.username}\nYa puedes iniciar sesión con estas credenciales.`
-        : `Se creó "${newRoute.name}" localmente (${newCollector.username}), pero no se pudo subir a la nube: ${syncRes.error || 'sin conexión'}.`;
-      setRouteFeedback({ type: syncRes.ok ? 'success' : 'error', text: msg });
-      notifyUser(
-        syncRes.ok ? '¡Ruta Creada y Sincronizada!' : 'Ruta Creada Solo Localmente',
-        msg
-      );
+      const msg = syncRes.skippedLocalOnly
+        ? `Se habilitó "${newRoute.name}" localmente (${newCollector.username}).`
+        : `Se habilitó "${newRoute.name}" y se sincronizó en la nube.\n\nUsuario: ${newCollector.username}\nYa puedes iniciar sesión con estas credenciales.`;
+      setRouteFeedback({ type: 'success', text: msg });
+      notifyUser('¡Ruta Creada y Sincronizada!', msg);
       onSuccess();
     } catch (err: any) {
       const msg = err?.message || 'No se pudo guardar la ruta.';

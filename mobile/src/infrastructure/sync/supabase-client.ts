@@ -379,13 +379,23 @@ class SupabaseSyncService {
     officeId: string,
     users: User[],
     routes: Route[]
-  ): Promise<{ ok: boolean; error?: string; usernameConflict?: boolean; networkError?: boolean }> {
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    usernameConflict?: boolean;
+    sessionExpired?: boolean;
+    networkError?: boolean;
+  }> {
     if (!this.client) {
       return { ok: false, error: 'Servicio en la nube no configurado.', networkError: true };
     }
     try {
-      if (users.length > 0) {
-        const payloadUsers = users.map((u) => ({
+      // Filtrar usuarios fantasma sin username o sin contraseña hasheada (evita filas rotas con pw_len = 0)
+      const validUsers = users.filter(
+        (u) => Boolean((u.username || '').trim()) && Boolean((u.password || '').trim())
+      );
+      if (validUsers.length > 0) {
+        const payloadUsers = validUsers.map((u) => ({
           id: u.id,
           office_id: officeId,
           name: u.name || u.username || 'Usuario',
@@ -420,7 +430,8 @@ class SupabaseSyncService {
           if (code === '42501' || lower.includes('row-level security') || lower.includes('permission')) {
             return {
               ok: false,
-              error: 'Tu sesión de nube venció. Vuelve a iniciar sesión como administrador para sincronizar credenciales.',
+              sessionExpired: true,
+              error: 'Tu sesión de nube venció o hay un conflicto de permisos. Toca "Reconectar nube" con tu usuario actual primero.',
             };
           }
           return {
@@ -431,12 +442,13 @@ class SupabaseSyncService {
       }
 
       if (routes.length > 0) {
+        const validUserIds = new Set(validUsers.map((u) => u.id));
         const payloadRoutes = routes.map((r) => ({
           id: r.id,
           office_id: officeId,
           name: r.name,
           code: r.code || r.name.slice(0, 4).toUpperCase(),
-          collector_id: r.collectorId || null,
+          collector_id: r.collectorId && validUserIds.has(r.collectorId) ? r.collectorId : null,
           target_administrative: r.targetAdministrative || 0,
           initial_cash_base: r.initialCashBase || 0,
           expected_customers_count: r.expectedCustomersCount || 0,
@@ -447,6 +459,15 @@ class SupabaseSyncService {
           .from('routes')
           .upsert(payloadRoutes, { onConflict: 'id' });
         if (routesErr) {
+          const code = String(routesErr.code || '');
+          const lower = `${code} ${routesErr.message || ''}`.toLowerCase();
+          if (code === '42501' || lower.includes('row-level security') || lower.includes('permission')) {
+            return {
+              ok: false,
+              sessionExpired: true,
+              error: 'Tu sesión de nube venció. Toca "Reconectar nube" primero antes de guardar cambios.',
+            };
+          }
           return {
             ok: false,
             error: `No se pudieron guardar las rutas en la nube: ${routesErr.message || routesErr.code}`,
@@ -1129,6 +1150,7 @@ class SupabaseSyncService {
     licensePlan?: 'LIFETIME' | 'MONTHLY' | 'ANNUAL';
     licenseExpiresAt?: string | null;
     authenticatedUserId?: string;
+    authenticatedUsername?: string;
   }> {
     if (!this.client) {
       return { ok: false, error: 'Servicio en la nube no configurado.' };
@@ -1162,6 +1184,7 @@ class SupabaseSyncService {
         licensePlan: (officeRow.license_plan || 'LIFETIME') as 'LIFETIME' | 'MONTHLY' | 'ANNUAL',
         licenseExpiresAt: officeRow.license_expires_at || null,
         authenticatedUserId: authData.user.id,
+        authenticatedUsername: authData.user.username,
       };
     } catch (err: any) {
       return {
