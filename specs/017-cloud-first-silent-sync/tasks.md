@@ -1,5 +1,7 @@
 # Tasks: 017-cloud-first-silent-sync
 
+**Status**: Converged (100% Complete & Verified Live)
+
 ## Phase 1 — Spec & Supabase Migration
 - [x] T001 Inspect Mobile, Desktop, and Supabase session/route codebases
 - [x] T002 Create Spec 017 artifacts (`spec.md`, `plan.md`, `tasks.md`)
@@ -23,6 +25,6 @@
 ## Phase 4 — Verification, Commit & Live Deployment
 - [x] T015 Verify Mobile (`npm run typecheck` + `npm run test:finance` — 0 errors, 36/36 sync safety + 1632 renewal assertions + 6/6 receipt suites)
 - [x] T016 Verify Desktop (`compileJava`, 8/8 JUnit suite, `buildOtaPatch` `v1.2.5` — 1,381,668 bytes)
-- [x] T017 Commit and push to `origin/main`
-- [ ] T018 Deploy Mobile Web (`1.2.32`), Android OTA (`preview`), and Desktop OTA (`v1.2.5`)
-- [ ] T019 Final live Supabase read-only audit confirming Inversiones La Plancha (`off-c995615df9`) intact with 1 route and 365-day sessions
+- [x] T017 Commit and push to `origin/main` (`3d65607`)
+- [x] T018 Deploy Mobile Web (`1.2.32`), Android OTA (`preview`, `a1178a4f-aea4-4042-8c9b-dac6341c441d`), and Desktop OTA (`v1.2.5` in Supabase Storage `desktop-updates`)
+- [x] T019 Final live Supabase read-only audit confirming Inversiones La Plancha (`off-c995615df9`) intact (22 customers, 23 loans, 1 route `La plancha 1`, 2 active sessions extended to `2027-11-26`) and Inversiones FBV (`off-fbv-001`) with 1 route (`Galeria`)
