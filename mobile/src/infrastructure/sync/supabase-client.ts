@@ -1,6 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { verifyPassword } from '../../core/utils/security';
 import {
+  OfficialReceiptData,
+  OfficialReceiptStatus,
+  OfficialReceiptType,
+} from '../../core/utils/whatsapp-receipt';
+import {
   Customer,
   Loan,
   Installment,
@@ -1421,6 +1426,150 @@ class SupabaseSyncService {
         ok: false,
         error: err?.message || 'Error de red al validar la oficina.',
       };
+    }
+  }
+
+  private mapRemoteReceiptRow(
+    raw: any,
+    fallback?: Partial<OfficialReceiptData>
+  ): OfficialReceiptData {
+    const typeRaw = String(raw?.receipt_type || fallback?.receiptType || 'PAYMENT').toUpperCase();
+    const receiptType: OfficialReceiptType =
+      typeRaw === 'LOAN' || typeRaw === 'RENEWAL' ? typeRaw : 'PAYMENT';
+    const statusRaw = String(raw?.status || fallback?.status || 'APPROVED').toUpperCase();
+    const status: OfficialReceiptStatus =
+      statusRaw === 'REVERSED' || statusRaw === 'CANCELLED' ? statusRaw : 'APPROVED';
+    return {
+      receiptCode: String(raw?.receipt_code || fallback?.receiptCode || ''),
+      receiptType,
+      entityId: String(fallback?.entityId || raw?.entity_id || raw?.receipt_code || ''),
+      companyName: String(raw?.company_name || fallback?.companyName || 'Kredia'),
+      routeName: String(raw?.route_name ?? fallback?.routeName ?? ''),
+      customerName: String(raw?.customer_name || fallback?.customerName || 'Cliente'),
+      customerDocument: String(fallback?.customerDocument || ''),
+      customerPhone: String(fallback?.customerPhone || ''),
+      loanNumber: String(raw?.loan_number ?? fallback?.loanNumber ?? ''),
+      amount: Number(raw?.amount ?? fallback?.amount ?? 0),
+      status,
+      issuedAtDisplay: String(raw?.issued_at_display || fallback?.issuedAtDisplay || ''),
+      payload:
+        raw?.payload && typeof raw.payload === 'object'
+          ? raw.payload
+          : (fallback?.payload || {}),
+      isCloudVerified: String(raw?.receipt_code || '').startsWith('KRD-'),
+    };
+  }
+
+  /**
+   * Publica (de forma idempotente e inmutable) un comprobante oficial en Supabase.
+   * Si ya existía para (office_id, receipt_type, entity_id), devuelve el original inalterado.
+   */
+  public async issueOfficialReceipt(
+    draft: OfficialReceiptData
+  ): Promise<{ ok: boolean; receipt: OfficialReceiptData; error?: string }> {
+    if (!this.client || !this.sessionToken) {
+      return {
+        ok: false,
+        receipt: draft,
+        error: 'Sin conexión a la nube. Comprobante emitido en modo local.',
+      };
+    }
+    try {
+      const { data, error } = await this.client.rpc('issue_official_receipt', {
+        p_receipt_type: draft.receiptType,
+        p_entity_id: draft.entityId,
+        p_company_name: draft.companyName,
+        p_route_name: draft.routeName || '',
+        p_customer_name: draft.customerName,
+        p_customer_document: draft.customerDocument || '',
+        p_loan_number: draft.loanNumber || '',
+        p_amount: Math.max(0, Math.round(draft.amount)),
+        p_issued_at_display: draft.issuedAtDisplay,
+        p_payload: draft.payload || {},
+      });
+      if (error) {
+        return { ok: false, receipt: draft, error: error.message };
+      }
+      if (!data?.ok || !data?.receipt) {
+        return {
+          ok: false,
+          receipt: draft,
+          error: data?.error || 'No se pudo emitir el comprobante oficial.',
+        };
+      }
+      return {
+        ok: true,
+        receipt: this.mapRemoteReceiptRow(data.receipt, draft),
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        receipt: draft,
+        error: err?.message || 'Error de red publicando comprobante.',
+      };
+    }
+  }
+
+  /**
+   * Consulta pública de un comprobante oficial por su código único KRD-... (sin login).
+   */
+  public async getPublicOfficialReceipt(
+    receiptCode: string,
+    overrideUrl?: string,
+    overrideKey?: string
+  ): Promise<{ ok: boolean; receipt?: OfficialReceiptData; error?: string }> {
+    const cleanCode = (receiptCode || '').trim().toUpperCase();
+    if (!cleanCode || !cleanCode.startsWith('KRD-')) {
+      return { ok: false, error: 'Código de comprobante inválido.' };
+    }
+    const url = (overrideUrl || this.currentUrl || DEFAULT_SUPABASE_URL).trim();
+    const key = (overrideKey || this.currentKey || DEFAULT_SUPABASE_ANON_KEY).trim();
+    if (!url || !key) {
+      return { ok: false, error: 'Servicio de verificación no disponible.' };
+    }
+    try {
+      const anonClient = createClient(url, key, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data, error } = await anonClient.rpc('get_official_receipt', {
+        p_code: cleanCode,
+      });
+      if (error) {
+        return { ok: false, error: error.message || 'No se pudo consultar el comprobante.' };
+      }
+      if (!data?.ok || !data?.receipt) {
+        return { ok: false, error: data?.error || 'Comprobante no encontrado.' };
+      }
+      return {
+        ok: true,
+        receipt: this.mapRemoteReceiptRow(data.receipt),
+      };
+    } catch (err: any) {
+      return {
+        ok: false,
+        error: err?.message || 'Error de conexión al verificar el comprobante.',
+      };
+    }
+  }
+
+  /**
+   * Marca un comprobante oficial publicado como REVERSED o CANCELLED cuando un admin anula la operación.
+   */
+  public async voidOfficialReceipt(
+    receiptType: OfficialReceiptType,
+    entityId: string,
+    newStatus: 'REVERSED' | 'CANCELLED'
+  ): Promise<boolean> {
+    if (!this.client || !this.sessionToken || !entityId) return false;
+    try {
+      const { data, error } = await this.client.rpc('void_official_receipt', {
+        p_receipt_type: receiptType,
+        p_entity_id: entityId,
+        p_new_status: newStatus,
+      });
+      return !error && Boolean(data?.ok);
+    } catch {
+      return false;
     }
   }
 }

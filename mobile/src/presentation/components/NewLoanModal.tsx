@@ -24,6 +24,15 @@ import {
 } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
+import { supabaseSyncService } from '../../infrastructure/sync/supabase-client';
+import {
+  OfficialReceiptModal,
+  ConfirmationStepItem,
+} from './OfficialReceiptModal';
+import {
+  OfficialReceiptData,
+  buildLoanOfficialReceipt,
+} from '../../core/utils/whatsapp-receipt';
 import {
   FilePlus2,
   X,
@@ -130,10 +139,17 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string>('');
   const [mediaAttachment, setMediaAttachment] = useState<ClientMediaValue | null>(null);
+  const [loanOfficialReceipt, setLoanOfficialReceipt] = useState<OfficialReceiptData | null>(null);
+  const [showLoanReceiptFlow, setShowLoanReceiptFlow] = useState(false);
+  const [loanProcessingSteps, setLoanProcessingSteps] = useState<ConfirmationStepItem[]>([]);
+  const [loanProcessingCustomerName, setLoanProcessingCustomerName] = useState('');
 
   useEffect(() => {
     if (visible) {
       setFormError('');
+      setShowLoanReceiptFlow(false);
+      setLoanOfficialReceipt(null);
+      setLoanProcessingSteps([]);
       const targetRoute =
         defaultRouteId && defaultRouteId !== 'ALL'
           ? defaultRouteId
@@ -447,6 +463,22 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         );
       } else {
         const effectiveMigration = isCollector ? false : isCardMigration;
+        const resolvedCustomerBefore =
+          customers.find((c) => c.id === targetCustomerId) ||
+          localStore.getCustomers().find((c) => c.id === targetCustomerId);
+
+        if (!effectiveMigration) {
+          setLoanProcessingCustomerName(resolvedCustomerBefore?.fullName || fullName.trim() || 'Cliente');
+          setShowLoanReceiptFlow(true);
+          setLoanOfficialReceipt(null);
+          setLoanProcessingSteps([
+            { label: 'Validando titular y monto', state: 'done' },
+            { label: 'Registrando préstamo y plan de cuotas', state: 'active' },
+            { label: 'Publicando comprobante oficial', state: 'pending' },
+            { label: 'Comprobante listo', state: 'pending' },
+          ]);
+        }
+
         const res = await localStore.createLoan({
           customerId: targetCustomerId,
           principal,
@@ -474,15 +506,58 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
             `• Cartulina / Papelería registrada: ${isPaperworkEnabled ? formatCOP(paperwork) : '$0 (Desactivada)'}`
           );
         } else {
-          Alert.alert(
-            'Crédito Desembolsado',
-            `Crédito ${res.loan.loanNumber} creado exitosamente.\n\n` +
-            `• Modalidad: ${isFixedDate ? `Fecha Fija (Vence: ${fixedDueDateStr})` : `${installmentCount} ${currentFreqConfig.unitLabel}`}\n` +
-            `• Total a cobrar: ${formatCOP(res.loan.totalAgreed)}\n` +
-            `• Cuota: ${formatCOP(res.loan.installmentAmount)}\n` +
-            `• Cartulina / Papelería: ${formatCOP(paperwork)}\n` +
-            `• Efectivo neto a entregar: ${formatCOP(netCashToDeliver)}`
-          );
+          setLoanProcessingSteps([
+            { label: 'Validando titular y monto', state: 'done' },
+            { label: 'Registrando préstamo y plan de cuotas', state: 'done' },
+            { label: 'Publicando comprobante oficial', state: 'active' },
+            { label: 'Comprobante listo', state: 'pending' },
+          ]);
+
+          const finalCustomer =
+            localStore.getCustomers().find((c) => c.id === targetCustomerId) ||
+            resolvedCustomerBefore || {
+              id: targetCustomerId,
+              fullName: fullName.trim() || 'Cliente',
+              documentNumber: documentNumber.trim(),
+              phone: phone.trim() || whatsappPhone.trim(),
+              whatsappPhone: whatsappPhone.trim() || phone.trim(),
+              address: address.trim(),
+              neighborhood: neighborhood.trim(),
+              city: '',
+              references: [],
+              occupation: '',
+              status: 'ACTIVE' as const,
+              routeId: res.loan.routeId,
+              assignedCollectorId: res.loan.collectorId,
+              createdAt: todayStr,
+              updatedAt: todayStr,
+            };
+
+          const draftReceipt = buildLoanOfficialReceipt({
+            companyName: officeConfig.companyName || 'Mi Oficina',
+            routeName: localStore.getRouteDisplayName(res.loan.routeId),
+            collectorName: localStore.getCollectorDisplayName(res.loan.collectorId),
+            footerMessage: officeConfig.receiptFooterMessage,
+            customer: finalCustomer,
+            loan: res.loan,
+            paperworkFee: isPaperworkEnabled ? paperwork : 0,
+            firstDueDate: firstDueDateStr,
+          });
+          const published = await supabaseSyncService.issueOfficialReceipt(draftReceipt);
+          setLoanProcessingSteps([
+            { label: 'Validando titular y monto', state: 'done' },
+            { label: 'Registrando préstamo y plan de cuotas', state: 'done' },
+            { label: 'Publicando comprobante oficial', state: 'done' },
+            { label: 'Comprobante listo', state: 'done' },
+          ]);
+          await new Promise((r) => setTimeout(r, 120));
+          resetNewCustomerFields();
+          setPaidInstallmentNums([]);
+          setQuickPaidCountStr('');
+          setMigrationNextDueDateStr(todayStr);
+          setLoanOfficialReceipt(published.receipt);
+          onSuccess();
+          return;
         }
       }
       resetNewCustomerFields();
@@ -497,6 +572,7 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
         onClose();
       }
     } catch (err: any) {
+      setShowLoanReceiptFlow(false);
       const errMsg = err.message || 'Error al crear préstamo';
       setFormError(errMsg);
       Alert.alert('No se pudo crear', errMsg);
@@ -504,6 +580,26 @@ export const NewLoanModal: React.FC<NewLoanModalProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  if (showLoanReceiptFlow) {
+    return (
+      <OfficialReceiptModal
+        visible={visible}
+        receipt={loanOfficialReceipt}
+        isProcessing={isSubmitting || !loanOfficialReceipt}
+        processingTitle="Confirmando préstamo"
+        processingAmount={principal}
+        processingSubtitle={loanProcessingCustomerName}
+        processingSteps={loanProcessingSteps}
+        closeLabel="Finalizar"
+        onClose={() => {
+          setShowLoanReceiptFlow(false);
+          setLoanOfficialReceipt(null);
+          onClose();
+        }}
+      />
+    );
+  }
 
   return (
     <Modal

@@ -1,5 +1,6 @@
 package com.cartera.ui.util;
 
+import com.cartera.receipts.application.OfficialReceiptService.OfficialReceiptModel;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import org.slf4j.Logger;
@@ -16,18 +17,81 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * Utilidad para generar recibos digitales y estados de cuenta formateados para WhatsApp
- * y abrirlos directamente en WhatsApp Web / Desktop (además de copiarlos al portapapeles).
+ * Utilidad para generar comprobantes oficiales con enlace verificable antifraude,
+ * recordatorios cortos de crédito y reportes concisos de cuadre diario para WhatsApp.
  */
 public final class WhatsAppReceiptUtil {
 
     private static final Logger log = LoggerFactory.getLogger(WhatsAppReceiptUtil.class);
-    private static final NumberFormat CURRENCY = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-CO"));
-    static {
-        CURRENCY.setMaximumFractionDigits(0);
-    }
+    public static final String PUBLIC_RECEIPT_BASE_URL = "https://cartera-movil.expo.app";
 
     private WhatsAppReceiptUtil() {}
+
+    /**
+     * Formatea moneda COP con espacio ASCII normal (evita \u00A0 que rompe negritas en WhatsApp y PDF).
+     */
+    public static String formatCurrencyPlain(BigDecimal amount) {
+        NumberFormat nf = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-CO"));
+        nf.setMaximumFractionDigits(0);
+        BigDecimal safe = amount != null ? amount : BigDecimal.ZERO;
+        return nf.format(safe).replace('\u00A0', ' ').replace('\u202F', ' ').replaceAll("\\s+", " ").trim();
+    }
+
+    public static String buildOfficialReceiptUrl(String receiptCode) {
+        String clean = receiptCode != null ? receiptCode.trim().toUpperCase(Locale.ROOT) : "";
+        return PUBLIC_RECEIPT_BASE_URL + "/?r=" + URLEncoder.encode(clean, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Genera mensaje antifraude para WhatsApp (1 toque al chat exacto del cliente).
+     * Cuando el comprobante está publicado en nube (KRD-...), solo envía el enlace oficial inalterable sin cifras editables.
+     */
+    public static String formatOfficialReceiptWhatsAppMessage(OfficialReceiptModel receipt) {
+        if (receipt == null) return "";
+        String office = (receipt.companyName() != null && !receipt.companyName().isBlank())
+                ? receipt.companyName().trim()
+                : "Kredia";
+        if (receipt.cloudVerified() && receipt.receiptCode() != null && receipt.receiptCode().startsWith("KRD-")) {
+            return "*" + receipt.title() + " — " + office + "*\n"
+                    + "Ver comprobante oficial y descargar PDF:\n"
+                    + buildOfficialReceiptUrl(receipt.receiptCode());
+        }
+
+        // Respaldo offline corto
+        StringBuilder sb = new StringBuilder();
+        sb.append("*").append(receipt.title()).append(" — ").append(office).append("*\n");
+        sb.append("Fecha: ").append(receipt.issuedAtDisplay() != null ? receipt.issuedAtDisplay() : "").append("\n");
+        String type = receipt.receiptType() != null ? receipt.receiptType().toUpperCase(Locale.ROOT) : "PAYMENT";
+        if ("PAYMENT".equals(type)) {
+            sb.append("Pagó: ").append(formatCurrencyPlain(receipt.amount())).append("\n");
+            BigDecimal rem = receipt.remainingBalance() != null ? receipt.remainingBalance().max(BigDecimal.ZERO) : BigDecimal.ZERO;
+            sb.append("Saldo: ").append(formatCurrencyPlain(rem)).append("\n");
+            if (receipt.installmentLabel() != null && !receipt.installmentLabel().isBlank()) {
+                sb.append(receipt.installmentLabel()).append("\n");
+            }
+            if (rem.compareTo(BigDecimal.ZERO) <= 0) {
+                sb.append("*Crédito cancelado. ¡Gracias!*\n");
+            }
+        } else if ("LOAN".equals(type)) {
+            sb.append("Capital: ").append(formatCurrencyPlain(receipt.principal() != null ? receipt.principal() : receipt.amount())).append("\n");
+            if (receipt.totalAgreed() != null) {
+                sb.append("Total a pagar: ").append(formatCurrencyPlain(receipt.totalAgreed())).append("\n");
+            }
+            if (receipt.installmentAmount() != null && receipt.installmentAmount().compareTo(BigDecimal.ZERO) > 0) {
+                sb.append("Cuota: ").append(formatCurrencyPlain(receipt.installmentAmount())).append("\n");
+            }
+        } else {
+            if (receipt.principal() != null) {
+                sb.append("Nuevo capital: ").append(formatCurrencyPlain(receipt.principal())).append("\n");
+            }
+            sb.append("Entregado neto: ").append(formatCurrencyPlain(receipt.netCashDelivered() != null ? receipt.netCashDelivered() : receipt.amount())).append("\n");
+            if (receipt.totalAgreed() != null) {
+                sb.append("Nuevo total: ").append(formatCurrencyPlain(receipt.totalAgreed())).append("\n");
+            }
+        }
+        sb.append("Ref: ").append(receipt.receiptCode() != null ? receipt.receiptCode() : "LOCAL").append(" (Verificado por Kredia)");
+        return sb.toString();
+    }
 
     public static String generatePaymentReceiptMessage(
             String companyName,
@@ -41,28 +105,22 @@ public final class WhatsAppReceiptUtil {
             String collectorName,
             String dateTimeStr
     ) {
-        String comp = (companyName != null && !companyName.isBlank()) ? companyName.toUpperCase() : "SISTEMA DE CARTERA";
+        String comp = (companyName != null && !companyName.isBlank()) ? companyName.trim() : "Kredia";
         String shortRec = receiptId != null && receiptId.length() > 8 ? receiptId.substring(0, 8).toUpperCase() : (receiptId != null ? receiptId.toUpperCase() : "N/A");
         String dt = (dateTimeStr != null && !dateTimeStr.isBlank())
                 ? dateTimeStr
-                : LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+                : LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yy HH:mm"));
+        BigDecimal safeBalance = remainingBalance != null ? remainingBalance.max(BigDecimal.ZERO) : BigDecimal.ZERO;
 
-        return "━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "*COMPROBANTE OFICIAL DE PAGO*\n" +
-                "*" + comp + "*\n" +
-                "━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "*Fecha:* " + dt + "\n" +
-                "*Recibo No:* #" + shortRec + "\n" +
-                "*Cliente:* " + (customerName != null ? customerName : "Cliente") + "\n" +
-                "*Documento:* " + (customerDoc != null ? customerDoc : "-") + "\n" +
-                "━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "*VALOR ABONADO:* *" + CURRENCY.format(amountPaid != null ? amountPaid : BigDecimal.ZERO) + "*\n" +
-                "*Cuotas cubiertas:* " + installmentsAffected + "\n" +
-                "*Medio de pago:* " + (paymentMethod != null ? paymentMethod : "EFECTIVO") + "\n" +
-                "*SALDO RESTANTE:* *" + CURRENCY.format(remainingBalance != null ? remainingBalance : BigDecimal.ZERO) + "*\n" +
-                "━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "*Atendido por:* " + (collectorName != null ? collectorName : "Cobrador de Ruta") + "\n" +
-                "_¡Gracias por su puntual pago! Conserve este mensaje como comprobante digital._";
+        StringBuilder sb = new StringBuilder();
+        sb.append("*Comprobante de pago — ").append(comp).append("*\n");
+        sb.append("Fecha: ").append(dt).append(" · Ref: #").append(shortRec).append("\n");
+        sb.append("Pagó: ").append(formatCurrencyPlain(amountPaid)).append(" (").append(paymentMethod != null ? paymentMethod : "Efectivo").append(")\n");
+        sb.append("*Saldo pendiente:* ").append(formatCurrencyPlain(safeBalance));
+        if (safeBalance.compareTo(BigDecimal.ZERO) <= 0) {
+            sb.append("\n*¡Crédito cancelado! Gracias por su pago.*");
+        }
+        return sb.toString();
     }
 
     public static String formatAccountStatement(
@@ -79,38 +137,16 @@ public final class WhatsAppReceiptUtil {
             int overdueInstallments,
             String nextDueDate
     ) {
-        String comp = (companyName != null && !companyName.isBlank()) ? companyName.toUpperCase() : "SISTEMA DE CARTERA";
-        String shortLoan = loanId != null && loanId.length() > 8 ? loanId.substring(0, 8).toUpperCase() : (loanId != null ? loanId.toUpperCase() : "N/A");
-
+        String comp = (companyName != null && !companyName.isBlank()) ? companyName.trim() : "Kredia";
         StringBuilder sb = new StringBuilder();
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("*ESTADO DE CUENTA DE CRÉDITO*\n");
-        sb.append("*").append(comp).append("*\n");
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("*Cliente:* ").append(customerName != null ? customerName : "Cliente").append("\n");
-        if (customerDoc != null && !customerDoc.isBlank()) {
-            sb.append("*Documento:* ").append(customerDoc).append("\n");
-        }
-        sb.append("*Contrato:* #").append(shortLoan).append("\n");
-        if (principal != null) {
-            sb.append("*Capital Prestado:* ").append(CURRENCY.format(principal)).append("\n");
-        }
-        sb.append("*Total Pactado:* ").append(CURRENCY.format(totalAgreed != null ? totalAgreed : BigDecimal.ZERO)).append("\n");
-        sb.append("*Total Abonado:* ").append(CURRENCY.format(paid != null ? paid : BigDecimal.ZERO)).append("\n");
-        sb.append("*SALDO PENDIENTE:* *").append(CURRENCY.format(pending != null ? pending : BigDecimal.ZERO)).append("*\n");
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("*Progreso:* Cuota ").append(paidInstallments).append(" de ").append(totalInstallments).append("\n");
-
+        sb.append("*Resumen de crédito — ").append(comp).append("*\n");
+        sb.append("Cuotas pagadas: ").append(paidInstallments).append("/").append(Math.max(1, totalInstallments)).append("\n");
+        sb.append("*Saldo pendiente:* ").append(formatCurrencyPlain(pending != null ? pending.max(BigDecimal.ZERO) : BigDecimal.ZERO));
         if (overdueInstallments > 0) {
-            sb.append("*Estado:* Presenta *").append(overdueInstallments).append(" cuota(s) vencida(s)*.\n");
-        } else {
-            sb.append("*Estado:* Al día.\n");
+            sb.append("\n*Mora:* ").append(overdueInstallments).append(" cuota(s) vencida(s)");
+        } else if (nextDueDate != null && !nextDueDate.isBlank() && !"-".equals(nextDueDate)) {
+            sb.append("\nPróximo cobro: ").append(nextDueDate);
         }
-        if (nextDueDate != null && !nextDueDate.isBlank() && !"-".equals(nextDueDate)) {
-            sb.append("*Próximo Vencimiento:* ").append(nextDueDate).append("\n");
-        }
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("_Por favor comuníquese con nosotros para coordinar su abono. ¡Muchas gracias!_");
         return sb.toString();
     }
 
@@ -125,34 +161,18 @@ public final class WhatsAppReceiptUtil {
             BigDecimal nextInstallmentAmount,
             String nextDueDate
     ) {
-        String comp = (companyName != null && !companyName.isBlank()) ? companyName.toUpperCase() : "SISTEMA DE CARTERA";
-        String shortLoan = loanId != null && loanId.length() > 8 ? loanId.substring(0, 8).toUpperCase() : (loanId != null ? loanId.toUpperCase() : "N/A");
-
+        String comp = (companyName != null && !companyName.isBlank()) ? companyName.trim() : "Kredia";
         StringBuilder sb = new StringBuilder();
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("*ESTADO DE CUENTA DE CRÉDITO*\n");
-        sb.append("*").append(comp).append("*\n");
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("*Cliente:* ").append(customerName != null ? customerName : "Cliente").append("\n");
-        sb.append("*Contrato:* #").append(shortLoan).append("\n");
-        sb.append("*Total Pactado:* ").append(CURRENCY.format(totalAgreed != null ? totalAgreed : BigDecimal.ZERO)).append("\n");
-        sb.append("*Total Abonado:* ").append(CURRENCY.format(totalPaid != null ? totalPaid : BigDecimal.ZERO)).append("\n");
-        sb.append("*SALDO PENDIENTE:* *").append(CURRENCY.format(remainingBalance != null ? remainingBalance : BigDecimal.ZERO)).append("*\n");
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-
-        if (overdueInstallmentsCount > 0) {
-            sb.append("*Estado:* Presenta *").append(overdueInstallmentsCount).append(" cuota(s) vencida(s)*.\n");
-        } else {
-            sb.append("*Estado:* Al día.\n");
-        }
+        sb.append("*Resumen de crédito — ").append(comp).append("*\n");
         if (nextInstallmentAmount != null && nextInstallmentAmount.compareTo(BigDecimal.ZERO) > 0) {
-            sb.append("*Valor Cuota a Cobrar:* *").append(CURRENCY.format(nextInstallmentAmount)).append("*\n");
+            sb.append("Cuota: ").append(formatCurrencyPlain(nextInstallmentAmount)).append("\n");
         }
-        if (nextDueDate != null && !nextDueDate.isBlank()) {
-            sb.append("*Fecha de Vencimiento:* ").append(nextDueDate).append("\n");
+        sb.append("*Saldo pendiente:* ").append(formatCurrencyPlain(remainingBalance != null ? remainingBalance.max(BigDecimal.ZERO) : BigDecimal.ZERO));
+        if (overdueInstallmentsCount > 0) {
+            sb.append("\n*Mora:* ").append(overdueInstallmentsCount).append(" cuota(s) vencida(s)");
+        } else if (nextDueDate != null && !nextDueDate.isBlank()) {
+            sb.append("\nPróximo cobro: ").append(nextDueDate);
         }
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("_Por favor comuníquese con nosotros para coordinar su abono. ¡Muchas gracias!_");
         return sb.toString();
     }
 
@@ -175,60 +195,37 @@ public final class WhatsAppReceiptUtil {
             String notes,
             String denominationsBlock
     ) {
-        String comp = (companyName != null && !companyName.isBlank()) ? companyName.toUpperCase() : "SISTEMA DE CARTERA";
-        BigDecimal totalCol = totalCollected != null ? totalCollected : BigDecimal.ZERO;
-        BigDecimal cashCol = collectedInCash != null ? collectedInCash : BigDecimal.ZERO;
-        BigDecimal digCol = collectedDigitally != null ? collectedDigitally : BigDecimal.ZERO;
-        BigDecimal openBase = openingRouteBase != null ? openingRouteBase : BigDecimal.ZERO;
-        BigDecimal expenses = routeExpenses != null ? routeExpenses : BigDecimal.ZERO;
-        BigDecimal netExp = netExpectedCash != null ? netExpectedCash : BigDecimal.ZERO;
-        BigDecimal collectedPlusBase = cashCol.add(openBase);
-
+        String comp = (companyName != null && !companyName.isBlank()) ? companyName.trim() : "Kredia";
+        String route = (routeName != null && !routeName.isBlank()) ? routeName.trim() : "Ruta";
         StringBuilder sb = new StringBuilder();
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("*REPORTE DE CUADRE DIARIO*\n");
-        sb.append("*").append(comp).append("*\n");
-        if (routeName != null && !routeName.isBlank()) {
-            sb.append("*Ruta:* ").append(routeName).append("\n");
-        }
-        sb.append("*Fecha:* ").append(dateStr != null ? dateStr : "").append("\n");
-        sb.append("*Cobrador:* ").append(collectorName != null ? collectorName : "Cobrador").append("\n");
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
-        sb.append("*1. COBRADO HOY Y BASE DE INICIO*\n");
-        sb.append("• *Cobrado Hoy (Total):* ").append(CURRENCY.format(totalCol)).append("\n");
-        sb.append("  - Efectivo cobrado hoy: ").append(CURRENCY.format(cashCol)).append("\n");
-        sb.append("  - Digital (Nequi/Transf): ").append(CURRENCY.format(digCol)).append("\n");
-        sb.append("• *(+) Base de Inicio (Ruta):* ").append(CURRENCY.format(openBase)).append("\n");
-        sb.append("• *(=) Cobrado Hoy + Base:* ").append(CURRENCY.format(collectedPlusBase)).append("\n\n");
-        sb.append("*2. GASTOS DE RUTA:* ").append(CURRENCY.format(expenses)).append("\n");
-        sb.append("*3. NETO ESPERADO EN EFECTIVO:* *").append(CURRENCY.format(netExp)).append("*\n\n");
-
-        if (denominationsBlock != null && !denominationsBlock.isBlank()) {
-            sb.append(denominationsBlock).append("\n");
-        }
-
-        if (isClosed) {
-            sb.append("*ESTADO:* JORNADA CERRADA\n");
-            if (actualDelivered != null) {
-                sb.append("• *Efectivo Entregado:* ").append(CURRENCY.format(actualDelivered)).append("\n");
-            }
+        sb.append("*Cuadre ").append(route).append(" — ").append(comp).append("*\n");
+        sb.append("Fecha: ").append(dateStr != null ? dateStr : "").append(" · ").append(isClosed ? "Cerrado" : "En curso").append("\n");
+        sb.append("Cobrador: ").append(collectorName != null ? collectorName : "Cobrador").append("\n");
+        sb.append("Cobrado: ").append(formatCurrencyPlain(totalCollected))
+                .append(" (Efec ").append(formatCurrencyPlain(collectedInCash))
+                .append(" · Dig ").append(formatCurrencyPlain(collectedDigitally)).append(")\n");
+        sb.append("Base inicio: ").append(formatCurrencyPlain(openingRouteBase))
+                .append(" · Gastos: ").append(formatCurrencyPlain(routeExpenses)).append("\n");
+        sb.append("*A entregar:* ").append(formatCurrencyPlain(netExpectedCash));
+        if (isClosed && actualDelivered != null) {
+            sb.append(" (Entregado ").append(formatCurrencyPlain(actualDelivered));
             if (cashDifference != null) {
-                sb.append("• *Diferencia:* ").append(CURRENCY.format(cashDifference)).append("\n");
+                sb.append(" · Dif ").append(formatCurrencyPlain(cashDifference));
             }
-            if (notes != null && !notes.isBlank()) {
-                sb.append("• *Observaciones:* ").append(notes.trim()).append("\n");
-            }
-        } else {
-            sb.append("*ESTADO:* JORNADA EN CURSO\n");
-            if (withdrawToOffice != null && withdrawToOffice.compareTo(BigDecimal.ZERO) > 0) {
-                sb.append("• *Retiro a Oficina:* ").append(CURRENCY.format(withdrawToOffice)).append("\n");
-            }
-            if (projectedTomorrowBase != null) {
-                sb.append("• *Base proyectada mañana:* ").append(CURRENCY.format(projectedTomorrowBase)).append("\n");
-            }
+            sb.append(")");
         }
-        sb.append("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        sb.append("_Generado desde Kredia Desktop v").append(com.cartera.infrastructure.version.AppVersion.CURRENT).append("_");
+        if (withdrawToOffice != null && withdrawToOffice.compareTo(BigDecimal.ZERO) > 0) {
+            sb.append("\nRetiro a oficina: ").append(formatCurrencyPlain(withdrawToOffice));
+        }
+        if (projectedTomorrowBase != null && !isClosed) {
+            sb.append("\nBase mañana: ").append(formatCurrencyPlain(projectedTomorrowBase));
+        }
+        if (notes != null && !notes.isBlank()) {
+            sb.append("\nObs: ").append(notes.trim());
+        }
+        if (denominationsBlock != null && !denominationsBlock.isBlank()) {
+            sb.append("\n").append(denominationsBlock.trim());
+        }
         return sb.toString();
     }
 
@@ -246,17 +243,15 @@ public final class WhatsAppReceiptUtil {
 
     public static boolean sendViaWhatsApp(String phone, String message) {
         String safeMessage = message != null ? message : "";
-        // 1. Copiar al portapapeles como respaldo inmediato
         try {
             Clipboard clipboard = Clipboard.getSystemClipboard();
             ClipboardContent content = new ClipboardContent();
             content.putString(safeMessage);
             clipboard.setContent(content);
         } catch (Throwable ignored) {
-            // Puede ocurrir en entornos headless de pruebas
+            // Headless tests
         }
 
-        // 2. Abrir enlace wa.me en navegador predeterminado / app de WhatsApp
         try {
             String normalizedPhone = normalizeColombianPhone(phone);
             String encodedText = URLEncoder.encode(safeMessage, StandardCharsets.UTF_8).replace("+", "%20");

@@ -27,11 +27,15 @@ import {
 import { formatCOP, addDays } from '../../../core/config/business-rules';
 import { calculateDelinquencyMetrics } from '../../../core/domain/calculator';
 import { localStore } from '../../../infrastructure/storage/local-store';
+import { supabaseSyncService } from '../../../infrastructure/sync/supabase-client';
 import {
+  OfficialReceiptData,
+  buildPaymentOfficialReceipt,
+  calculateHistoricalRemainingBalance,
   formatAccountStatementReminder,
-  formatDigitalPaymentReceipt,
   openWhatsAppReceipt,
 } from '../../../core/utils/whatsapp-receipt';
+import { OfficialReceiptModal } from '../../components/OfficialReceiptModal';
 import { COLORS, TYPOGRAPHY, FONT_FAMILY } from '../../theme/colors';
 import {
   ArrowLeft,
@@ -161,6 +165,10 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
   }>({ visible: false, mode: 'REVERSE_PAYMENT' });
   const [auditReason, setAuditReason] = useState('');
   const [isProcessingAudit, setIsProcessingAudit] = useState(false);
+  const [receiptModalVisible, setReceiptModalVisible] = useState(false);
+  const [receiptModalLoading, setReceiptModalLoading] = useState(false);
+  const [selectedOfficialReceipt, setSelectedOfficialReceipt] = useState<OfficialReceiptData | null>(null);
+  const [selectedReceiptAmount, setSelectedReceiptAmount] = useState(0);
 
   const getInstallmentPaymentDetails = (inst: Installment) => {
     const isPaid = inst.pendingAmount <= 0;
@@ -243,19 +251,39 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
       customerLoans[0];
     if (!targetLoan) return;
     const loanInsts = installments.filter((i) => i.loanId === targetLoan.id);
-    const remBal = loanInsts.reduce((s, i) => s + i.pendingAmount, 0);
+    const loanPayments = payments.filter((p) => p.loanId === targetLoan.id);
+    const historicalRemBal = calculateHistoricalRemainingBalance({
+      loan: targetLoan,
+      installments: loanInsts,
+      allLoanPayments: loanPayments,
+      targetPayment: pay,
+    });
 
-    const receiptText = formatDigitalPaymentReceipt({
-      companyConfig,
+    const draft = buildPaymentOfficialReceipt({
+      companyName: companyConfig.companyName || 'Mi Oficina',
+      routeName: localStore.getRouteDisplayName(targetLoan.routeId),
+      collectorName: localStore.getCollectorDisplayName(pay.collectorId || targetLoan.collectorId),
+      footerMessage: companyConfig.receiptFooterMessage,
       customer,
       loan: targetLoan,
       payment: pay,
-      remainingBalance: remBal,
+      remainingBalance: historicalRemBal,
       installments: loanInsts,
     });
 
-    const waPhone = customer.whatsappPhone || customer.phone;
-    await openWhatsAppReceipt(waPhone, receiptText);
+    setSelectedReceiptAmount(pay.amountReceived);
+    setSelectedOfficialReceipt(null);
+    setReceiptModalLoading(true);
+    setReceiptModalVisible(true);
+
+    try {
+      const published = await supabaseSyncService.issueOfficialReceipt(draft);
+      setSelectedOfficialReceipt(published.receipt);
+    } catch {
+      setSelectedOfficialReceipt(draft);
+    } finally {
+      setReceiptModalLoading(false);
+    }
   };
 
   const handleOpenReversePaymentModal = (pay: Payment) => {
@@ -301,6 +329,9 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           userId: currentUserId,
           todayStr,
         });
+        supabaseSyncService
+          .voidOfficialReceipt('PAYMENT', auditModalState.targetPayment.id, 'REVERSED')
+          .catch(() => {});
         Alert.alert(
           'Abono Anulado',
           'El abono fue revertido de las cuotas y se registró el movimiento compensatorio en caja y auditoría.'
@@ -313,6 +344,9 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           userId: currentUserId,
           todayStr,
         });
+        supabaseSyncService
+          .voidOfficialReceipt('LOAN', auditModalState.targetLoan.id, 'CANCELLED')
+          .catch(() => {});
         Alert.alert(
           'Crédito Anulado',
           'El crédito fue marcado como CANCELLED y su desembolso fue reintegrado a la base de caja con registro en auditoría.'
@@ -1454,6 +1488,25 @@ export const CustomerDetailView: React.FC<CustomerDetailViewProps> = ({
           </View>
         </View>
       </Modal>
+
+      <OfficialReceiptModal
+        visible={receiptModalVisible}
+        receipt={selectedOfficialReceipt}
+        isProcessing={receiptModalLoading || !selectedOfficialReceipt}
+        processingTitle="Cargando comprobante"
+        processingAmount={selectedReceiptAmount}
+        processingSubtitle={customer.fullName}
+        processingSteps={[
+          { label: 'Calculando saldo histórico exacto', state: 'done' },
+          { label: 'Verificando comprobante oficial en la nube', state: 'active' },
+          { label: 'Comprobante listo', state: 'pending' },
+        ]}
+        closeLabel="Cerrar"
+        onClose={() => {
+          setReceiptModalVisible(false);
+          setSelectedOfficialReceipt(null);
+        }}
+      />
     </View>
   );
 };

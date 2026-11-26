@@ -24,18 +24,20 @@ import { formatCOP } from '../../core/config/business-rules';
 import { calculateDelinquencyMetrics, getLocalTodayStr } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
-import { SuccessPop, TactilePressable } from './MotionPrimitives';
+import { supabaseSyncService } from '../../infrastructure/sync/supabase-client';
+import { TactilePressable } from './MotionPrimitives';
 import {
-  formatDigitalPaymentReceipt,
-  openWhatsAppReceipt,
+  OfficialReceiptModal,
+  ConfirmationStepItem,
+} from './OfficialReceiptModal';
+import {
+  OfficialReceiptData,
+  buildPaymentOfficialReceipt,
 } from '../../core/utils/whatsapp-receipt';
 import {
   CheckCircle2,
   DollarSign,
   X,
-  MessageCircle,
-  Sparkles,
-  Receipt,
 } from 'lucide-react-native';
 
 interface PaymentModalProps {
@@ -64,6 +66,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState('');
   const [completedPayment, setCompletedPayment] = useState<Payment | null>(null);
+  const [officialReceipt, setOfficialReceipt] = useState<OfficialReceiptData | null>(null);
+  const [showReceiptFlow, setShowReceiptFlow] = useState(false);
+  const [processingSteps, setProcessingSteps] = useState<ConfirmationStepItem[]>([]);
 
   const loanInstallments = loan
     ? installments
@@ -104,6 +109,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       setMethod('CASH');
       setNotes('');
       setCompletedPayment(null);
+      setOfficialReceipt(null);
+      setShowReceiptFlow(false);
+      setProcessingSteps([]);
       setIdempotencyKey(`idem-${loan.id}-${Date.now()}`);
     }
   }, [visible, loan?.id]);
@@ -147,7 +155,23 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     }
 
     setIsSubmitting(true);
+    setShowReceiptFlow(true);
+    setOfficialReceipt(null);
+    setProcessingSteps([
+      { label: 'Validando sesión y cuota', state: 'active' },
+      { label: 'Registrando pago y saldo real', state: 'pending' },
+      { label: 'Publicando comprobante oficial', state: 'pending' },
+      { label: 'Comprobante listo', state: 'pending' },
+    ]);
     try {
+      await new Promise((r) => setTimeout(r, 140));
+      setProcessingSteps([
+        { label: 'Validando sesión y cuota', state: 'done' },
+        { label: 'Registrando pago y saldo real', state: 'active' },
+        { label: 'Publicando comprobante oficial', state: 'pending' },
+        { label: 'Comprobante listo', state: 'pending' },
+      ]);
+
       const result = await localStore.recordPayment({
         loanId: loan.id,
         amountReceived: currentNumericAmount,
@@ -158,35 +182,57 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         idempotencyKey,
       });
 
+      // Saldo restante EXACTO post-pago (evita el bug de doble resta sobre props actualizados)
+      const updatedInsts = localStore
+        .getInstallments()
+        .filter((i) => i.loanId === loan.id);
+      const exactRemainingAfter =
+        updatedInsts.length > 0
+          ? updatedInsts.reduce((sum, i) => sum + Math.max(0, i.pendingAmount || 0), 0)
+          : Math.max(0, totalRemainingBalance - result.payment.amountReceived);
+      const postDelinquency = calculateDelinquencyMetrics(updatedInsts, todayStr);
+
+      setProcessingSteps([
+        { label: 'Validando sesión y cuota', state: 'done' },
+        { label: 'Registrando pago y saldo real', state: 'done' },
+        { label: 'Publicando comprobante oficial', state: 'active' },
+        { label: 'Comprobante listo', state: 'pending' },
+      ]);
+
+      const routeName = localStore.getRouteDisplayName(loan.routeId);
+      const collectorName = localStore.getCollectorDisplayName(loan.collectorId);
+      const draftReceipt = buildPaymentOfficialReceipt({
+        companyName: officeConfig.companyName || 'Mi Oficina',
+        routeName,
+        collectorName,
+        footerMessage: officeConfig.receiptFooterMessage,
+        customer,
+        loan,
+        payment: result.payment,
+        remainingBalance: exactRemainingAfter,
+        installments: updatedInsts.length > 0 ? updatedInsts : loanInstallments,
+        overdueAmount: postDelinquency.overdueAmount,
+        overdueDays: postDelinquency.overdueDays,
+      });
+
+      const published = await supabaseSyncService.issueOfficialReceipt(draftReceipt);
+      setProcessingSteps([
+        { label: 'Validando sesión y cuota', state: 'done' },
+        { label: 'Registrando pago y saldo real', state: 'done' },
+        { label: 'Publicando comprobante oficial', state: 'done' },
+        { label: 'Comprobante listo', state: 'done' },
+      ]);
+      await new Promise((r) => setTimeout(r, 150));
+
       setCompletedPayment(result.payment);
+      setOfficialReceipt(published.receipt);
       onSuccess();
     } catch (error: any) {
+      setShowReceiptFlow(false);
       Alert.alert('Error', error.message || 'No se pudo registrar el abono');
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleSendWhatsAppReceipt = async () => {
-    if (!completedPayment) return;
-    const newRemaining = Math.max(
-      0,
-      totalRemainingBalance - completedPayment.amountReceived
-    );
-    const updatedInsts = localStore
-      .getInstallments()
-      .filter((i) => i.loanId === loan.id);
-
-    const receiptText = formatDigitalPaymentReceipt({
-      companyConfig: officeConfig,
-      customer,
-      loan,
-      payment: completedPayment,
-      remainingBalance: newRemaining,
-      installments: updatedInsts.length > 0 ? updatedInsts : loanInstallments,
-    });
-
-    await openWhatsAppReceipt(customer.phone, receiptText);
   };
 
   const amountPills = [
@@ -201,6 +247,27 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     { key: 'NEQUI', label: 'Nequi' },
     { key: 'TRANSFER', label: 'Transferencia' },
   ];
+
+  if (showReceiptFlow) {
+    return (
+      <OfficialReceiptModal
+        visible={visible}
+        receipt={officialReceipt}
+        isProcessing={isSubmitting || !officialReceipt}
+        processingTitle="Confirmando cobro"
+        processingAmount={currentNumericAmount}
+        processingSubtitle={`${customer.fullName} · ${loan.loanNumber}`}
+        processingSteps={processingSteps}
+        closeLabel="Volver a la Ruta"
+        onClose={() => {
+          setShowReceiptFlow(false);
+          setOfficialReceipt(null);
+          setCompletedPayment(null);
+          onClose();
+        }}
+      />
+    );
+  }
 
   return (
     <Modal
@@ -226,9 +293,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>
-                {completedPayment ? 'Comprobante de Cobro' : 'Registrar Pago'}
-              </Text>
+              <Text style={styles.title}>Registrar Pago</Text>
               <Text style={styles.subtitle}>
                 {customer.fullName} • Crédito {loan.loanNumber}
               </Text>
@@ -242,73 +307,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {completedPayment ? (
-            <ScrollView
-              style={styles.body}
-              contentContainerStyle={{ paddingBottom: 8 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <SuccessPop style={styles.receiptTicketCard}>
-                <View style={styles.semanticApprovedPill}>
-                  <Sparkles size={13} color={COLORS.success} />
-                  <Text style={styles.semanticApprovedPillText}>
-                    PAGO REGISTRADO EN DISPOSITIVO
-                  </Text>
-                </View>
-
-                <Text style={styles.receiptAmountText}>
-                  {formatCOP(completedPayment.amountReceived)}
-                </Text>
-                <Text style={styles.receiptSubText}>
-                  Medio: {completedPayment.paymentMethod} • Ref: {completedPayment.id}
-                </Text>
-
-                <View style={styles.perforatedDividerWrap}>
-                  <View style={styles.ticketNotchLeft} />
-                  <View style={styles.dashedLine} />
-                  <View style={styles.ticketNotchRight} />
-                </View>
-
-                <View style={styles.breakdownList}>
-                  <View style={styles.receiptMetaRow}>
-                    <Receipt size={14} color={COLORS.textMuted} />
-                    <Text style={styles.receiptMetaTitle}>
-                      DESGLOSE CONTABLE ({completedPayment.installmentsBreakdown.length} CUOTA/S)
-                    </Text>
-                  </View>
-                  {completedPayment.installmentsBreakdown.map((b) => (
-                    <View key={b.installmentId} style={styles.breakdownRow}>
-                      <Text style={styles.breakdownLabel}>
-                        Cuota #{b.installmentNumber} ({b.resultingStatus})
-                      </Text>
-                      <Text style={styles.breakdownValue}>
-                        {formatCOP(b.amountApplied)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-
-                <View style={styles.dashedLineSimple} />
-
-                <TactilePressable
-                  style={styles.whatsappReceiptBtn}
-                  onPress={handleSendWhatsAppReceipt}
-                >
-                  <MessageCircle size={18} color="#ffffff" style={{ marginRight: 8 }} />
-                  <Text style={styles.whatsappReceiptBtnText}>
-                    Enviar Recibo por WhatsApp al Cliente
-                  </Text>
-                </TactilePressable>
-
-                <TactilePressable style={styles.doneBtn} onPress={onClose}>
-                  <Text style={styles.doneBtnText}>Volver a la Ruta</Text>
-                </TactilePressable>
-              </SuccessPop>
-            </ScrollView>
-          ) : (
-            /* FORMULARIO DE ABONO RÁPIDO CON FILLED INPUTS + FLOATING LABELS INTERNOS (Patrón #5 + Mejora IA #3) */
-            <>
+          {/* FORMULARIO DE ABONO RÁPIDO CON FILLED INPUTS + FLOATING LABELS INTERNOS */}
+          <>
               <ScrollView
                 style={styles.body}
                 contentContainerStyle={{ paddingBottom: 8 }}
@@ -506,7 +506,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 </TactilePressable>
               </View>
             </>
-          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>

@@ -8,6 +8,7 @@ import com.cartera.infrastructure.persistence.entity.CustomerEntity;
 import com.cartera.infrastructure.persistence.entity.InstallmentEntity;
 import com.cartera.infrastructure.persistence.entity.LoanEntity;
 import com.cartera.infrastructure.persistence.entity.RouteEntity;
+import com.cartera.infrastructure.persistence.entity.SystemSettingEntity;
 import com.cartera.infrastructure.persistence.repository.CustomerRepository;
 import com.cartera.infrastructure.persistence.repository.InstallmentRepository;
 import com.cartera.infrastructure.persistence.repository.LoanRepository;
@@ -19,6 +20,8 @@ import com.cartera.loans.application.CreateLoanUseCase;
 import com.cartera.loans.application.CreateLoanUseCase.CreateLoanCommand;
 import com.cartera.loans.application.CreateLoanUseCase.InstallmentPlanItem;
 import com.cartera.loans.domain.LoanCalculator;
+import com.cartera.receipts.application.OfficialReceiptService;
+import com.cartera.receipts.application.OfficialReceiptService.OfficialReceiptModel;
 import com.cartera.ui.util.CurrencyInputUtil;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -1279,7 +1282,73 @@ public class CreateLoanDialog extends Stage {
                     cmbCustomer.requestFocus();
                 }
             } else {
+                Stage parentOwner = (getOwner() instanceof Stage s) ? s : null;
                 close();
+                if (!isMigration && loan != null) {
+                    String companyName = settingRepository != null
+                            ? settingRepository.findById("company_name").map(SystemSettingEntity::getSettingValue).orElse("Kredia")
+                            : "Kredia";
+                    String footerMsg = settingRepository != null
+                            ? settingRepository.findById("receipt_footer_message").map(SystemSettingEntity::getSettingValue).orElse("")
+                            : "";
+                    String routeLabel = routeRepository != null
+                            ? routeRepository.findById(routeId).map(RouteEntity::getName).orElse("")
+                            : "";
+                    String custPhone = creatingNewCustomer
+                            ? txtNewPhone.getText().trim()
+                            : (customer != null && customer.getAltPhone() != null && !customer.getAltPhone().isBlank()
+                                    ? customer.getAltPhone()
+                                    : (customer != null ? customer.getPhone() : ""));
+                    String custDoc = creatingNewCustomer
+                            ? txtNewDoc.getText().trim()
+                            : (customer != null ? customer.getDocumentNumber() : "");
+                    BigDecimal instAmt = count > 0
+                            ? totalAgreed.divide(BigDecimal.valueOf(count), 0, RoundingMode.HALF_UP)
+                            : totalAgreed;
+                    BigDecimal netDelivered = principal.subtract(cartulina).max(BigDecimal.ZERO);
+                    String freqLabel = OfficialReceiptService.normalizeFrequencyLabel(frequency);
+                    boolean isFixed = CreateLoanUseCase.isFixedDateFrequency(frequency);
+                    String loanNum = (loan.getLoanNumber() != null && !loan.getLoanNumber().isBlank())
+                            ? loan.getLoanNumber()
+                            : "#" + loan.getId().substring(0, Math.min(8, loan.getId().length())).toUpperCase();
+                    String subtitle = isFixed
+                            ? "Nuevo préstamo · Fecha fija"
+                            : "Nuevo préstamo · " + count + " cuotas (" + freqLabel + ")";
+
+                    OfficialReceiptModel loanDraft = new OfficialReceiptModel(
+                            OfficialReceiptService.localCode(loan.getId()),
+                            "LOAN",
+                            loan.getId(),
+                            companyName,
+                            routeLabel,
+                            savedCustomerLabel,
+                            custDoc,
+                            custPhone,
+                            loanNum,
+                            principal,
+                            "APPROVED",
+                            OfficialReceiptService.nowDisplay(),
+                            subtitle,
+                            "",
+                            instAmt,
+                            totalAgreed,
+                            "EFECTIVO",
+                            principal,
+                            totalAgreed,
+                            count,
+                            freqLabel,
+                            cartulina,
+                            netDelivered,
+                            BigDecimal.ZERO,
+                            isFixed ? "" : start.plusDays(1).toString(),
+                            isFixed ? start.toString() : "",
+                            UserSessionContext.getSession().map(UserSession::fullName).orElse("Oficina"),
+                            footerMsg,
+                            false
+                    );
+                    OfficialReceiptModel published = OfficialReceiptService.publishOrFallback(loanDraft);
+                    new ReceiptDialog(published, parentOwner).showAndWait();
+                }
             }
         } catch (Exception ex) {
             btnDisburse.setDisable(false);

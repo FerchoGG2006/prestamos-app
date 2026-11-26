@@ -438,11 +438,19 @@ export const TodayCollectionsView: React.FC<TodayCollectionsViewProps> = ({
     loan: Loan,
     custInsts: Installment[]
   ) => {
+    const delinq = calculateDelinquencyMetrics(custInsts, todayStr);
+    const remBal =
+      custInsts.length > 0
+        ? custInsts.reduce((sum, i) => sum + Math.max(0, i.pendingAmount || 0), 0)
+        : Math.max(0, loan.totalAgreed || 0);
     const msg = formatAccountStatementReminder({
       companyConfig: officeConfig,
       customer: cust,
       loan,
       installments: custInsts,
+      remainingBalance: remBal,
+      overdueDays: delinq.overdueDays,
+      overdueAmount: delinq.overdueAmount,
       todayStr,
     });
     await openWhatsAppReceipt(cust.whatsappPhone || cust.phone, msg);

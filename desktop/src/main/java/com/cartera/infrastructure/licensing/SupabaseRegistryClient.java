@@ -448,6 +448,85 @@ public class SupabaseRegistryClient {
         }
     }
 
+    /**
+     * Publica de forma idempotente e inmutable un comprobante oficial en Supabase (RPC issue_official_receipt).
+     * Retorna el JsonNode completo de la respuesta ({ ok, existed, receipt }).
+     */
+    public JsonNode issueOfficialReceipt(
+            String supabaseUrl,
+            String apiKey,
+            String receiptType,
+            String entityId,
+            String companyName,
+            String routeName,
+            String customerName,
+            String customerDocument,
+            String loanNumber,
+            java.math.BigDecimal amount,
+            String issuedAtDisplay,
+            ObjectNode payload
+    ) throws Exception {
+        validateConnection(supabaseUrl, apiKey);
+        if (activeSessionToken == null || activeSessionToken.isBlank()) {
+            throw new IllegalStateException("Sin sesión de nube activa.");
+        }
+        String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/rpc/issue_official_receipt";
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("p_receipt_type", receiptType != null ? receiptType : "PAYMENT");
+        body.put("p_entity_id", entityId != null ? entityId : "");
+        body.put("p_company_name", companyName != null ? companyName : "Kredia");
+        body.put("p_route_name", routeName != null ? routeName : "");
+        body.put("p_customer_name", customerName != null ? customerName : "Cliente");
+        body.put("p_customer_document", customerDocument != null ? customerDocument : "");
+        body.put("p_loan_number", loanNumber != null ? loanNumber : "");
+        body.put("p_amount", amount != null ? amount.max(java.math.BigDecimal.ZERO) : java.math.BigDecimal.ZERO);
+        body.put("p_issued_at_display", issuedAtDisplay != null ? issuedAtDisplay : "");
+        body.set("p_payload", payload != null ? payload : objectMapper.createObjectNode());
+
+        HttpRequest req = baseRequest(url, apiKey, activeSessionToken, null)
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+        HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() >= 400) {
+            throw new IllegalStateException("Error publicando comprobante oficial (" + resp.statusCode() + "): " + resp.body());
+        }
+        return objectMapper.readTree(resp.body());
+    }
+
+    /**
+     * Marca un comprobante oficial como REVERSED o CANCELLED en Supabase cuando se anula la operación.
+     */
+    public boolean voidOfficialReceipt(
+            String supabaseUrl,
+            String apiKey,
+            String receiptType,
+            String entityId,
+            String newStatus
+    ) {
+        try {
+            validateConnection(supabaseUrl, apiKey);
+            if (activeSessionToken == null || activeSessionToken.isBlank() || entityId == null || entityId.isBlank()) {
+                return false;
+            }
+            String url = normalizeBaseUrl(supabaseUrl) + "/rest/v1/rpc/void_official_receipt";
+            ObjectNode body = objectMapper.createObjectNode();
+            body.put("p_receipt_type", receiptType);
+            body.put("p_entity_id", entityId);
+            body.put("p_new_status", newStatus);
+
+            HttpRequest req = baseRequest(url, apiKey, activeSessionToken, null)
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+            HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() >= 400) return false;
+            JsonNode root = objectMapper.readTree(resp.body());
+            return root.path("ok").asBoolean(false);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private HttpRequest.Builder baseRequest(String url, String apiKey, String sessionToken, String vendorKey) {
         HttpRequest.Builder b = HttpRequest.newBuilder()
                 .uri(URI.create(url))

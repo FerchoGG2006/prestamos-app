@@ -144,6 +144,7 @@ import { RouteSelectorModal } from './src/presentation/components/RouteSelectorM
 import { NotificationsModal } from './src/presentation/components/NotificationsModal';
 import { formatAccountStatementReminder, openWhatsAppReceipt } from './src/core/utils/whatsapp-receipt';
 import { LoginView } from './src/presentation/views/auth/LoginView';
+import { PublicReceiptView } from './src/presentation/views/public/PublicReceiptView';
 import { safeStorage } from './src/infrastructure/storage/local-store';
 import { cloudSyncEngine } from './src/infrastructure/sync/cloud-sync';
 import { RouteSkeletonLoader } from './src/presentation/components/SkeletonLoader';
@@ -295,6 +296,21 @@ export default function App() {
   }, [fontsLoaded]);
 
   if ((!fontsLoaded && Platform.OS !== 'web') || !fontSystemReady) return null;
+
+  // Ruta pública sin login para verificación de comprobantes oficiales (?r=KRD-... o ?comprobante=KRD-...)
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search || '');
+    const rawCode = (params.get('r') || params.get('comprobante') || '').trim().toUpperCase();
+    if (rawCode && rawCode.startsWith('KRD-')) {
+      return (
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <PublicReceiptView receiptCode={rawCode} />
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      );
+    }
+  }
 
   if (isWideViewport && phoneFrameEnabled) {
     return (

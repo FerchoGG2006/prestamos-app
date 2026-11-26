@@ -27,6 +27,7 @@ import {
 } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
+import { formatShortCuadreWhatsApp } from '../../core/utils/whatsapp-receipt';
 import {
   X,
   CheckCircle,
@@ -165,72 +166,36 @@ export const CollectorCuadreModal: React.FC<CollectorCuadreModalProps> = ({
     const cashCol = st ? st.collectedCash : collectedCash;
     const digCol = st ? st.collectedTransfers : collectedDigital;
     const stOpeningBase = st?.openingRouteBase ?? openingRouteBase;
-    const stCollectedPlusBase = st?.collectedPlusBase ?? (cashCol + stOpeningBase);
     const salidas = st ? st.salidasCount : metrics?.salidasCount || 0;
     const netDisbursed = st ? st.actualCashDisbursedTotal : disbursedToday;
     const handedOver = st ? st.cashHandedOver : cashHandedOver;
     const diff = st ? st.cashDifference : cashDifference;
     const diffJust = st?.differenceJustification;
 
-    const lines = [
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `*${companyName.toUpperCase()}*`,
-      `*CUADRE OFICIAL DE RUTA*`,
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `${isSealed ? '*ESTADO: CUADRE CERRADO Y SELLADO*' : '*ESTADO: BORRADOR EN RUTA*'}`,
-      st ? `*Folio Liquidación:* #${st.id.toUpperCase()}` : '',
-      `*Fecha de Cobro:* ${reportDate}`,
-      `*Cobrador:* ${collectorName} • *Ruta:* ${reportRouteName}`,
-      st
-        ? `*Hora de Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-          })}`
-        : '',
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      '',
-      '*1. COBRADO HOY Y BASE DE INICIO*',
-      `• *Cobrado Hoy (Total):* ${formatCOP(actualCol)}`,
-      `  - Efectivo cobrado hoy: ${formatCOP(cashCol)}`,
-      `  - Digital (Nequi / Bancos): ${formatCOP(digCol)}`,
-      `• *(+) Base de Inicio (Ruta):* ${formatCOP(stOpeningBase)}`,
-      `• *(=) Cobrado Hoy + Base:* ${formatCOP(stCollectedPlusBase)}`,
-      `• *Clientes Visitados:* ${metrics.visitedCustomersCount} de ${metrics.expectedCustomersCount} (${metrics.progressPercentage}%)`,
-      '',
-      '*2. SALIDAS / PRÉSTAMOS ENTREGADOS*',
-      `• *Operaciones:* ${salidas} crédito(s)`,
-      `• *Desembolso Neto en Calle:* ${formatCOP(netDisbursed)}`,
-      '',
-      `*3. GASTOS DE RUTA DEDUCIDOS:* ${formatCOP(expensesToday)}`,
-      recaudoRetiradoToday > 0
-        ? `*AVANCES ENTREGADOS A OFICINA:* ${formatCOP(recaudoRetiradoToday)}`
-        : '',
-      '',
-      '*4. RENDICIÓN DE EFECTIVO A OFICINA*',
-      isDeficitCoveredByBase
-        ? `• Balance Neto del Día (Cubierto por Base): ${formatCOP(signedNetCashFlow)}`
-        : '',
-      `• Efectivo Físico a Rendir: ${formatCOP(netCashExpected)}`,
-      `• Efectivo Entregado Físicamente: ${formatCOP(handedOver)}`,
-      `• Diferencia Arqueo: ${diff === 0 ? 'Exacto ($0)' : formatCOP(diff)}`,
-    ];
-
-    if (diffJust) {
-      lines.push(`• Observación / Nómina: ${diffJust}`);
-    }
-
-    lines.push(
-      '',
-      '*5. ESTADO DE MORA*',
-      `• Clientes en mora: ${metrics.overdueCustomersCount}`,
-      `• Saldo vencido acumulado: ${formatCOP(metrics.overdueTotalAmount)}`,
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `*Sello de Verificación:* ${verificationHash}`,
-      `_Enviado desde App del Cobrador_`
-    );
-
-    return lines.filter((l) => l !== '').join('\n');
+    return formatShortCuadreWhatsApp({
+      companyName,
+      routeName: reportRouteName,
+      collectorName,
+      dateStr: reportDate,
+      isSealed,
+      folio: st ? `#${st.id.toUpperCase()}` : verificationHash,
+      totalCollected: actualCol,
+      collectedCash: cashCol,
+      collectedDigital: digCol,
+      openingRouteBase: stOpeningBase,
+      salidasCount: salidas,
+      disbursedNet: netDisbursed,
+      expenses: expensesToday,
+      cashToHandOver: netCashExpected,
+      cashHandedOver: handedOver,
+      cashDifference: diff,
+      withdrawnToOffice: recaudoRetiradoToday,
+      overdueCustomersCount: metrics.overdueCustomersCount,
+      overdueTotalAmount: metrics.overdueTotalAmount,
+      visitedCount: metrics.visitedCustomersCount,
+      expectedCount: metrics.expectedCustomersCount,
+      notes: diffJust,
+    });
   };
 
   const handleCopyReport = async (st?: DailySettlement | null) => {

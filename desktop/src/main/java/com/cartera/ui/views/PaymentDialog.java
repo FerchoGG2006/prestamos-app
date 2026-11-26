@@ -8,6 +8,8 @@ import com.cartera.infrastructure.security.UserSession;
 import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.payments.application.RecordPaymentUseCase;
 import com.cartera.payments.application.RecordPaymentUseCase.RecordPaymentCommand;
+import com.cartera.receipts.application.OfficialReceiptService;
+import com.cartera.receipts.application.OfficialReceiptService.OfficialReceiptModel;
 import com.cartera.ui.util.CurrencyInputUtil;
 import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.geometry.Insets;
@@ -204,44 +206,62 @@ public class PaymentDialog {
 
                 try {
                     String companyName = settingRepository != null
-                            ? settingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("SISTEMA DE CARTERA")
-                            : "SISTEMA DE CARTERA";
+                            ? settingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("Kredia")
+                            : "Kredia";
+                    String footerMsg = settingRepository != null
+                            ? settingRepository.findById("receipt_footer_message").map(s -> s.getSettingValue()).orElse("")
+                            : "";
                     String collectorName = UserSessionContext.getSession()
                             .map(UserSession::fullName)
                             .orElse("Administración Central");
+                    String loanShort = item.loanId() != null && item.loanId().length() > 8
+                            ? "#" + item.loanId().substring(0, 8).toUpperCase()
+                            : (item.loanId() != null ? item.loanId() : "");
+                    String instLabel = res.installmentsAffectedCount() > 1
+                            ? res.installmentsAffectedCount() + " cuotas"
+                            : "Cuota #" + item.installmentNumber();
 
-                    var receiptData = new ReceiptDialog.ReceiptData(
+                    OfficialReceiptModel draftModel = new OfficialReceiptModel(
+                            OfficialReceiptService.localCode(res.paymentId()),
+                            "PAYMENT",
                             res.paymentId(),
+                            companyName,
+                            "",
                             item.fullName(),
                             item.documentNumber(),
-                            item.loanId(),
+                            item.phone(),
+                            loanShort,
                             res.allocatedAmount(),
-                            res.remainingLoanBalance(),
-                            res.installmentsAffectedCount(),
-                            collectorName,
+                            "APPROVED",
+                            OfficialReceiptService.nowDisplay(),
+                            "Pago de cuota · " + instLabel,
+                            instLabel,
+                            installmentAmount,
+                            res.remainingLoanBalance().max(BigDecimal.ZERO),
                             cmbMethod.getValue(),
-                            companyName,
-                            item.phone()
+                            null,
+                            null,
+                            0,
+                            "",
+                            null,
+                            null,
+                            null,
+                            "",
+                            "",
+                            collectorName,
+                            footerMsg,
+                            false
                     );
 
+                    OfficialReceiptModel published = OfficialReceiptService.publishOrFallback(draftModel);
+
                     if (chkSendWhatsApp.isSelected()) {
-                        String msg = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
-                                companyName,
-                                res.paymentId(),
-                                item.fullName(),
-                                item.documentNumber(),
-                                res.allocatedAmount(),
-                                res.remainingLoanBalance(),
-                                res.installmentsAffectedCount(),
-                                cmbMethod.getValue(),
-                                collectorName,
-                                LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
-                        );
+                        String msg = WhatsAppReceiptUtil.formatOfficialReceiptWhatsAppMessage(published);
                         WhatsAppReceiptUtil.sendViaWhatsApp(item.phone(), msg);
                     }
 
                     dialog.close();
-                    new ReceiptDialog(receiptData, parentStage).showAndWait();
+                    new ReceiptDialog(published, parentStage).showAndWait();
                 } finally {
                     if (onFinished != null) onFinished.accept(true);
                 }

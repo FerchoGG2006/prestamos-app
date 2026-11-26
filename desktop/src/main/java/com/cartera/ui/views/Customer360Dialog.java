@@ -15,6 +15,8 @@ import com.cartera.payments.application.ReversePaymentUseCase;
 import com.cartera.renewals.application.RenewLoanUseCase;
 import com.cartera.ui.util.CurrencyInputUtil;
 import com.cartera.ui.util.UiLabels;
+import com.cartera.receipts.application.OfficialReceiptService;
+import com.cartera.receipts.application.OfficialReceiptService.OfficialReceiptModel;
 import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -967,26 +969,73 @@ public class Customer360Dialog extends Stage {
     private void openPaymentReceipt(PaymentEntity pay) {
         if (customer == null || pay == null) return;
         String compName = services.settingRepository() != null
-                ? services.settingRepository().findById("company_name").map(SystemSettingEntity::getSettingValue).orElse("Sistema de Cartera")
-                : "Sistema de Cartera";
-        BigDecimal balance = currentInstallments.stream()
-                .map(InstallmentEntity::getPendingAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                ? services.settingRepository().findById("company_name").map(SystemSettingEntity::getSettingValue).orElse("Kredia")
+                : "Kredia";
+        String footerMsg = services.settingRepository() != null
+                ? services.settingRepository().findById("receipt_footer_message").map(SystemSettingEntity::getSettingValue).orElse("")
+                : "";
+        LoanEntity targetLoan = customerLoans.stream()
+                .filter(l -> l.getId().equals(pay.getLoanId()))
+                .findFirst()
+                .orElse(selectedLoan);
+        List<InstallmentEntity> loanInsts = (targetLoan != null && services.installmentRepository() != null)
+                ? services.installmentRepository().findByLoanId(targetLoan.getId())
+                : currentInstallments;
+        List<PaymentEntity> loanPayments = (targetLoan != null && services.paymentRepository() != null)
+                ? services.paymentRepository().findByLoanId(targetLoan.getId())
+                : List.of(pay);
+        BigDecimal historicalBalance = targetLoan != null
+                ? OfficialReceiptService.calculateHistoricalRemainingBalance(targetLoan, loanInsts, loanPayments, pay)
+                : currentInstallments.stream()
+                        .map(InstallmentEntity::getPendingAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         String collectorName = UserSessionContext.getSession().map(UserSession::fullName).orElse("Oficina");
-        ReceiptDialog.ReceiptData data = new ReceiptDialog.ReceiptData(
+        String phone = (customer.getAltPhone() != null && !customer.getAltPhone().isBlank())
+                ? customer.getAltPhone()
+                : customer.getPhone();
+        String loanNum = targetLoan != null && targetLoan.getLoanNumber() != null && !targetLoan.getLoanNumber().isBlank()
+                ? targetLoan.getLoanNumber()
+                : (pay.getLoanId() != null ? "#" + pay.getLoanId().substring(0, Math.min(8, pay.getLoanId().length())).toUpperCase() : "");
+        BigDecimal instAmt = (targetLoan != null && targetLoan.getInstallmentCount() != null && targetLoan.getInstallmentCount() > 0 && targetLoan.getTotalAgreed() != null)
+                ? targetLoan.getTotalAgreed().divide(BigDecimal.valueOf(targetLoan.getInstallmentCount()), 0, java.math.RoundingMode.HALF_UP)
+                : null;
+        String status = ("REVERSED".equalsIgnoreCase(pay.getStatus()) || "ANNULLED".equalsIgnoreCase(pay.getStatus()))
+                ? "REVERSED"
+                : "APPROVED";
+
+        OfficialReceiptModel draft = new OfficialReceiptModel(
+                OfficialReceiptService.localCode(pay.getId()),
+                "PAYMENT",
                 pay.getId(),
+                compName,
+                "",
                 customer.getFullName(),
                 customer.getDocumentNumber(),
-                pay.getLoanId(),
+                phone,
+                loanNum,
                 pay.getAmount(),
-                balance,
-                1,
-                collectorName,
+                status,
+                OfficialReceiptService.formatIsoToDisplay(pay.getCreatedAt()),
+                "Pago de cuota",
+                "Abono registrado",
+                instAmt,
+                historicalBalance,
                 pay.getMethod() != null ? pay.getMethod() : "EFECTIVO",
-                compName,
-                customer.getPhone()
+                null,
+                null,
+                0,
+                "",
+                null,
+                null,
+                null,
+                "",
+                "",
+                collectorName,
+                footerMsg,
+                false
         );
-        new ReceiptDialog(data, UiLabels.formatDateTime(pay.getCreatedAt()), this).showAndWait();
+        new ReceiptDialog(draft, this).showAndWait();
     }
 
     private void confirmReversePayment(PaymentEntity pay) {
@@ -998,6 +1047,7 @@ public class Customer360Dialog extends Stage {
         prompt.showAndWait().ifPresent(reason -> {
             try {
                 services.reversePaymentUseCase().execute(pay.getId(), reason);
+                OfficialReceiptService.voidReceiptAsync("PAYMENT", pay.getId(), "REVERSED");
                 reloadAll();
                 notifyParent();
                 showFeedback("Pago anulado y cuotas restauradas con auditoría.", false);

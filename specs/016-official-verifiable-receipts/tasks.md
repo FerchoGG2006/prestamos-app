@@ -1,0 +1,26 @@
+# Tasks: 016 — Official Verifiable Digital Receipts & Branded PDF Tickets
+
+- [x] **T001**: Generate compact Kredia JPEG logo asset from `mobile/assets/kredia.png` -> `mobile/src/core/utils/kredia-logo-jpeg.ts` and `desktop/src/main/resources/ui/kredia-logo.jpg`.
+- [x] **T002**: Author Supabase migration `supabase/migrations/20261126000000_official_verifiable_receipts.sql` (`official_receipts` table, immutability trigger, strict office RLS, `issue_official_receipt`, `get_official_receipt`, `void_official_receipt` RPCs) and apply it to production Supabase project `fmcotpmydstyrwcmqazb`.
+- [x] **T003**: Implement Mobile core utilities:
+  - Upgrade `mobile/src/core/utils/whatsapp-receipt.ts` (historical balance calculator, official receipt types/link builder, concise reminder & cuadre formatters, fix currency non-breaking space).
+  - Create `mobile/src/core/utils/receipt-pdf.ts` (pure TS PDF 1.4 generator with Kredia footer logo + Web download + Native file share).
+  - Extend `mobile/src/infrastructure/sync/supabase-client.ts` with `issueOfficialReceipt`, `getPublicOfficialReceipt`, and `voidOfficialReceipt`.
+- [x] **T004**: Implement Mobile UI components & public verification route:
+  - Create `mobile/src/presentation/components/OfficialReceiptModal.tsx` (Phase 1 live confirmation stepper + Phase 2 fintech comprobante card + 1-tap WhatsApp + PDF button).
+  - Create `mobile/src/presentation/views/public/PublicReceiptView.tsx` and wire `?r=` / `?comprobante=` interception at root of `mobile/App.tsx`.
+- [x] **T005**: Wire Mobile flows & fix all 3 receipt/reminder bugs:
+  - `PaymentModal.tsx` (fix double-subtraction, use `whatsappPhone || phone`, show stepper + `OfficialReceiptModal`).
+  - `NewLoanModal.tsx` (show `OfficialReceiptModal` for new non-migration loans).
+  - `RenewalModal.tsx` (show `OfficialReceiptModal` for renewals).
+  - `CustomerDetailView.tsx` (open `OfficialReceiptModal` with true historical balance on past payments; void cloud receipt on payment reversal / loan cancellation).
+  - `TodayCollectionsView.tsx` (pass real `overdueDays`, `overdueAmount`, `remainingBalance` to `handleQuickWhatsApp`).
+  - `CollectorCuadreModal.tsx` & `SettlementModal.tsx` (concise WhatsApp cuadre format).
+- [x] **T006**: Implement Desktop (Native JavaFX 21) receipt engine, PDF generator & UI parity:
+  - Extend `SupabaseRegistryClient.java` with `issueOfficialReceipt` & `voidOfficialReceipt`.
+  - Create `OfficialReceiptService.java` and `OfficialReceiptPdfGenerator.java` (pure Java PDF 1.4 with embedded `kredia-logo.jpg`).
+  - Upgrade `WhatsAppReceiptUtil.java` (official link message + shortened reminders & daily settlement messages).
+  - Upgrade `ReceiptDialog.java` to native JavaFX fintech comprobante design (PAYMENT / LOAN / RENEWAL, Office header, Kredia logo footer, WhatsApp 1-tap, PDF download, Print, Copy).
+  - Wire `PaymentDialog.java`, `CreateLoanDialog.java`, `RenewLoanDialog.java`, `Customer360Dialog.java` (true historical balance), and `TodayCollectionsView.java`.
+- [x] **T007**: Write automated tests (Mobile finance/receipt test suite + Desktop JUnit tests) and verify `npm run typecheck`, `npm run test:finance`, and `.\gradlew.bat test`.
+- [ ] **T008**: Commit to `main`, deploy Mobile Web (`eas deploy`), Android OTA (`preview` channel), and Desktop OTA (`v1.2.4`), and verify end-to-end live receipt URL + convergence.

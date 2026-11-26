@@ -27,6 +27,7 @@ import {
 } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
+import { formatShortCuadreWhatsApp } from '../../core/utils/whatsapp-receipt';
 import {
   Landmark,
   X,
@@ -454,81 +455,37 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
     const cashCol = st ? st.collectedCash : metrics.collectedCashToday;
     const digCol = st ? st.collectedTransfers : metrics.collectedDigitalToday;
     const stOpeningBase = st?.openingRouteBase ?? openingRouteBase;
-    const stCollectedPlusBase = st?.collectedPlusBase ?? (cashCol + stOpeningBase);
     const salidas = st ? st.salidasCount : metrics.salidasCount;
     const netDisbursed = st ? st.actualCashDisbursedTotal : metrics.disbursedToday;
     const exp = expensesToday;
     const handedOver = st ? st.cashHandedOver : cashHandedOver;
     const diff = st ? st.cashDifference : cashDifference;
     const diffJust = st?.differenceJustification || justification.trim();
-    const officeBaseTotal = metrics.totalOfficeBaseWithPaperwork ?? (metrics.cashAvailableInHand + metrics.collectedDigitalToday + (metrics.paperworkAvailableBalance || 0));
-    const officePaperwork = metrics.paperworkAvailableBalance || 0;
 
-    const lines = [
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `*${companyName.toUpperCase()}*`,
-      `*CUADRE OFICIAL DE JORNADA ${isSealed ? 'CERRADA' : 'EN PROCESO'}*`,
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `${isSealed ? '*ESTADO: SELLADO Y LIQUIDADO*' : '*ESTADO: PREVIO AL CIERRE*'}`,
-      st ? `*Folio Liquidación:* #${st.id.toUpperCase()}` : '',
-      `*Fecha:* ${reportDate}`,
-      `*Cobrador:* ${collectorName} • *Ruta:* ${routeName}`,
-      st
-        ? `*Hora Cierre:* ${new Date(st.settledAt).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-          })}`
-        : '',
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      '',
-      '*1. COBRADO HOY Y BASE DE INICIO*',
-      `• *Cobrado Hoy (Total):* ${formatCOP(actualCol)}`,
-      `  - Efectivo cobrado hoy: ${formatCOP(cashCol)}`,
-      `  - Digital / Nequi: ${formatCOP(digCol)}`,
-      `• *(+) Base de Inicio (Ruta):* ${formatCOP(stOpeningBase)}`,
-      `• *(=) Cobrado Hoy + Base:* ${formatCOP(stCollectedPlusBase)}`,
-      `• *Clientes Visitados:* ${metrics.visitedCustomersCount} de ${metrics.expectedCustomersCount} (${metrics.progressPercentage}%)`,
-      '',
-      '*2. SALIDAS Y COLOCACIÓN*',
-      `• *Operaciones:* ${salidas} crédito(s)`,
-      `• *Desembolso Neto Entregado:* ${formatCOP(netDisbursed)}`,
-      '',
-      `*3. GASTOS DE RUTA DEDUCIDOS:* ${formatCOP(exp)}`,
-      '',
-      '*4. ARQUEO Y RENDICIÓN DE EFECTIVO*',
-      isDeficitCoveredByBase
-        ? `• Balance Neto del Día (Cubierto por Base): ${formatCOP(signedNetCashFlow)}`
-        : '',
-      `• Efectivo Físico a Rendir: ${formatCOP(netCashExpected)}`,
-      `• Efectivo Entregado a Oficina: ${formatCOP(handedOver)}`,
-      `• Diferencia Arqueo: ${diff === 0 ? 'Exacto ($0)' : formatCOP(diff)}`,
-      (st?.withdrawnToOffice ?? withdrawToOfficeAmount) > 0
-        ? `• Retirado a Oficina en Cierre: ${formatCOP(st?.withdrawnToOffice ?? withdrawToOfficeAmount)}`
-        : '• Destino del Efectivo: Queda en ruta como base para mañana',
-    ];
-
-    if (diffJust) {
-      lines.push(`• Observación / Nómina: ${diffJust}`);
-    }
-
-    lines.push(
-      '',
-      `*5. ADMINISTRATIVO TOTAL:* ${formatCOP(metrics.totalAdministrativeCapital)}`,
-      `• Cartera en Calle: ${formatCOP(metrics.activeCapitalInStreet)}`,
-      `• Base en Oficina: ${formatCOP(officeBaseTotal)}`,
-      `  - Efectivo base: ${formatCOP(metrics.cashAvailableInHand)}`,
-      officePaperwork > 0 ? `  - Papelería en caja: ${formatCOP(officePaperwork)}` : '',
-      '',
-      '*6. ESTADO DE MORA*',
-      `• Clientes en mora: ${metrics.overdueCustomersCount}`,
-      `• Saldo vencido acumulado: ${formatCOP(metrics.overdueTotalAmount)}`,
-      '━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `*Sello SHA:* ${verificationHash}`,
-      `_Enviado desde App Móvil de Cobro_`
-    );
-
-    return lines.filter((l) => l !== '').join('\n');
+    return formatShortCuadreWhatsApp({
+      companyName,
+      routeName,
+      collectorName,
+      dateStr: reportDate,
+      isSealed,
+      folio: st ? `#${st.id.toUpperCase()}` : verificationHash,
+      totalCollected: actualCol,
+      collectedCash: cashCol,
+      collectedDigital: digCol,
+      openingRouteBase: stOpeningBase,
+      salidasCount: salidas,
+      disbursedNet: netDisbursed,
+      expenses: exp,
+      cashToHandOver: netCashExpected,
+      cashHandedOver: handedOver,
+      cashDifference: diff,
+      withdrawnToOffice: st?.withdrawnToOffice ?? withdrawToOfficeAmount,
+      overdueCustomersCount: metrics.overdueCustomersCount,
+      overdueTotalAmount: metrics.overdueTotalAmount,
+      visitedCount: metrics.visitedCustomersCount,
+      expectedCount: metrics.expectedCustomersCount,
+      notes: diffJust,
+    });
   };
 
   const handleCopyReport = async (st?: DailySettlement | null) => {

@@ -9,6 +9,8 @@ import com.cartera.infrastructure.security.UserSessionContext;
 import com.cartera.loans.domain.LoanCalculator;
 import com.cartera.renewals.application.RenewLoanUseCase;
 import com.cartera.renewals.application.RenewLoanUseCase.RenewLoanCommand;
+import com.cartera.receipts.application.OfficialReceiptService;
+import com.cartera.receipts.application.OfficialReceiptService.OfficialReceiptModel;
 import com.cartera.ui.util.CurrencyInputUtil;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -405,8 +407,60 @@ public class RenewLoanDialog extends Stage {
             showFeedback("No se registró la renovación: " + ex.getMessage());
             return;
         }
+        Stage parentOwner = (getOwner() instanceof Stage s) ? s : null;
         close();
         if (onSuccess != null) onSuccess.accept(result);
+
+        try {
+            var q = expected.quote();
+            String companyName = settingRepository != null
+                    ? settingRepository.findById("company_name").map(s -> s.getSettingValue()).orElse("Kredia")
+                    : "Kredia";
+            String footerMsg = settingRepository != null
+                    ? settingRepository.findById("receipt_footer_message").map(s -> s.getSettingValue()).orElse("")
+                    : "";
+            int instCount = Math.max(1, Integer.parseInt(txtInstallmentCount.getText().trim()));
+            String freqLabel = OfficialReceiptService.normalizeFrequencyLabel(cmbFrequency.getValue());
+            boolean isFixed = "Fecha Fija".equalsIgnoreCase(freqLabel);
+            BigDecimal instAmt = q.totalAgreed().amount().divide(BigDecimal.valueOf(instCount), 0, java.math.RoundingMode.HALF_UP);
+            String newLoanShort = result.newLoanId() != null && result.newLoanId().length() > 8
+                    ? "#" + result.newLoanId().substring(0, 8).toUpperCase()
+                    : (result.newLoanId() != null ? result.newLoanId() : "");
+
+            OfficialReceiptModel renDraft = new OfficialReceiptModel(
+                    OfficialReceiptService.localCode(result.newLoanId()),
+                    "RENEWAL",
+                    result.newLoanId() != null ? result.newLoanId() : ("ren-" + currentLoan.getId()),
+                    companyName,
+                    expected.routeId() != null ? expected.routeId() : "",
+                    customerName,
+                    "",
+                    "",
+                    newLoanShort,
+                    q.actualCashDisbursed().amount(),
+                    "APPROVED",
+                    OfficialReceiptService.nowDisplay(),
+                    isFixed ? "Renovación · Fecha fija" : "Renovación · " + instCount + " cuotas (" + freqLabel + ")",
+                    "",
+                    instAmt,
+                    q.totalAgreed().amount(),
+                    "EFECTIVO",
+                    q.newPrincipal().amount(),
+                    q.totalAgreed().amount(),
+                    instCount,
+                    freqLabel,
+                    q.paperworkDeducted().amount(),
+                    q.actualCashDisbursed().amount(),
+                    q.priorBalanceDeducted().amount(),
+                    "",
+                    isFixed && dpStartDate.getValue() != null ? dpStartDate.getValue().toString() : "",
+                    UserSessionContext.getSession().map(s -> s.fullName()).orElse("Oficina"),
+                    footerMsg,
+                    false
+            );
+            OfficialReceiptModel published = OfficialReceiptService.publishOrFallback(renDraft);
+            new ReceiptDialog(published, parentOwner).showAndWait();
+        } catch (Exception ignored) {}
     }
 
     private static BigDecimal parseAmount(String text) {

@@ -1,33 +1,42 @@
 package com.cartera.ui.views;
 
+import com.cartera.receipts.application.OfficialReceiptService;
+import com.cartera.receipts.application.OfficialReceiptService.DetailRow;
+import com.cartera.receipts.application.OfficialReceiptService.OfficialReceiptModel;
+import com.cartera.ui.util.OfficialReceiptPdfGenerator;
 import com.cartera.ui.util.WhatsAppReceiptUtil;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.print.PrinterJob;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
+import java.awt.Desktop;
+import java.io.File;
+import java.io.InputStream;
 import java.math.BigDecimal;
-import java.text.NumberFormat;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.nio.file.Files;
+import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Diálogo modal para visualizar, imprimir y compartir el comprobante digital de cobro por WhatsApp o portapapeles.
+ * Diálogo modal nativo JavaFX estilo fintech (Bemovil/Nequi) para visualizar, publicar en nube,
+ * descargar PDF con logo Kredia, imprimir y compartir por WhatsApp en 1 toque comprobantes oficiales
+ * de Pago, Nuevo Préstamo y Renovación.
  */
 public class ReceiptDialog extends Stage {
-
-    private static final NumberFormat CURRENCY = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-CO"));
-    static {
-        CURRENCY.setMaximumFractionDigits(0);
-    }
 
     public record ReceiptData(
             String receiptId,
@@ -47,178 +56,256 @@ public class ReceiptDialog extends Stage {
         }
     }
 
-    private final ReceiptData data;
-    private final String receiptTimestamp;
+    private OfficialReceiptModel model;
+    private final VBox ticketCard = new VBox(8);
+    private final Label lblCloudStatus = new Label();
+    private final Label lblFeedback = new Label();
+    private final VBox rowsContainer = new VBox(8);
 
     public ReceiptDialog(ReceiptData data, Stage ownerStage) {
         this(data, null, ownerStage);
     }
 
     public ReceiptDialog(ReceiptData data, String receiptTimestamp, Stage ownerStage) {
-        this.data = data;
-        this.receiptTimestamp = (receiptTimestamp != null && !receiptTimestamp.isBlank())
-                ? receiptTimestamp
-                : LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss"));
+        this(fromLegacyReceiptData(data, receiptTimestamp), ownerStage);
+    }
+
+    public ReceiptDialog(OfficialReceiptModel initialModel, Stage ownerStage) {
+        this.model = initialModel;
 
         initModality(Modality.WINDOW_MODAL);
-        initOwner(ownerStage);
-        String safeId = data.receiptId() != null ? data.receiptId() : "N/A";
-        setTitle("Comprobante Digital de Pago #" + (safeId.length() > 8 ? safeId.substring(0, 8) : safeId));
+        if (ownerStage != null) {
+            initOwner(ownerStage);
+        }
+        setTitle(model.title() + " · " + (model.receiptCode() != null ? model.receiptCode() : "Kredia"));
         setResizable(false);
 
         buildUI();
+
+        // Publicar en segundo plano en Supabase si aún no está verificado en la nube
+        if (!model.cloudVerified()) {
+            lblCloudStatus.setText("Publicando comprobante oficial en la nube...");
+            lblCloudStatus.setStyle("-fx-text-fill: #0f766e; -fx-background-color: #ecfdf5; -fx-padding: 4 10; -fx-background-radius: 999; -fx-font-size: 11px; -fx-font-weight: bold;");
+            CompletableFuture.supplyAsync(() -> OfficialReceiptService.publishOrFallback(model))
+                    .thenAccept(published -> Platform.runLater(() -> {
+                        if (published != null) {
+                            this.model = published;
+                            setTitle(model.title() + " · " + model.receiptCode());
+                            refreshDynamicFields();
+                        }
+                    }));
+        }
+    }
+
+    private static OfficialReceiptModel fromLegacyReceiptData(ReceiptData d, String ts) {
+        String displayTs = (ts != null && !ts.isBlank()) ? ts : OfficialReceiptService.nowDisplay();
+        String instLabel = d.installmentsAffected() > 1
+                ? d.installmentsAffected() + " cuotas"
+                : "Abono de cuota";
+        String loanShort = d.loanId() != null && d.loanId().length() > 8
+                ? "#" + d.loanId().substring(0, 8).toUpperCase(Locale.ROOT)
+                : (d.loanId() != null ? d.loanId() : "");
+        return new OfficialReceiptModel(
+                OfficialReceiptService.localCode(d.receiptId()),
+                "PAYMENT",
+                d.receiptId() != null ? d.receiptId() : "pay-local",
+                (d.companyName() != null && !d.companyName().isBlank()) ? d.companyName() : "Kredia",
+                "",
+                d.customerName() != null ? d.customerName() : "Cliente",
+                d.customerDoc() != null ? d.customerDoc() : "",
+                d.customerPhone() != null ? d.customerPhone() : "",
+                loanShort,
+                d.amountPaid() != null ? d.amountPaid() : BigDecimal.ZERO,
+                "APPROVED",
+                displayTs,
+                "Pago de cuota · " + instLabel,
+                instLabel,
+                null,
+                d.remainingBalance() != null ? d.remainingBalance().max(BigDecimal.ZERO) : BigDecimal.ZERO,
+                d.paymentMethod() != null ? d.paymentMethod() : "EFECTIVO",
+                null,
+                null,
+                0,
+                "",
+                null,
+                null,
+                null,
+                "",
+                "",
+                d.collectorName() != null ? d.collectorName() : "",
+                "",
+                false
+        );
     }
 
     private void buildUI() {
-        VBox root = new VBox(16);
-        root.setPadding(new Insets(24));
+        VBox root = new VBox(14);
+        root.setPadding(new Insets(20));
         root.setStyle("-fx-background-color: #f1f5f9;");
         root.setPrefWidth(460);
 
-        VBox ticketCard = new VBox(8);
+        VBox outerShell = new VBox(12);
+        outerShell.setAlignment(Pos.CENTER);
+        outerShell.setPadding(new Insets(20, 20, 18, 20));
+        outerShell.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 20; -fx-border-color: #e2e8f0; -fx-border-radius: 20; -fx-effect: dropshadow(gaussian, rgba(15,23,42,0.08), 18, 0, 0, 6);");
+
+        boolean isVoid = !"APPROVED".equalsIgnoreCase(model.status());
+        String statusLabel = "REVERSED".equalsIgnoreCase(model.status())
+                ? "Anulado"
+                : "CANCELLED".equalsIgnoreCase(model.status())
+                ? "Cancelado"
+                : "Aprobado";
+
+        Label lblTitle = new Label(model.title());
+        lblTitle.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 16px; -fx-font-weight: bold;");
+
+        StackPane checkBadge = new StackPane();
+        checkBadge.setMinSize(46, 46);
+        checkBadge.setMaxSize(46, 46);
+        checkBadge.setStyle(isVoid
+                ? "-fx-background-color: #fef2f2; -fx-background-radius: 999;"
+                : "-fx-background-color: #ecfdf5; -fx-background-radius: 999;");
+        Label checkGlyph = new Label(isVoid ? "!" : "✓");
+        checkGlyph.setStyle(isVoid
+                ? "-fx-text-fill: #dc2626; -fx-font-size: 22px; -fx-font-weight: bold;"
+                : "-fx-text-fill: #059669; -fx-font-size: 22px; -fx-font-weight: bold;");
+        checkBadge.getChildren().add(checkGlyph);
+
+        Label lblAmount = new Label(WhatsAppReceiptUtil.formatCurrencyPlain(model.amount()));
+        lblAmount.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 28px; -fx-font-weight: bold;");
+
+        HBox statusRow = new HBox(8);
+        statusRow.setAlignment(Pos.CENTER);
+        Label pill = new Label(statusLabel);
+        pill.setStyle(isVoid
+                ? "-fx-background-color: #fee2e2; -fx-text-fill: #dc2626; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 3 10; -fx-background-radius: 999;"
+                : "-fx-background-color: #dcfce7; -fx-text-fill: #047857; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 3 10; -fx-background-radius: 999;");
+        Label lblTs = new Label(model.issuedAtDisplay() != null ? model.issuedAtDisplay() : "");
+        lblTs.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11.5px; -fx-font-weight: bold;");
+        statusRow.getChildren().addAll(pill, lblTs);
+
+        VBox hero = new VBox(6, lblTitle, checkBadge, lblAmount, statusRow);
+        hero.setAlignment(Pos.CENTER);
+        if (model.subtitle() != null && !model.subtitle().isBlank()) {
+            Label lblSub = new Label(model.subtitle());
+            lblSub.setStyle("-fx-text-fill: #475569; -fx-font-size: 12px;");
+            hero.getChildren().add(lblSub);
+        }
+
+        // Tarjeta interna (Oficina arriba + filas 2 columnas + Logo Kredia en el footer)
         ticketCard.setAlignment(Pos.CENTER);
-        ticketCard.setPadding(new Insets(20));
-        ticketCard.setStyle("-fx-background-color: #ffffff; -fx-background-radius: 12; -fx-border-color: #e2e8f0; -fx-border-radius: 12; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.08), 20, 0, 0, 4);");
+        ticketCard.setPadding(new Insets(14, 16, 14, 16));
+        ticketCard.setStyle("-fx-background-color: #f8fafc; -fx-background-radius: 14; -fx-border-color: #e2e8f0; -fx-border-radius: 14;");
 
-        String safeId = data.receiptId() != null && !data.receiptId().isBlank() ? data.receiptId() : "N/A";
-        String shortId = safeId.substring(0, Math.min(8, safeId.length())).toUpperCase();
-        BigDecimal safePaid = data.amountPaid() != null ? data.amountPaid() : BigDecimal.ZERO;
-        BigDecimal safeBalance = data.remainingBalance() != null ? data.remainingBalance() : BigDecimal.ZERO;
+        String officeTitle = (model.companyName() != null && !model.companyName().isBlank())
+                ? model.companyName().trim().toUpperCase(Locale.ROOT)
+                : "KREDIA";
+        Label lblOffice = new Label(officeTitle);
+        lblOffice.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
+        ticketCard.getChildren().add(lblOffice);
+        if (model.routeName() != null && !model.routeName().isBlank()) {
+            Label lblRoute = new Label(model.routeName());
+            lblRoute.setStyle("-fx-text-fill: #64748b; -fx-font-size: 11px;");
+            ticketCard.getChildren().add(lblRoute);
+        }
 
-        Label company = new Label(data.companyName() != null && !data.companyName().isBlank() ? data.companyName().toUpperCase() : "SISTEMA DE CARTERA");
-        company.setStyle("-fx-text-fill: #111827; -fx-font-weight: bold; -fx-font-size: 15px; -fx-font-family: 'Consolas', monospace;");
+        ticketCard.getChildren().add(createDashedDivider());
+        ticketCard.getChildren().add(rowsContainer);
+        ticketCard.getChildren().add(createDashedDivider());
 
-        Label sub = new Label("RECIBO DIGITAL DE COBRO");
-        sub.setStyle("-fx-text-fill: #4b5563; -fx-font-size: 11px; -fx-font-family: 'Consolas', monospace;");
+        // Footer con logo real de Kredia
+        VBox footerBox = new VBox(5);
+        footerBox.setAlignment(Pos.CENTER);
+        Label lblVerif = new Label("Comprobante oficial verificado por");
+        lblVerif.setStyle("-fx-text-fill: #64748b; -fx-font-size: 10.5px;");
+        footerBox.getChildren().add(lblVerif);
 
-        Label divider1 = new Label("----------------------------------------");
-        divider1.setStyle("-fx-text-fill: #9ca3af; -fx-font-family: 'Consolas', monospace;");
-
-        VBox details = new VBox(4);
-        details.setAlignment(Pos.CENTER_LEFT);
-        details.getChildren().addAll(
-                createTicketLine("Fecha/Hora:", receiptTimestamp),
-                createTicketLine("Recibo No:", shortId),
-                createTicketLine("Cliente:", data.customerName() != null ? data.customerName() : "-"),
-                createTicketLine("Documento:", data.customerDoc() != null ? data.customerDoc() : "-"),
-                createTicketLine("Método:", data.paymentMethod() != null ? data.paymentMethod() : "EFECTIVO"),
-                createTicketLine("Cobrador:", data.collectorName() != null ? data.collectorName() : "Cobrador de Ruta")
-        );
-
-        Label divider2 = new Label("----------------------------------------");
-        divider2.setStyle("-fx-text-fill: #9ca3af; -fx-font-family: 'Consolas', monospace;");
-
-        VBox financial = new VBox(4);
-        financial.setAlignment(Pos.CENTER_LEFT);
-        financial.getChildren().addAll(
-                createTicketLine("VALOR PAGADO:", CURRENCY.format(safePaid), true),
-                createTicketLine("Cuotas aplicadas:", String.valueOf(data.installmentsAffected())),
-                createTicketLine("SALDO RESTANTE:", CURRENCY.format(safeBalance), true)
-        );
-
-        Label divider3 = new Label("----------------------------------------");
-        divider3.setStyle("-fx-text-fill: #9ca3af; -fx-font-family: 'Consolas', monospace;");
-
-        Label footer = new Label("¡Gracias por su puntual cumplimiento!\nComprobante digital oficial.");
-        footer.setStyle("-fx-text-fill: #6b7280; -fx-font-size: 10px; -fx-text-alignment: center; -fx-font-family: 'Consolas', monospace;");
-
-        ticketCard.getChildren().addAll(company, sub, divider1, details, divider2, financial, divider3, footer);
-
-        Label lblCopied = new Label();
-        lblCopied.setVisible(false);
-        lblCopied.setManaged(false);
-        lblCopied.setWrapText(true);
-
-        HBox actions = new HBox(8);
-        actions.setAlignment(Pos.CENTER);
-
-        Button btnWhatsApp = new Button("Enviar WhatsApp");
-        btnWhatsApp.setStyle("-fx-background-color: #16a34a; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 12; -fx-background-radius: 8; -fx-cursor: hand;");
-        btnWhatsApp.setOnAction(e -> {
-            String message = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
-                    data.companyName(),
-                    safeId,
-                    data.customerName(),
-                    data.customerDoc(),
-                    safePaid,
-                    safeBalance,
-                    data.installmentsAffected(),
-                    data.paymentMethod(),
-                    data.collectorName(),
-                    receiptTimestamp
-            );
-            boolean opened = WhatsAppReceiptUtil.sendViaWhatsApp(data.customerPhone(), message);
-            if (opened) {
-                lblCopied.setText("Recibo copiado y enviado a WhatsApp.");
-                lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+        try (InputStream is = getClass().getResourceAsStream("/ui/kredia.png")) {
+            if (is != null) {
+                ImageView logoView = new ImageView(new Image(is));
+                logoView.setFitWidth(94);
+                logoView.setPreserveRatio(true);
+                logoView.setSmooth(true);
+                footerBox.getChildren().add(logoView);
             } else {
-                lblCopied.setText("Texto copiado al portapapeles, pero no se pudo abrir WhatsApp automáticamente. Verifique el número o el navegador.");
-                lblCopied.setStyle("-fx-text-fill: #b45309; -fx-background-color: #fffbeb; -fx-border-color: #fde68a; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
+                Label fallbackBrand = new Label("Kredia");
+                fallbackBrand.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
+                footerBox.getChildren().add(fallbackBrand);
             }
-            lblCopied.setVisible(true);
-            lblCopied.setManaged(true);
+        } catch (Exception ignored) {
+            Label fallbackBrand = new Label("Kredia");
+            fallbackBrand.setStyle("-fx-text-fill: #0f172a; -fx-font-size: 14px; -fx-font-weight: bold;");
+            footerBox.getChildren().add(fallbackBrand);
+        }
+
+        footerBox.getChildren().add(lblCloudStatus);
+        if (model.footerMessage() != null && !model.footerMessage().isBlank()) {
+            Label lblCustomFooter = new Label(model.footerMessage());
+            lblCustomFooter.setWrapText(true);
+            lblCustomFooter.setStyle("-fx-text-fill: #64748b; -fx-font-size: 10.5px; -fx-text-alignment: center;");
+            footerBox.getChildren().add(lblCustomFooter);
+        }
+        ticketCard.getChildren().add(footerBox);
+
+        outerShell.getChildren().addAll(hero, ticketCard);
+
+        refreshDynamicFields();
+
+        lblFeedback.setVisible(false);
+        lblFeedback.setManaged(false);
+        lblFeedback.setWrapText(true);
+
+        // Botones de acción
+        Button btnWhatsApp = new Button("Enviar por WhatsApp");
+        btnWhatsApp.setMaxWidth(Double.MAX_VALUE);
+        btnWhatsApp.setStyle("-fx-background-color: #16a34a; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 13px; -fx-padding: 10 14; -fx-background-radius: 10; -fx-cursor: hand;");
+        btnWhatsApp.setOnAction(e -> {
+            String message = WhatsAppReceiptUtil.formatOfficialReceiptWhatsAppMessage(model);
+            boolean opened = WhatsAppReceiptUtil.sendViaWhatsApp(model.customerPhone(), message);
+            if (opened) {
+                showFeedback(model.cloudVerified()
+                        ? "Chat del cliente abierto con el enlace oficial inalterable."
+                        : "Chat abierto en modo respaldo local (sin conexión a nube).", false);
+            } else {
+                showFeedback("Mensaje copiado al portapapeles. Verifique el número o navegador para abrir WhatsApp.", true);
+            }
         });
+
+        HBox secondaryActions = new HBox(8);
+        secondaryActions.setAlignment(Pos.CENTER);
+
+        Button btnPdf = new Button("Descargar PDF");
+        btnPdf.setStyle("-fx-background-color: #0f172a; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 8 12; -fx-background-radius: 8; -fx-cursor: hand;");
+        btnPdf.setOnAction(e -> handleDownloadPdf());
 
         Button btnPrint = new Button("Imprimir");
         btnPrint.getStyleClass().add("btn-secondary");
-        btnPrint.setOnAction(e -> {
-            try {
-                PrinterJob job = PrinterJob.createPrinterJob();
-                if (job == null) {
-                    lblCopied.setText("No se encontró ninguna impresora disponible en el equipo.");
-                    lblCopied.setStyle("-fx-text-fill: #b45309; -fx-background-color: #fffbeb; -fx-border-color: #fde68a; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
-                } else if (job.showPrintDialog(this)) {
-                    boolean printed = job.printPage(ticketCard);
-                    if (printed) {
-                        job.endJob();
-                        lblCopied.setText("Comprobante enviado a la impresora.");
-                        lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
-                    } else {
-                        lblCopied.setText("No se pudo imprimir el comprobante.");
-                        lblCopied.setStyle("-fx-text-fill: #dc2626; -fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
-                    }
-                }
-            } catch (Exception ex) {
-                lblCopied.setText("Error al imprimir: " + ex.getMessage());
-                lblCopied.setStyle("-fx-text-fill: #dc2626; -fx-background-color: #fef2f2; -fx-border-color: #fecaca; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
-            }
-            lblCopied.setVisible(true);
-            lblCopied.setManaged(true);
-        });
+        btnPrint.setOnAction(e -> handlePrint(outerShell));
 
         Button btnCopy = new Button("Copiar");
         btnCopy.getStyleClass().add("btn-secondary");
         btnCopy.setOnAction(e -> {
-            String message = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
-                    data.companyName(),
-                    safeId,
-                    data.customerName(),
-                    data.customerDoc(),
-                    safePaid,
-                    safeBalance,
-                    data.installmentsAffected(),
-                    data.paymentMethod(),
-                    data.collectorName(),
-                    receiptTimestamp
-            );
+            String msg = WhatsAppReceiptUtil.formatOfficialReceiptWhatsAppMessage(model);
             Clipboard clipboard = Clipboard.getSystemClipboard();
             ClipboardContent content = new ClipboardContent();
-            content.putString(message);
+            content.putString(msg);
             clipboard.setContent(content);
-
-            lblCopied.setText("Recibo copiado al portapapeles.");
-            lblCopied.setStyle("-fx-text-fill: #059669; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 6; -fx-padding: 6 10; -fx-background-radius: 6;");
-            lblCopied.setVisible(true);
-            lblCopied.setManaged(true);
+            showFeedback(model.cloudVerified() ? "Enlace oficial copiado al portapapeles." : "Comprobante copiado al portapapeles.", false);
         });
 
         Button btnClose = new Button("Cerrar");
         btnClose.getStyleClass().add("btn-secondary");
         btnClose.setOnAction(e -> close());
 
-        actions.getChildren().addAll(btnWhatsApp, btnPrint, btnCopy, btnClose);
+        secondaryActions.getChildren().addAll(btnPdf, btnPrint, btnCopy, btnClose);
 
-        root.getChildren().addAll(ticketCard, lblCopied, actions);
+        ScrollPane scroll = new ScrollPane(outerShell);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setStyle("-fx-background-color: transparent; -fx-background: transparent; -fx-border-width: 0;");
+        scroll.setPrefViewportHeight(470);
+
+        root.getChildren().addAll(scroll, lblFeedback, btnWhatsApp, secondaryActions);
 
         var scene = new Scene(root);
         var css = getClass().getResource("/ui/theme.css");
@@ -226,22 +313,98 @@ public class ReceiptDialog extends Stage {
         setScene(scene);
     }
 
-    private HBox createTicketLine(String label, String value) {
-        return createTicketLine(label, value, false);
+    private void refreshDynamicFields() {
+        rowsContainer.getChildren().clear();
+        List<DetailRow> rows = model.buildDetailRows();
+        for (DetailRow r : rows) {
+            rowsContainer.getChildren().add(createDetailRow(r));
+        }
+        if (model.cloudVerified()) {
+            lblCloudStatus.setText("Enlace inalterable activo en la nube");
+            lblCloudStatus.setStyle("-fx-text-fill: #047857; -fx-background-color: #ecfdf5; -fx-padding: 4 10; -fx-background-radius: 999; -fx-font-size: 10.5px; -fx-font-weight: bold;");
+        } else {
+            lblCloudStatus.setText("Modo local · Puedes guardar o imprimir el PDF");
+            lblCloudStatus.setStyle("-fx-text-fill: #b45309; -fx-background-color: #fffbeb; -fx-padding: 4 10; -fx-background-radius: 999; -fx-font-size: 10.5px; -fx-font-weight: bold;");
+        }
     }
 
-    private HBox createTicketLine(String label, String value, boolean bold) {
-        HBox row = new HBox(8);
-        Label l = new Label(label);
-        l.setStyle("-fx-text-fill: #374151; -fx-font-size: 11px; -fx-font-family: 'Consolas', monospace;" + (bold ? " -fx-font-weight: bold;" : ""));
+    private void handleDownloadPdf() {
+        try {
+            byte[] pdfBytes = OfficialReceiptPdfGenerator.generatePdf(model);
+            String safeCode = (model.receiptCode() != null ? model.receiptCode() : "KREDIA").replaceAll("[^a-zA-Z0-9_-]", "");
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Guardar Ticket PDF Oficial Kredia");
+            chooser.setInitialFileName("Comprobante-" + safeCode + ".pdf");
+            chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Documento PDF (*.pdf)", "*.pdf"));
+            File target = chooser.showSaveDialog(this);
+            if (target == null) return;
+            Files.write(target.toPath(), pdfBytes);
+            showFeedback("Ticket PDF guardado en: " + target.getName(), false);
+            try {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                    Desktop.getDesktop().open(target);
+                }
+            } catch (Exception ignored) {}
+        } catch (Exception ex) {
+            showFeedback("No se pudo generar el PDF: " + ex.getMessage(), true);
+        }
+    }
+
+    private void handlePrint(VBox printableNode) {
+        try {
+            PrinterJob job = PrinterJob.createPrinterJob();
+            if (job == null) {
+                showFeedback("No se encontró ninguna impresora disponible en el equipo.", true);
+            } else if (job.showPrintDialog(this)) {
+                boolean printed = job.printPage(printableNode);
+                if (printed) {
+                    job.endJob();
+                    showFeedback("Comprobante enviado a la impresora.", false);
+                } else {
+                    showFeedback("No se pudo imprimir el comprobante.", true);
+                }
+            }
+        } catch (Exception ex) {
+            showFeedback("Error al imprimir: " + ex.getMessage(), true);
+        }
+    }
+
+    private void showFeedback(String msg, boolean warning) {
+        lblFeedback.setText(msg);
+        lblFeedback.setStyle(warning
+                ? "-fx-text-fill: #b45309; -fx-background-color: #fffbeb; -fx-border-color: #fde68a; -fx-border-radius: 8; -fx-padding: 7 10; -fx-background-radius: 8; -fx-font-size: 11.5px; -fx-font-weight: bold;"
+                : "-fx-text-fill: #047857; -fx-background-color: #ecfdf5; -fx-border-color: #a7f3d0; -fx-border-radius: 8; -fx-padding: 7 10; -fx-background-radius: 8; -fx-font-size: 11.5px; -fx-font-weight: bold;");
+        lblFeedback.setVisible(true);
+        lblFeedback.setManaged(true);
+    }
+
+    private Region createDashedDivider() {
+        Region line = new Region();
+        line.setMinHeight(1);
+        line.setMaxHeight(1);
+        line.setMaxWidth(Double.MAX_VALUE);
+        line.setStyle("-fx-border-color: #cbd5e1; -fx-border-width: 0 0 1 0; -fx-border-style: segments(4, 4);");
+        VBox.setMargin(line, new Insets(4, 0, 4, 0));
+        return line;
+    }
+
+    private HBox createDetailRow(DetailRow r) {
+        HBox row = new HBox(10);
+        row.setAlignment(Pos.CENTER_LEFT);
+        Label lbl = new Label(r.label());
+        lbl.setStyle("-fx-text-fill: #64748b; -fx-font-size: 12px; -fx-font-weight: bold;");
 
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
 
-        Label v = new Label(value);
-        v.setStyle("-fx-text-fill: #111827; -fx-font-size: 11px; -fx-font-family: 'Consolas', monospace;" + (bold ? " -fx-font-weight: bold; -fx-font-size: 12px;" : ""));
+        Label val = new Label(r.value());
+        val.setWrapText(true);
+        val.setAlignment(Pos.CENTER_RIGHT);
+        String color = r.danger() ? "#dc2626" : r.highlight() ? "#047857" : "#0f172a";
+        String weight = (r.highlight() || r.danger()) ? "bold" : "bold";
+        val.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 12px; -fx-font-weight: " + weight + ";");
 
-        row.getChildren().addAll(l, sp, v);
+        row.getChildren().addAll(lbl, sp, val);
         return row;
     }
 }

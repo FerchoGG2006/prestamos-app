@@ -22,6 +22,15 @@ import {
 } from '../../core/domain/calculator';
 import { COLORS, FONT_FAMILY } from '../theme/colors';
 import { localStore } from '../../infrastructure/storage/local-store';
+import { supabaseSyncService } from '../../infrastructure/sync/supabase-client';
+import {
+  OfficialReceiptModal,
+  ConfirmationStepItem,
+} from './OfficialReceiptModal';
+import {
+  OfficialReceiptData,
+  buildRenewalOfficialReceipt,
+} from '../../core/utils/whatsapp-receipt';
 import { RefreshCw, X, AlertCircle, Lock, Percent, Calendar, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react-native';
 
 interface RenewalModalProps {
@@ -67,10 +76,16 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
     }
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [renewalOfficialReceipt, setRenewalOfficialReceipt] = useState<OfficialReceiptData | null>(null);
+  const [showRenewalReceiptFlow, setShowRenewalReceiptFlow] = useState(false);
+  const [renewalProcessingSteps, setRenewalProcessingSteps] = useState<ConfirmationStepItem[]>([]);
 
   // Inicializar valores al abrir el modal o cambiar el crédito
   useEffect(() => {
     if (visible && loan) {
+      setShowRenewalReceiptFlow(false);
+      setRenewalOfficialReceipt(null);
+      setRenewalProcessingSteps([]);
       setNewPrincipalStr(String(loan.principal || 200000));
       const defaultRate = loan.interestRate ? Math.round(loan.interestRate * 100) : 20;
       setInterestPercentStr(String(defaultRate));
@@ -258,8 +273,16 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
     }
 
     setIsSubmitting(true);
+    setShowRenewalReceiptFlow(true);
+    setRenewalOfficialReceipt(null);
+    setRenewalProcessingSteps([
+      { label: 'Validando saldo a liquidar', state: 'done' },
+      { label: 'Registrando renovación y nuevo crédito', state: 'active' },
+      { label: 'Publicando comprobante oficial', state: 'pending' },
+      { label: 'Comprobante listo', state: 'pending' },
+    ]);
     try {
-      await localStore.recordRenewal({
+      const res = await localStore.recordRenewal({
         previousLoanId: loan.id,
         newPrincipal,
         interestRate: effectiveInterestRate,
@@ -271,24 +294,66 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
         paperworkFee: renewalCalc.paperworkDeducted,
       });
 
-      Alert.alert(
-        '¡Renovación Exitosa!',
-        `Nuevo Crédito: ${formatCOP(newPrincipal)}\n${
-          isFixedDate ? `Fecha Fija de Pago: ${fixedDueDateStr.trim()}\n` : ''
-        }Total de la Deuda: ${formatCOP(
-          newSummary?.totalAgreed || newPrincipal
-        )}\nEfectivo neto a entregar en mano: ${formatCOP(
-          renewalCalc.actualCashDisbursed
-        )}`
-      );
+      setRenewalProcessingSteps([
+        { label: 'Validando saldo a liquidar', state: 'done' },
+        { label: 'Registrando renovación y nuevo crédito', state: 'done' },
+        { label: 'Publicando comprobante oficial', state: 'active' },
+        { label: 'Comprobante listo', state: 'pending' },
+      ]);
+
+      const draftReceipt = buildRenewalOfficialReceipt({
+        companyName: officeConfig.companyName || 'Mi Oficina',
+        routeName: localStore.getRouteDisplayName(res.newLoan.routeId),
+        collectorName: localStore.getCollectorDisplayName(res.newLoan.collectorId),
+        footerMessage: officeConfig.receiptFooterMessage,
+        customer,
+        previousLoanNumber: loan.loanNumber,
+        newLoan: res.newLoan,
+        renewalId: res.renewal.id,
+        previousBalanceDeducted: res.renewal.previousBalanceDeducted,
+        paperworkDeducted: res.renewal.paperworkDeducted,
+        actualCashDisbursed: res.renewal.actualCashDisbursed,
+        createdAt: res.renewal.createdAt,
+      });
+
+      const published = await supabaseSyncService.issueOfficialReceipt(draftReceipt);
+      setRenewalProcessingSteps([
+        { label: 'Validando saldo a liquidar', state: 'done' },
+        { label: 'Registrando renovación y nuevo crédito', state: 'done' },
+        { label: 'Publicando comprobante oficial', state: 'done' },
+        { label: 'Comprobante listo', state: 'done' },
+      ]);
+      await new Promise((r) => setTimeout(r, 120));
+
+      setRenewalOfficialReceipt(published.receipt);
       onSuccess();
-      onClose();
     } catch (error: any) {
+      setShowRenewalReceiptFlow(false);
       Alert.alert('Error', error.message || 'No se pudo procesar la renovación');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (showRenewalReceiptFlow) {
+    return (
+      <OfficialReceiptModal
+        visible={visible}
+        receipt={renewalOfficialReceipt}
+        isProcessing={isSubmitting || !renewalOfficialReceipt}
+        processingTitle="Confirmando renovación"
+        processingAmount={renewalCalc.actualCashDisbursed}
+        processingSubtitle={`${customer.fullName} · Neto a entregar`}
+        processingSteps={renewalProcessingSteps}
+        closeLabel="Finalizar"
+        onClose={() => {
+          setShowRenewalReceiptFlow(false);
+          setRenewalOfficialReceipt(null);
+          onClose();
+        }}
+      />
+    );
+  }
 
   return (
     <Modal

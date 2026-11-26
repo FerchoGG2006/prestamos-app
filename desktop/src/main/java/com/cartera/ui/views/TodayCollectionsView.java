@@ -17,6 +17,8 @@ import com.cartera.settlement.application.SettlementUseCase;
 import com.cartera.sync.application.MobileSyncProcessorService;
 import com.cartera.sync.infrastructure.LanSyncServerService;
 import com.cartera.ui.util.UiLabels;
+import com.cartera.receipts.application.OfficialReceiptService;
+import com.cartera.receipts.application.OfficialReceiptService.OfficialReceiptModel;
 import com.cartera.ui.util.WhatsAppReceiptUtil;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
@@ -1139,21 +1141,46 @@ public class TodayCollectionsView extends VBox {
             int instCount = realPayment
                     .map(p -> paymentAllocationRepository != null ? Math.max(1, paymentAllocationRepository.findByPaymentId(p.getId()).size()) : 1)
                     .orElse(1);
-            String ts = realPayment.map(p -> formatPaymentTimestamp(p.getCreatedAt()))
-                    .orElse(LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")));
+            String ts = realPayment.map(p -> OfficialReceiptService.formatIsoToDisplay(p.getCreatedAt()))
+                    .orElse(OfficialReceiptService.nowDisplay());
+            String instLabel = instCount > 1 ? instCount + " cuotas" : "Cuota #" + item.installmentNumber();
+            String loanShort = item.loanId() != null && item.loanId().length() > 8
+                    ? "#" + item.loanId().substring(0, 8).toUpperCase()
+                    : (item.loanId() != null ? item.loanId() : "");
 
-            msg = WhatsAppReceiptUtil.generatePaymentReceiptMessage(
-                    companyName,
+            OfficialReceiptModel draft = new OfficialReceiptModel(
+                    OfficialReceiptService.localCode(receiptId),
+                    "PAYMENT",
                     receiptId,
+                    companyName,
+                    "",
                     item.fullName(),
                     item.documentNumber(),
+                    targetPhone,
+                    loanShort,
                     paidAmt,
-                    item.loanBalance(),
-                    instCount,
+                    "APPROVED",
+                    ts,
+                    "Pago de cuota · " + instLabel,
+                    instLabel,
+                    item.installmentAmount(),
+                    item.loanBalance().max(BigDecimal.ZERO),
                     method,
+                    null,
+                    null,
+                    0,
+                    "",
+                    null,
+                    null,
+                    null,
+                    "",
+                    "",
                     collectorName,
-                    ts
+                    "",
+                    false
             );
+            OfficialReceiptModel published = OfficialReceiptService.publishOrFallback(draft);
+            msg = WhatsAppReceiptUtil.formatOfficialReceiptWhatsAppMessage(published);
         } else {
             BigDecimal paid = item.loanTotal().subtract(item.loanBalance()).max(BigDecimal.ZERO);
             String todayStr = LocalDate.now().toString();
