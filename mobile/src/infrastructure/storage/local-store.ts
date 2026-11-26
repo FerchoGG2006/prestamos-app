@@ -1737,6 +1737,91 @@ class LocalStore {
   }
 
   /**
+   * Remapea de forma atómica IDs heredados (ej. usr-adm-1, usr-col-1, route-norte) a IDs aislados por oficina
+   * conservando el 100% de clientes, préstamos, pagos, renovaciones, promesas, liquidaciones y movimientos de caja.
+   */
+  public async remapLegacyOfficeIds(
+    userIdMap: Record<string, string>,
+    routeIdMap: Record<string, string>
+  ): Promise<boolean> {
+    const hasUserMaps = Object.keys(userIdMap).length > 0;
+    const hasRouteMaps = Object.keys(routeIdMap).length > 0;
+    if (!hasUserMaps && !hasRouteMaps) return false;
+
+    const mapUser = (id?: string) => (id && userIdMap[id] ? userIdMap[id] : id);
+    const mapRoute = (id?: string) => (id && routeIdMap[id] ? routeIdMap[id] : id);
+
+    this.users = this.users.map((u) => ({
+      ...u,
+      id: mapUser(u.id) || u.id,
+      routeId: mapRoute(u.routeId),
+      assignedRouteIds: (u.assignedRouteIds || []).map((rid) => mapRoute(rid) || rid),
+    }));
+    this.routes = this.routes.map((r) => ({
+      ...r,
+      id: mapRoute(r.id) || r.id,
+      collectorId: mapUser(r.collectorId) || '',
+    }));
+    this.customers = this.customers.map((c) => ({
+      ...c,
+      routeId: mapRoute(c.routeId) || c.routeId,
+      assignedCollectorId: mapUser(c.assignedCollectorId) || c.assignedCollectorId,
+    }));
+    this.loans = this.loans.map((l) => ({
+      ...l,
+      routeId: mapRoute(l.routeId) || l.routeId,
+      collectorId: mapUser(l.collectorId) || l.collectorId,
+    }));
+    this.payments = this.payments.map((p) => ({
+      ...p,
+      collectorId: mapUser(p.collectorId) || p.collectorId,
+    }));
+    this.renewals = this.renewals.map((r) => ({
+      ...r,
+      collectorId: mapUser(r.collectorId) || r.collectorId,
+    }));
+    this.promises = this.promises.map((pr) => ({
+      ...pr,
+      collectorId: mapUser(pr.collectorId) || pr.collectorId,
+    }));
+    this.settlements = this.settlements.map((s) => ({
+      ...s,
+      routeId: mapRoute(s.routeId) || s.routeId,
+      collectorId: mapUser(s.collectorId) || s.collectorId,
+    }));
+    this.cashMovements = this.cashMovements.map((cm) => ({
+      ...cm,
+      routeId: mapRoute(cm.routeId) || cm.routeId,
+      collectorId: mapUser(cm.collectorId) || cm.collectorId,
+    }));
+    if (this.activeSession) {
+      this.activeSession = {
+        ...this.activeSession,
+        routeId: mapRoute(this.activeSession.routeId) || this.activeSession.routeId,
+        collectorId: mapUser(this.activeSession.collectorId) || this.activeSession.collectorId,
+      };
+    }
+
+    this.rebuildIndexes();
+    await Promise.all([
+      safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users)),
+      safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes)),
+      safeStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(this.customers)),
+      safeStorage.setItem(STORAGE_KEYS.LOANS, JSON.stringify(this.loans)),
+      safeStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(this.payments)),
+      safeStorage.setItem(STORAGE_KEYS.RENEWALS, JSON.stringify(this.renewals)),
+      safeStorage.setItem(STORAGE_KEYS.PROMISES, JSON.stringify(this.promises)),
+      safeStorage.setItem(STORAGE_KEYS.SETTLEMENTS, JSON.stringify(this.settlements)),
+      safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements)),
+      ...(this.activeSession
+        ? [safeStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(this.activeSession))]
+        : []),
+    ]);
+    this.notify();
+    return true;
+  }
+
+  /**
    * Actualiza directamente el Administrativo (Cupo Total) y la Base de Efectivo de una ruta
    * sin requerir re-escribir usuario o contraseña.
    */

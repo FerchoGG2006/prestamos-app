@@ -213,49 +213,36 @@ class CloudSyncEngine {
     });
 
     // Auto-sanear IDs globales heredados (ej. usr-adm-1 / usr-col-1 / route-norte) en oficinas distintas a FBV
-    // para evitar colisiones de clave primaria y errores RLS 42501 al subir cambios locales tras reconectar.
+    // remapeando en cascada clientes, créditos, pagos, caja y rutas sin perder ningún dato local.
     if (res.officeId !== 'off-fbv-001') {
       const localUsers = [...localStore.getUsers()];
       const localRoutes = [...localStore.getRoutes()];
-      let changed = false;
-      const officeTag = res.officeId.replace(/^off-/i, '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'ofc';
+      const officeTag =
+        res.officeId.replace(/^off-/i, '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'ofc';
 
-      const idMap = new Map<string, string>();
-      const remappedUsers = localUsers.map((u, idx) => {
+      const userIdMap: Record<string, string> = {};
+      localUsers.forEach((u, idx) => {
         if (
           (u.role === 'ADMIN' || u.role === 'SUPER_ADMIN') &&
           res.authenticatedUserId &&
-          (u.id === 'usr-adm-1' || u.id === 'usr-admin-1')
+          (u.id === 'usr-adm-1' || u.id === 'usr-admin-1') &&
+          u.id !== res.authenticatedUserId
         ) {
-          idMap.set(u.id, res.authenticatedUserId);
-          changed = true;
-          return { ...u, id: res.authenticatedUserId };
+          userIdMap[u.id] = res.authenticatedUserId;
+        } else if (/^usr-col-\d+$/.test(u.id)) {
+          userIdMap[u.id] = `usr-col-${officeTag}-${idx + 1}`;
         }
-        if (/^usr-col-\d+$/.test(u.id)) {
-          const nextId = `usr-col-${officeTag}-${idx + 1}`;
-          idMap.set(u.id, nextId);
-          changed = true;
-          return { ...u, id: nextId };
-        }
-        return u;
       });
 
-      const remappedRoutes = localRoutes.map((r, idx) => {
-        const nextCollectorId = r.collectorId && idMap.has(r.collectorId) ? idMap.get(r.collectorId)! : r.collectorId;
+      const routeIdMap: Record<string, string> = {};
+      localRoutes.forEach((r, idx) => {
         if (/^route-(norte|centro|sur|1)$/i.test(r.id)) {
-          const nextRouteId = `rt-${officeTag}-${String(idx + 1).padStart(2, '0')}`;
-          changed = true;
-          return { ...r, id: nextRouteId, collectorId: nextCollectorId };
+          routeIdMap[r.id] = `rt-${officeTag}-${String(idx + 1).padStart(2, '0')}`;
         }
-        if (nextCollectorId !== r.collectorId) {
-          changed = true;
-          return { ...r, collectorId: nextCollectorId };
-        }
-        return r;
       });
 
-      if (changed) {
-        await localStore.saveUsersAndRoutes(remappedUsers, remappedRoutes);
+      if (Object.keys(userIdMap).length > 0 || Object.keys(routeIdMap).length > 0) {
+        await localStore.remapLegacyOfficeIds(userIdMap, routeIdMap);
       }
     }
 

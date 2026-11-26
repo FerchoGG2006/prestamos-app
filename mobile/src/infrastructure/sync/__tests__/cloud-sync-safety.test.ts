@@ -540,6 +540,18 @@ export const cloudSyncSafetyTests = (async () => {
         },
       ]
     );
+    // Crear cliente local en route-norte antes de reconectar para verificar remapeo en cascada sin pérdida
+    const localCustOnLegacyRoute = await localStore.createCustomer({
+      fullName: 'Cliente Plancha En Calle',
+      documentNumber: '1099887766',
+      phone: '3001112233',
+      address: 'Calle 10',
+      neighborhood: 'Centro',
+      routeId: 'route-norte',
+      todayStr: '2026-11-26',
+    });
+    assert.equal(localCustOnLegacyRoute.routeId, 'route-norte');
+
     supabaseSyncService.reauthenticateCloudSession = async () => ({
       ok: true,
       sessionToken: 'plancha-fresh-tok',
@@ -549,11 +561,11 @@ export const cloudSyncSafetyTests = (async () => {
       licenseStatus: 'ACTIVE',
       licensePlan: 'LIFETIME',
       authenticatedUserId: 'usr-adm-a65ad54d',
-      authenticatedUsername: 'plancha1',
+      authenticatedUsername: 'kr0000',
     });
     supabaseSyncService.pushFullPortfolio = async () => ({ ok: true });
     supabaseSyncService.pullFullPortfolio = async () => null;
-    const healedReauth = await cloudSyncEngine.reconnectCloudSession('plancha1', 'Plancha2026!');
+    const healedReauth = await cloudSyncEngine.reconnectCloudSession('kr0000', 'Plancha2026!');
     assert.equal(healedReauth.ok, true);
     assert.equal(
       localStore.getUsers().some((u) => u.id === 'usr-adm-a65ad54d' && u.username === 'kr0000'),
@@ -570,8 +582,15 @@ export const cloudSyncSafetyTests = (async () => {
       false,
       'Reconnect debe sanear route-norte en oficinas distintas a FBV'
     );
+    const remappedCust = localStore.getCustomers().find((c) => c.id === localCustOnLegacyRoute.id);
+    assert.equal(Boolean(remappedCust), true, 'Cliente creado antes de reconectar debe conservarse intacto');
+    assert.equal(
+      remappedCust?.routeId,
+      localStore.getRoutes()[0]?.id,
+      'Cliente debe remapearse en cascada al nuevo routeId aislado por oficina para respetar FK en Supabase'
+    );
 
-    console.log('PASS cloud-sync-safety.test.ts (26/26 assertions)');
+    console.log('PASS cloud-sync-safety.test.ts (28/28 assertions)');
   } finally {
     restoreMocks();
   }
