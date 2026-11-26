@@ -26,6 +26,7 @@ export const cloudSyncSafetyTests = (async () => {
   const origPull = supabaseSyncService.pullFullPortfolio.bind(supabaseSyncService);
   const origReauth = supabaseSyncService.reauthenticateCloudSession.bind(supabaseSyncService);
   const origRefreshTop = supabaseSyncService.refreshCloudSession.bind(supabaseSyncService);
+  const origFetchRouteIds = supabaseSyncService.fetchOfficeRouteIds.bind(supabaseSyncService);
 
   const restoreMocks = () => {
     supabaseSyncService.isConnected = origIsConnected;
@@ -37,6 +38,7 @@ export const cloudSyncSafetyTests = (async () => {
     supabaseSyncService.pullFullPortfolio = origPull;
     supabaseSyncService.reauthenticateCloudSession = origReauth;
     supabaseSyncService.refreshCloudSession = origRefreshTop;
+    supabaseSyncService.fetchOfficeRouteIds = origFetchRouteIds;
   };
 
   try {
@@ -53,6 +55,7 @@ export const cloudSyncSafetyTests = (async () => {
     // 1. Sin token y sin credenciales recordadas -> expone NEEDS_CLOUD_AUTH y NO marca SUSPENDED
     supabaseSyncService.isConnected = () => true;
     supabaseSyncService.refreshCloudSession = async () => ({ ok: true });
+    supabaseSyncService.fetchOfficeRouteIds = async () => null;
     const syncedNoToken = await cloudSyncEngine.syncBidirectional('');
     assert.equal(syncedNoToken, false);
     assert.equal(cloudSyncEngine.getStatus().status, 'NEEDS_CLOUD_AUTH');
@@ -790,7 +793,51 @@ export const cloudSyncSafetyTests = (async () => {
       );
       assert.equal(localStore.getRoutes().length, 1, 'Ruta fantasma debe auto-podarse tras pull');
 
-      //    d) deleteRouteInCloud delega correctamente en RPC delete_empty_route
+      //    d) Bugfix ghost-route-resurrection: incluso si una ruta fantasma (route-norte / RN-01) tenía un cobrador
+      //       falso sin contraseña (usr-col-2) o existía en caché vieja tras borrarse en servidor, jamás debe resucitar.
+      supabaseSyncService.fetchOfficeRouteIds = async () => ['rt-c995615d-01'];
+      await localStore.saveUsersAndRoutes(
+        [
+          ...localStore.getUsers(),
+          {
+            id: 'usr-col-2',
+            name: 'Ruta Norte',
+            username: 'ruta2',
+            password: '',
+            email: 'ruta2@oficina.com',
+            role: 'COBRADOR',
+            routeId: 'route-norte',
+            assignedRouteIds: ['route-norte'],
+            isActive: true,
+            createdAt: '2026-11-26',
+          },
+        ],
+        [
+          ...localStore.getRoutes(),
+          {
+            id: 'route-norte',
+            name: 'Ruta Norte',
+            code: 'RN-01',
+            collectorId: 'usr-col-2',
+            isActive: true,
+            createdAt: '2026-11-26',
+          },
+        ]
+      );
+      await cloudSyncEngine.syncBidirectional('');
+      assert.equal(
+        pushedRouteIds.includes('route-norte'),
+        false,
+        'route-norte eliminada del servidor JAMÁS debe resucitar aunque tenga cobrador fantasma usr-col-2'
+      );
+      assert.equal(
+        localStore.getRoutes().some((r) => r.id === 'route-norte'),
+        false,
+        'route-norte debe desaparecer de la caché local inmediatamente tras pull'
+      );
+      supabaseSyncService.fetchOfficeRouteIds = async () => null;
+
+      //    e) deleteRouteInCloud delega correctamente en RPC delete_empty_route
       let deletedRouteParam = '';
       supabaseSyncService.deleteEmptyRoute = async (rid) => {
         deletedRouteParam = rid;
@@ -805,7 +852,7 @@ export const cloudSyncSafetyTests = (async () => {
       supabaseSyncService.deleteEmptyRoute = origDeleteRoute;
     }
 
-    console.log('PASS cloud-sync-safety.test.ts (36/36 assertions)');
+    console.log('PASS cloud-sync-safety.test.ts (38/38 assertions)');
   } finally {
     restoreMocks();
   }

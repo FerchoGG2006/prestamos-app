@@ -393,10 +393,31 @@ class CloudSyncEngine {
 
     const officeId = cfg.officeId.trim();
     supabaseSyncService.setSessionToken(cfg.cloudSessionToken.trim());
+    const localUsersNow = localStore.getUsers();
+    const localRoutesNow = localStore.getRoutes();
+    const validUserIdsNow = new Set(
+      localUsersNow
+        .filter((u) => Boolean((u.username || '').trim()) && Boolean((u.password || '').trim()))
+        .map((u) => u.id)
+    );
+    const usedRouteIdsNow = new Set<string>([
+      ...localStore.getCustomers().map((c) => c.routeId).filter(Boolean),
+      ...localStore.getLoans().map((l) => l.routeId).filter(Boolean),
+    ]);
+    const filteredRoutesNow =
+      localRoutesNow.length > 1
+        ? localRoutesNow.filter(
+            (r) =>
+              (Boolean((r.collectorId || '').trim()) && validUserIdsNow.has(r.collectorId)) ||
+              usedRouteIdsNow.has(r.id)
+          )
+        : localRoutesNow;
+    const routesToSyncNow = filteredRoutesNow.length > 0 ? filteredRoutesNow : localRoutesNow;
+
     let res = await supabaseSyncService.syncUsersAndRoutes(
       officeId,
-      localStore.getUsers(),
-      localStore.getRoutes()
+      localUsersNow,
+      routesToSyncNow
     );
     if (!res.ok && !res.usernameConflict && !res.networkError) {
       // Un reintento silencioso renovando token si expiró en el servidor
@@ -407,8 +428,8 @@ class CloudSyncEngine {
           supabaseSyncService.setSessionToken(cfg.cloudSessionToken.trim());
           res = await supabaseSyncService.syncUsersAndRoutes(
             officeId,
-            localStore.getUsers(),
-            localStore.getRoutes()
+            localUsersNow,
+            routesToSyncNow
           );
         }
       }
@@ -557,23 +578,45 @@ class CloudSyncEngine {
               promises: localStore.getPromises(),
               nonPaymentVisits: localStore.getNonPaymentVisits(),
             });
-            // Nunca re-subir rutas fantasma vacías sin cobrador cuando la oficina ya tiene rutas activas
+            // Nunca re-subir rutas fantasma vacías ni resucitar rutas ya eliminadas en el servidor
+            const allLocalUsers = localStore.getUsers();
             const allLocalRoutes = localStore.getRoutes();
+            const validRealUserIds = new Set(
+              allLocalUsers
+                .filter((u) => Boolean((u.username || '').trim()) && Boolean((u.password || '').trim()))
+                .map((u) => u.id)
+            );
             const usedRouteIds = new Set<string>([
               ...localStore.getCustomers().map((c) => c.routeId).filter(Boolean),
               ...localStore.getLoans().map((l) => l.routeId).filter(Boolean),
             ]);
-            const filteredRoutes =
-              allLocalRoutes.length > 1
+            const remoteRouteIdsList = await supabaseSyncService.fetchOfficeRouteIds(immutableOfficeId);
+            const remoteRouteIdsSet =
+              remoteRouteIdsList && remoteRouteIdsList.length > 0
+                ? new Set(remoteRouteIdsList)
+                : null;
+
+            const filteredRoutes = remoteRouteIdsSet
+              ? allLocalRoutes.filter(
+                  (r) => remoteRouteIdsSet.has(r.id) || usedRouteIds.has(r.id)
+                )
+              : allLocalRoutes.length > 1
                 ? allLocalRoutes.filter(
-                    (r) => Boolean((r.collectorId || '').trim()) || usedRouteIds.has(r.id)
+                    (r) =>
+                      (Boolean((r.collectorId || '').trim()) && validRealUserIds.has(r.collectorId)) ||
+                      usedRouteIds.has(r.id)
                   )
                 : allLocalRoutes;
-            const routesToPush = filteredRoutes.length > 0 ? filteredRoutes : allLocalRoutes;
+            const routesToPush =
+              remoteRouteIdsSet
+                ? filteredRoutes
+                : filteredRoutes.length > 0
+                  ? filteredRoutes
+                  : allLocalRoutes;
 
             const usersRoutesResult = await supabaseSyncService.syncUsersAndRoutes(
               immutableOfficeId,
-              localStore.getUsers(),
+              allLocalUsers,
               routesToPush
             );
 

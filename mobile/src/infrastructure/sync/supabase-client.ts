@@ -373,6 +373,26 @@ class SupabaseSyncService {
   }
 
   /**
+   * Consulta ligera de los IDs de rutas vigentes en el servidor para la oficina.
+   * Permite evitar que un dispositivo con caché vieja resucite rutas eliminadas.
+   */
+  public async fetchOfficeRouteIds(officeId: string): Promise<string[] | null> {
+    if (!this.client || !officeId) return null;
+    try {
+      const { data, error } = await this.client
+        .from('routes')
+        .select('id')
+        .eq('office_id', officeId);
+      if (error || !Array.isArray(data)) return null;
+      return data
+        .map((r: any) => String(r?.id || '').trim())
+        .filter(Boolean);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Sincroniza usuarios y rutas de la oficina verificando errores reales de Supabase/PostgreSQL.
    */
   public async syncUsersAndRoutes(

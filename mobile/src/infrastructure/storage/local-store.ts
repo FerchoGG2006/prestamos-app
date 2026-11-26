@@ -409,45 +409,63 @@ class LocalStore {
         return u;
       });
 
-        // Garantizar que cada ruta activa tenga su propio usuario cobrador único sin asignar claves por defecto
-        const usedCollectorIds = new Set<string>();
-        let usersOrRoutesHealed = sanitizedLegacyPasswords;
-        this.routes = this.routes.map((rt, idx) => {
-          const isSharedOrMissing =
-            !rt.collectorId ||
-            usedCollectorIds.has(rt.collectorId) ||
-            !this.users.some((u) => u.id === rt.collectorId);
+      // Sanear usuarios y rutas fantasma heredadas (sin fabricar jamás cobradores vacíos ni rutas falsas)
+      let usersOrRoutesHealed = sanitizedLegacyPasswords;
+      const referencedUserIds = new Set<string>([
+        ...this.customers.map((c) => c.assignedCollectorId).filter(Boolean),
+        ...this.loans.map((l) => l.collectorId).filter(Boolean),
+        ...this.payments.map((p) => p.collectorId).filter(Boolean),
+      ]);
+      const cleanedUsers = this.users.filter((u) => {
+        const hasPassword = Boolean((u.password || '').trim());
+        const isGhostPlaceholder =
+          !hasPassword &&
+          u.role === 'COBRADOR' &&
+          (/^usr-col-\d+$/.test(u.id) || /^ruta\d+$/i.test((u.username || '').trim())) &&
+          !referencedUserIds.has(u.id);
+        return !isGhostPlaceholder;
+      });
+      if (cleanedUsers.length !== this.users.length) {
+        this.users = cleanedUsers;
+        usersOrRoutesHealed = true;
+      }
 
-          if (!isSharedOrMissing) {
-            usedCollectorIds.add(rt.collectorId);
-            return rt;
-          }
+      const validUserIdsWithPass = new Set(
+        this.users
+          .filter((u) => Boolean((u.username || '').trim()) && Boolean((u.password || '').trim()))
+          .map((u) => u.id)
+      );
+      const referencedRouteIds = new Set<string>([
+        ...this.customers.map((c) => c.routeId).filter(Boolean),
+        ...this.loans.map((l) => l.routeId).filter(Boolean),
+      ]);
 
+      // Limpiar referencias a cobradores fantasma borrados en rutas existentes
+      this.routes = this.routes.map((rt) => {
+        if (rt.collectorId && !this.users.some((u) => u.id === rt.collectorId)) {
           usersOrRoutesHealed = true;
-          const dedicatedId = `usr-col-${idx + 1}`;
-          usedCollectorIds.add(dedicatedId);
-          const defaultUsername = idx === 0 ? 'cobrador' : `ruta${idx + 1}`;
-          if (!this.users.some((u) => u.id === dedicatedId)) {
-            this.users.push({
-              id: dedicatedId,
-              name: rt.collectorName || rt.name || `Ruta ${idx + 1}`,
-              username: defaultUsername,
-              password: '',
-              email: `${defaultUsername}@oficina.com`,
-              role: 'COBRADOR',
-              assignedRouteIds: [rt.id],
-              routeId: rt.id,
-              isActive: true,
-              createdAt: getLocalTodayStr(),
-            });
-          }
-          return { ...rt, collectorId: dedicatedId };
-        });
-
-        if (usersOrRoutesHealed) {
-          safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
-          safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
+          return { ...rt, collectorId: '' };
         }
+        return rt;
+      });
+
+      // Si hay más de 1 ruta local, podar rutas fantasma vacías sin cobrador real (ej. route-norte / RN-01)
+      if (this.routes.length > 1) {
+        const realRoutes = this.routes.filter(
+          (r) =>
+            (Boolean((r.collectorId || '').trim()) && validUserIdsWithPass.has(r.collectorId)) ||
+            referencedRouteIds.has(r.id)
+        );
+        if (realRoutes.length > 0 && realRoutes.length < this.routes.length) {
+          this.routes = realRoutes;
+          usersOrRoutesHealed = true;
+        }
+      }
+
+      if (usersOrRoutesHealed) {
+        safeStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(this.users));
+        safeStorage.setItem(STORAGE_KEYS.ROUTES, JSON.stringify(this.routes));
+      }
 
         // =========================================================================
         // MIGRACIÓN Y AUTO-SANACIÓN V1 -> V2 (Teléfonos con versión anterior)
@@ -504,9 +522,9 @@ class LocalStore {
           safeStorage.setItem(STORAGE_KEYS.CASH_MOVEMENTS, JSON.stringify(this.cashMovements));
         }
 
-        // 2. Auto-migrar rutas asegurando valores numéricos sin desconfigurar la oficina ni invalidar accesos
-        if (!this.routes || this.routes.length === 0) {
-          this.routes = [...INITIAL_ROUTES];
+        // 2. Auto-migrar rutas asegurando valores numéricos sin fabricar rutas demo en instalaciones vacías
+        if (!Array.isArray(this.routes)) {
+          this.routes = [];
         }
         let routesMigrated = false;
         this.routes = this.routes.map((r, idx) => {
