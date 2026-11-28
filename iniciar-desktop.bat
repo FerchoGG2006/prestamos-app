@@ -1,6 +1,17 @@
 @echo off
 cd /d "%~dp0"
 
+REM Priorizar siempre el aplicativo nativo instalado con KrediaLauncher (soporte OTA de 1.3 MB)
+if exist "C:\Program Files\SistemaCartera\SistemaCartera.exe" (
+    start "" "C:\Program Files\SistemaCartera\SistemaCartera.exe"
+    exit /b 0
+)
+
+if exist "%LOCALAPPDATA%\Programs\SistemaCartera\SistemaCartera.exe" (
+    start "" "%LOCALAPPDATA%\Programs\SistemaCartera\SistemaCartera.exe"
+    exit /b 0
+)
+
 if "%JAVA_HOME%"=="" (
     if exist "C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot" (
         set "JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
