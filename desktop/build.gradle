@@ -17,6 +17,7 @@ def installerVersion = providers.gradleProperty('installerVersion').getOrElse('1
 def releaseDir = file(providers.gradleProperty('distributionDir').getOrElse("${rootDir}/dist/releases/${installerVersion}"))
 def desktopShellVersion = '1.2.0'
 def otaBucketPublicBase = 'https://fmcotpmydstyrwcmqazb.supabase.co/storage/v1/object/public/desktop-updates'
+def githubReleasesBase = 'https://github.com/FerchoGG2006/prestamos-app/releases/download'
 
 java {
     toolchain {
@@ -154,8 +155,8 @@ tasks.register('buildOtaPatch') {
   "core_jar_url": "${otaBucketPublicBase}/${targetJarName}",
   "core_jar_sha256": "${sha256}",
   "core_jar_size_bytes": ${sizeBytes},
-  "installer_url": "${otaBucketPublicBase}/Instalador-SistemaCartera-v${minShell}.exe",
-  "download_url": "${otaBucketPublicBase}/Instalador-SistemaCartera-v${minShell}.exe",
+  "installer_url": "${githubReleasesBase}/v${minShell}/Instalador-SistemaCartera-v${minShell}.exe",
+  "download_url": "${githubReleasesBase}/v${minShell}/Instalador-SistemaCartera-v${minShell}.exe",
   "release_notes": "${escapedNotes}"
 }
 """
